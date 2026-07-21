@@ -17,7 +17,7 @@ from chatbot1c.domain.skill import Skill
 from chatbot1c.web import create_app
 
 ROOT = Path(__file__).resolve().parents[2]
-STARTER = ROOT / "skills/ut-11.5.27.56/ut.starter.slice-one.package.json"
+STARTER = ROOT / "skills/ut-11.5.27.56/ut.starter.slice-two.package.json"
 ARTICLE_SKILL = "ut115.ref.item.resolve-article-exact"
 ORDER_LINES_SKILL = "ut115.sales.order-lines"
 

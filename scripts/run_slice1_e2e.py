@@ -137,6 +137,7 @@ def _app_environment(
         {
             "APP_DATA_DIR": str(data_dir),
             "AUTO_IMPORT_BUILTIN_SKILLS": "true" if auto_import else "false",
+            "STARTER_PACKAGE_PATH": str(PACKAGE),
             "BUILD_HELP_INDEX_ON_START": "true",
             "UT_CONFIG_DIR": str(help_root),
             "DEEPSEEK_BASE_URL": fixture_url,

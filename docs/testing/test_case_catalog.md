@@ -38,6 +38,13 @@
 | TC-SEM-007 | Semantic | `provides.fact_types` точно равно output semantic types | ADR-0003 P1 |
 | TC-SEM-008 | Semantic | Package lock точный и замкнутый; same id/version с другим available digest конфликтует | ADR-0003 P1 |
 | TC-SEM-009 | Semantic | Disagreement отклоняет duplicate citation, unknown fact и subject mismatch | ADR-0003 P2 |
+| TC-SEM-010 | Semantic | Required/all closure детерминирован; unused rejected; optional failure не меняет достаточный required result | Slice 2 SB-02 |
+| TC-SEM-011 | Evidence | `required` exact-copy обязателен; missing optional reported и исключен из `sufficient`; covered required partial page остается insufficient по collection obligation | Slice 2 SB-10/SB-13 |
+| TC-SEM-012 | Semantic | Page-scoped CountOperator не закрывает total; Q031 20/22 не становится `Всего 20` | Slice 2 SB-08 |
+| TC-PAG-001 | Semantic/integration | Unbounded skills keyset; prefix proof и `M-1/M/M+1` boundary проверены | Slice 2 SB-09 |
+| TC-PAG-002 | Semantic import | Keyset sort/cursor bijection, parameter uniqueness, encoding, non-null coordinates, identity suffix и AST query contract fail closed независимо от package ID | Slice 2 SB-12 |
+| TC-PAG-003 | Semantic import | `keyset|prefix` с aggregate/exact cardinality rejected; zero aggregate использует отдельный `none` complete-set producer | Slice 2 SB-14 |
+| TC-EVD-001 | Schema/runtime | Frozen 1.0 omissions читаются только через legacy defaults; 1.1 omissions/unknown version rejected; новые bundles explicit 1.1 | Slice 2 SB-11 |
 | TC-LIM-001 | Semantic loader | Bytes/depth/node/array и embedded-skill ceilings дают отдельные error codes | ADR-0003 P2 |
 | TC-MCP-001 | MCP contract | Port публикует только execute_query/get_metadata | FR-011, FR-012 |
 | TC-MCP-002 | MCP contract | structuredContent и single text JSON приняты | lessons 3.1 |
@@ -87,7 +94,7 @@
 | Q012 | data | `exact_set`, `semantic` | independent control.q012.v1 + same marker | corpus `Q012.expected_behavior` |
 | Q013 | data | `exact_scalar`, `semantic` | independent control.q013.v1 + same marker | corpus `Q013.expected_behavior` |
 | Q014 | data | `exact_set`, `semantic` | independent control.q014.v1 + same marker | corpus `Q014.expected_behavior` |
-| Q015 | data | `exact_set`, `semantic` | independent control.q015.v1 + same marker | corpus `Q015.expected_behavior` |
+| Q015 | data | `exact_set`, `exact_scalar`, `semantic` | independent control.q015.v1 + same marker | corpus list plus found-position total from `Q015.expected_behavior` |
 | Q016 | data | `exact_scalar`, `semantic` | independent control.q016.v1 + same marker | corpus `Q016.expected_behavior` |
 | Q017 | data | `exact_set`, `semantic` | independent control.q017.v1 + same marker | corpus `Q017.expected_behavior` |
 | Q018 | data | `exact_set`, `semantic` | independent control.q018.v1 + same marker | corpus `Q018.expected_behavior` |
@@ -103,7 +110,7 @@
 | Q028 | data | `exact_scalar`, `semantic` | independent control.q028.v1 + same marker | corpus `Q028.expected_behavior` |
 | Q029 | data | `clarification`, `exact_set`, `semantic` | independent control.q029.v1 + same marker | corpus `Q029.expected_behavior` |
 | Q030 | data | `exact_order`, `semantic` | independent control.q030.v1 + same marker | corpus `Q030.expected_behavior` |
-| Q031 | data | `exact_set`, `semantic` | independent control.q031.v1 + same marker | corpus `Q031.expected_behavior` |
+| Q031 | data | `exact_set`, `exact_scalar`, `semantic` | independent control.q031.v1 + same marker | corpus list plus distinct total from `Q031.expected_behavior` |
 | Q032 | data | `exact_order`, `semantic` | independent control.q032.v1 + same marker | corpus `Q032.expected_behavior` |
 | Q033 | data | `exact_scalar`, `semantic` | independent control.q033.v1 + same marker | corpus `Q033.expected_behavior` |
 | Q034 | data | `exact_scalar`, `semantic` | independent control.q034.v1 + same marker | corpus `Q034.expected_behavior` |

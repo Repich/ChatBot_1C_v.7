@@ -567,6 +567,18 @@ class FactEqualsParameterConstraint(ClosedModel):
     parameter: Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")]
 
 
+class FactInParameterConstraint(ClosedModel):
+    kind: Literal["fact_in_parameter"]
+    fact_id: FactId
+    parameter: Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")]
+
+
+ResultConstraint = Annotated[
+    FactEqualsParameterConstraint | FactInParameterConstraint,
+    Field(discriminator="kind"),
+]
+
+
 class RuntimeContract(ClosedModel):
     contract: Literal["skill-runtime", "mcp.execute_query", "help-index"]
     version_range: Annotated[
@@ -701,10 +713,27 @@ class Skill(ClosedModel):
     operation: SkillOperation
     output_contract: OutputContract
     result_constraints: Annotated[
-        tuple[FactEqualsParameterConstraint, ...], Field(max_length=40)
+        tuple[ResultConstraint, ...], Field(max_length=40)
     ] = ()
     dependencies: Dependencies
     examples: Annotated[tuple[Example, ...], Field(min_length=2, max_length=20)]
     tests: Annotated[tuple[SkillTestCase, ...], Field(min_length=2, max_length=50)]
     provenance: SkillProvenance
     integrity: Integrity
+
+
+CollectionScope = Literal["visible_page", "complete_set"]
+
+
+def collection_scope_for_skill(skill: Skill) -> CollectionScope:
+    operation = skill.operation
+    if not isinstance(operation, DataQueryOperation):
+        return "visible_page"
+    if skill.output_contract.cardinality == "aggregate":
+        return "complete_set"
+    if (
+        operation.pagination.strategy != "none"
+        or skill.output_contract.sufficiency.truncation_policy == "page_is_complete"
+    ):
+        return "visible_page"
+    return "complete_set"

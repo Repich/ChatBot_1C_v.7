@@ -36,15 +36,22 @@ def render_execution(plan: PlannerOutput, execution: ExecutionResult) -> str:
     if outcome is Outcome.DOCUMENTATION_EMPTY:
         return "Во встроенной справке этого релиза подходящий фрагмент не найден."
     if outcome is Outcome.QUERY_ERROR:
-        return "Не удалось выполнить read-only запрос к 1С. Данные не подменялись."
+        return (
+            "Не удалось выполнить read-only запрос к 1С. Данные не подменялись. "
+            f"Идентификатор операции: {execution.evidence.trace_id}."
+        )
     if outcome is Outcome.MCP_UNAVAILABLE:
-        return "Сервис read-only доступа к 1С временно недоступен."
+        return (
+            "Сервис read-only MCP-доступа к 1С временно недоступен. "
+            f"Идентификатор операции: {execution.evidence.trace_id}."
+        )
     if outcome is Outcome.CLARIFICATION_REQUIRED:
         return "Найдено несколько подходящих объектов. Уточните, какой выбрать."
     if outcome is Outcome.CONTRACT_ERROR:
-        return "Результат зависимости не прошел проверку контракта."
-    if outcome is Outcome.PARTIAL:
-        return "Получена только часть подтвержденных данных; полный ответ недоступен."
+        return (
+            "Результат зависимости не прошел проверку контракта; данные ответа "
+            f"не показаны. Идентификатор операции: {execution.evidence.trace_id}."
+        )
 
     fragments = [
         fact
@@ -94,9 +101,28 @@ def render_execution(plan: PlannerOutput, execution: ExecutionResult) -> str:
         for fact in facts
         if (fact.step_id, fact.fact_id) in definitions
     }
-    return render_table(
+    table = render_table(
         facts, titles=titles, zero=outcome is Outcome.ZERO_AGGREGATE
     )
+    pagination = execution.evidence.pagination
+    suffix = ""
+    if pagination is not None and pagination.has_more:
+        suffix = (
+            f"\n\nПоказано {pagination.shown} строк. "
+            "Для следующей страницы используйте продолжение списка."
+        )
+    if outcome is Outcome.PARTIAL:
+        missing = [
+            item.semantic_type
+            for item in execution.evidence.coverage.requirements
+            if item.status.value != "covered"
+        ]
+        reason = ", ".join(missing) if missing else "полная выборка"
+        return (
+            "Получена только подтвержденная часть данных; отсутствует: "
+            f"{reason}.\n\n{table}{suffix}"
+        )
+    return table + suffix
 
 
 def render_table(

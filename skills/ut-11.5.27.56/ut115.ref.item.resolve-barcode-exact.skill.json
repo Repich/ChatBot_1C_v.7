@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "document_type": "skill",
   "skill_id": "ut115.ref.item.resolve-barcode-exact",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "display": {
     "name_ru": "Поиск номенклатуры по точному штрихкоду",
     "purpose_ru": "Находит связанную номенклатуру только по точному штрихкоду регистра УТ.",
@@ -89,21 +89,13 @@
     "query_template": {
       "template_id": "ut115.ref.item.resolve-barcode-exact.v1",
       "language": "1c-query",
-      "text": "ВЫБРАТЬ ПЕРВЫЕ 20\n  Штрихкоды.Номенклатура КАК Номенклатура,\n  Штрихкоды.Номенклатура.Код КАК Код,\n  Штрихкоды.Номенклатура.Артикул КАК Артикул,\n  Штрихкоды.Номенклатура.Наименование КАК Наименование\nИЗ РегистрСведений.ШтрихкодыНоменклатуры КАК Штрихкоды\nГДЕ Штрихкоды.Штрихкод = &Штрихкод\nУПОРЯДОЧИТЬ ПО Штрихкоды.Номенклатура.Наименование",
+      "text": "ВЫБРАТЬ РАЗЛИЧНЫЕ\n  Штрихкоды.Номенклатура КАК Номенклатура,\n  Штрихкоды.Номенклатура.Код КАК Код,\n  Штрихкоды.Номенклатура.Артикул КАК Артикул,\n  Штрихкоды.Номенклатура.Наименование КАК Наименование\nИЗ РегистрСведений.ШтрихкодыНоменклатуры КАК Штрихкоды\nГДЕ Штрихкоды.Штрихкод = &Штрихкод\n  И (НЕ &ЕстьКурсор\n    ИЛИ Штрихкоды.Номенклатура.Наименование > &ИмяКурсора\n    ИЛИ (Штрихкоды.Номенклатура.Наименование = &ИмяКурсора\n      И Штрихкоды.Номенклатура > &СсылкаКурсора))\nУПОРЯДОЧИТЬ ПО Штрихкоды.Номенклатура.Наименование, Штрихкоды.Номенклатура",
       "execution": {
         "kind": "single_select",
         "statement_count": 1,
         "final_statement": 1
       },
-      "invariant_constants": [
-        {
-          "kind": "structural_integer",
-          "statement": 1,
-          "value": 20,
-          "role": "top_limit",
-          "occurrences": 1
-        }
-      ],
+      "invariant_constants": [],
       "include_schema": true,
       "mcp_limit": {
         "default": 20,
@@ -152,12 +144,30 @@
       }
     ],
     "pagination": {
-      "strategy": "prefix",
-      "stable_order_fact_ids": [
-        "item.name",
-        "item.ref"
+      "strategy": "keyset",
+      "has_cursor_query_parameter": "ЕстьКурсор",
+      "sort": [
+        {
+          "fact_id": "item.name",
+          "direction": "asc"
+        },
+        {
+          "fact_id": "item.ref",
+          "direction": "asc"
+        }
       ],
-      "maximum_total": 1000
+      "cursor_bindings": [
+        {
+          "fact_id": "item.name",
+          "query_parameter": "ИмяКурсора",
+          "encoding": "string"
+        },
+        {
+          "fact_id": "item.ref",
+          "query_parameter": "СсылкаКурсора",
+          "encoding": "object_ref"
+        }
+      ]
     }
   },
   "output_contract": {
@@ -345,7 +355,32 @@
           "success": true,
           "data": [],
           "schema": {
-            "columns": []
+            "columns": [
+              {
+                "name": "Номенклатура",
+                "types": [
+                  "СправочникСсылка.Номенклатура"
+                ]
+              },
+              {
+                "name": "Код",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Артикул",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Наименование",
+                "types": [
+                  "Строка"
+                ]
+              }
+            ]
           },
           "count": 0
         }
@@ -380,6 +415,6 @@
     "algorithm": "sha256",
     "canonicalization": "RFC8785",
     "scope": "document_without_integrity",
-    "digest": "e34067299cfac614a32e462af948c87f58ee231ab628a6831a13751814b3150c"
+    "digest": "86d42d57c6967a34edb0439f42d45ed1bc09a2e19ce2fb31121b7e7b55230d84"
   }
 }

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter, defaultdict, deque
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Literal, TypeAlias
@@ -244,6 +244,12 @@ class QueryContractResult:
     problems: tuple[QueryProblem, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class KeysetQueryProof:
+    order: Literal["match", "mismatch", "unproven"]
+    predicate: Literal["match", "mismatch", "unproven"]
+
+
 def inspect_query_contract(template: QueryTemplate) -> QueryContractResult:
     """Parse and validate a query package against its closed manifest."""
 
@@ -265,6 +271,357 @@ def inspect_query_contract(template: QueryTemplate) -> QueryContractResult:
     problems.extend(_execution_problems(parsed, template.execution))
     problems.extend(_invariant_problems(parsed, template.invariant_constants))
     return QueryContractResult(parsed=parsed, problems=tuple(problems))
+
+
+def inspect_keyset_query_contract(
+    parsed: ParsedQuery,
+    *,
+    projection_aliases: Sequence[str],
+    directions: Sequence[Literal["asc", "desc"]],
+    guard_parameter: str,
+    cursor_parameters: Sequence[str],
+) -> KeysetQueryProof:
+    """Prove the restricted keyset ORDER BY and after-predicate token AST."""
+
+    if (
+        not parsed.statements
+        or not projection_aliases
+        or len(projection_aliases) != len(directions)
+        or len(projection_aliases) != len(cursor_parameters)
+    ):
+        return KeysetQueryProof("unproven", "unproven")
+    tokens = parsed.statements[-1].tokens
+    projections = _keyset_projection_expressions(tokens)
+    expected_expressions: list[tuple[str, ...]] = []
+    for alias in projection_aliases:
+        expression = projections.get(alias.casefold())
+        if expression is None:
+            return KeysetQueryProof("unproven", "unproven")
+        expected_expressions.append(expression)
+
+    order_terms = _keyset_order_terms(tokens, projections)
+    if order_terms is None:
+        order_status: Literal["match", "mismatch", "unproven"] = "unproven"
+    else:
+        expected_order = tuple(zip(expected_expressions, directions, strict=True))
+        order_status = "match" if order_terms == expected_order else "mismatch"
+
+    predicate_tokens = _keyset_cursor_predicate_tokens(
+        tokens,
+        {guard_parameter.casefold(), *(name.casefold() for name in cursor_parameters)},
+    )
+    if predicate_tokens is None:
+        predicate_status: Literal["match", "mismatch", "unproven"] = "unproven"
+    else:
+        predicate_status = (
+            "match"
+            if _keyset_predicate_matches(
+                predicate_tokens,
+                expected_expressions,
+                directions,
+                guard_parameter,
+                cursor_parameters,
+            )
+            else "mismatch"
+        )
+    return KeysetQueryProof(order_status, predicate_status)
+
+
+def _keyset_projection_expressions(
+    tokens: Sequence[QueryToken],
+) -> dict[str, tuple[str, ...]]:
+    select_index = _find_top_level_word(tokens, {"SELECT", "ВЫБРАТЬ"})
+    source_index = _find_top_level_word(tokens, {"FROM", "ИЗ"})
+    if select_index is None or source_index is None or source_index <= select_index:
+        return {}
+    projection_tokens = tuple(tokens[select_index + 1 : source_index])
+    if projection_tokens and projection_tokens[0].upper in {"DISTINCT", "РАЗЛИЧНЫЕ"}:
+        projection_tokens = projection_tokens[1:]
+    if (
+        len(projection_tokens) >= 2
+        and projection_tokens[0].upper in {"TOP", "ПЕРВЫЕ"}
+        and projection_tokens[1].kind == "number"
+    ):
+        projection_tokens = projection_tokens[2:]
+    result: dict[str, tuple[str, ...]] = {}
+    for item in _split_top_level_symbols(projection_tokens, ","):
+        depth = 0
+        alias_index: int | None = None
+        for index, token in enumerate(item):
+            depth = _next_depth(depth, token)
+            if depth == 0 and token.kind == "word" and token.upper in {"AS", "КАК"}:
+                alias_index = index
+        if (
+            alias_index is None
+            or alias_index == 0
+            or alias_index + 2 != len(item)
+        ):
+            return {}
+        alias = item[alias_index + 1]
+        if alias.kind not in {"word", "identifier"}:
+            return {}
+        expression = _normalize_expression(item[:alias_index])
+        if not expression or alias.value.casefold() in result:
+            return {}
+        result[alias.value.casefold()] = expression
+    return result
+
+
+def _keyset_order_terms(
+    tokens: Sequence[QueryToken],
+    projections: dict[str, tuple[str, ...]],
+) -> tuple[tuple[tuple[str, ...], Literal["asc", "desc"]], ...] | None:
+    order_index = _find_top_level_sequence(
+        tokens, (("ORDER", "BY"), ("УПОРЯДОЧИТЬ", "ПО"))
+    )
+    if order_index is None:
+        return None
+    start, width = order_index
+    terms: list[tuple[tuple[str, ...], Literal["asc", "desc"]]] = []
+    for raw_term in _split_top_level_symbols(tokens[start + width :], ","):
+        term = list(_strip_outer_parentheses(raw_term))
+        if not term:
+            return None
+        direction: Literal["asc", "desc"] = "asc"
+        if term[-1].kind == "word" and term[-1].upper in {
+            "ASC",
+            "DESC",
+            "ВОЗР",
+            "УБЫВ",
+        }:
+            direction = "desc" if term[-1].upper in {"DESC", "УБЫВ"} else "asc"
+            term.pop()
+        expression = _normalize_expression(term)
+        if len(expression) == 1 and expression[0] in projections:
+            expression = projections[expression[0]]
+        if not expression:
+            return None
+        terms.append((expression, direction))
+    return tuple(terms)
+
+
+def _keyset_cursor_predicate_tokens(
+    tokens: Sequence[QueryToken], pagination_parameters: set[str]
+) -> tuple[QueryToken, ...] | None:
+    where_index = _find_top_level_word(tokens, {"WHERE", "ГДЕ"})
+    if where_index is None:
+        return None
+    order_index = _find_top_level_sequence(
+        tokens, (("ORDER", "BY"), ("УПОРЯДОЧИТЬ", "ПО"))
+    )
+    end = len(tokens) if order_index is None else order_index[0]
+    where_tokens = tuple(tokens[where_index + 1 : end])
+    parameter_positions = [
+        index
+        for index, token in enumerate(where_tokens)
+        if token.kind == "parameter" and token.value.casefold() in pagination_parameters
+    ]
+    present = {
+        where_tokens[index].value.casefold() for index in parameter_positions
+    }
+    if not parameter_positions or present != pagination_parameters:
+        return None
+
+    pairs: list[tuple[int, int]] = []
+    stack: list[int] = []
+    for index, token in enumerate(where_tokens):
+        if token.kind == "symbol" and token.value == "(":
+            stack.append(index)
+        elif token.kind == "symbol" and token.value == ")":
+            if not stack:
+                return None
+            pairs.append((stack.pop(), index))
+    if stack:
+        return None
+    first = min(parameter_positions)
+    last = max(parameter_positions)
+    containers = [pair for pair in pairs if pair[0] < first and pair[1] > last]
+    if containers:
+        start, stop = min(containers, key=lambda pair: pair[1] - pair[0])
+        candidate = where_tokens[start : stop + 1]
+    else:
+        candidate = where_tokens
+    return _strip_outer_parentheses(candidate)
+
+
+def _keyset_predicate_matches(
+    tokens: Sequence[QueryToken],
+    expressions: Sequence[tuple[str, ...]],
+    directions: Sequence[Literal["asc", "desc"]],
+    guard_parameter: str,
+    cursor_parameters: Sequence[str],
+) -> bool:
+    branches = _split_top_level_words(tokens, {"OR", "ИЛИ"})
+    if len(branches) != len(expressions) + 1:
+        return False
+    guard = _strip_outer_parentheses(branches[0])
+    if not (
+        len(guard) == 2
+        and guard[0].kind == "word"
+        and guard[0].upper in {"NOT", "НЕ"}
+        and guard[1].kind == "parameter"
+        and guard[1].value.casefold() == guard_parameter.casefold()
+    ):
+        return False
+
+    normalized_cursor_parameters = [name.casefold() for name in cursor_parameters]
+    for coordinate, raw_branch in enumerate(branches[1:]):
+        comparisons = _split_top_level_words(
+            _strip_outer_parentheses(raw_branch), {"AND", "И"}
+        )
+        if len(comparisons) != coordinate + 1:
+            return False
+        for prefix_index, comparison in enumerate(comparisons):
+            parsed_comparison = _parse_keyset_comparison(comparison)
+            if parsed_comparison is None:
+                return False
+            expression, operator, parameter = parsed_comparison
+            expected_operator = (
+                "="
+                if prefix_index < coordinate
+                else ">"
+                if directions[coordinate] == "asc"
+                else "<"
+            )
+            if (
+                expression != expressions[prefix_index]
+                or operator != expected_operator
+                or parameter != normalized_cursor_parameters[prefix_index]
+            ):
+                return False
+    return True
+
+
+def _parse_keyset_comparison(
+    tokens: Sequence[QueryToken],
+) -> tuple[tuple[str, ...], str, str] | None:
+    item = _strip_outer_parentheses(tokens)
+    depth = 0
+    operators: list[int] = []
+    for index, token in enumerate(item):
+        if depth == 0 and token.kind == "symbol" and token.value in {
+            "=",
+            "<",
+            ">",
+            "<=",
+            ">=",
+            "<>",
+        }:
+            operators.append(index)
+        depth = _next_depth(depth, token)
+    if len(operators) != 1:
+        return None
+    operator_index = operators[0]
+    right = _strip_outer_parentheses(item[operator_index + 1 :])
+    if len(right) != 1 or right[0].kind != "parameter":
+        return None
+    expression = _normalize_expression(item[:operator_index])
+    if not expression:
+        return None
+    return expression, item[operator_index].value, right[0].value.casefold()
+
+
+def _find_top_level_word(
+    tokens: Sequence[QueryToken], words: set[str]
+) -> int | None:
+    depth = 0
+    for index, token in enumerate(tokens):
+        if depth == 0 and token.kind == "word" and token.upper in words:
+            return index
+        depth = _next_depth(depth, token)
+    return None
+
+
+def _find_top_level_sequence(
+    tokens: Sequence[QueryToken], sequences: Sequence[tuple[str, str]]
+) -> tuple[int, int] | None:
+    depth = 0
+    for index, token in enumerate(tokens[:-1]):
+        if depth == 0 and token.kind == "word":
+            for sequence in sequences:
+                following = tokens[index + 1]
+                if token.upper == sequence[0] and following.upper == sequence[1]:
+                    return index, 2
+        depth = _next_depth(depth, token)
+    return None
+
+
+def _split_top_level_symbols(
+    tokens: Sequence[QueryToken], symbol: str
+) -> tuple[tuple[QueryToken, ...], ...]:
+    return _split_top_level(tokens, lambda token: token.kind == "symbol" and token.value == symbol)
+
+
+def _split_top_level_words(
+    tokens: Sequence[QueryToken], words: set[str]
+) -> tuple[tuple[QueryToken, ...], ...]:
+    return _split_top_level(
+        tokens, lambda token: token.kind == "word" and token.upper in words
+    )
+
+
+def _split_top_level(
+    tokens: Sequence[QueryToken], separator: Callable[[QueryToken], bool]
+) -> tuple[tuple[QueryToken, ...], ...]:
+    parts: list[tuple[QueryToken, ...]] = []
+    start = 0
+    depth = 0
+    for index, token in enumerate(tokens):
+        if depth == 0 and separator(token):
+            parts.append(tuple(tokens[start:index]))
+            start = index + 1
+            continue
+        depth = _next_depth(depth, token)
+    parts.append(tuple(tokens[start:]))
+    return tuple(parts)
+
+
+def _strip_outer_parentheses(
+    tokens: Sequence[QueryToken],
+) -> tuple[QueryToken, ...]:
+    result = tuple(tokens)
+    while len(result) >= 2 and _parentheses_wrap_all(result):
+        result = result[1:-1]
+    return result
+
+
+def _parentheses_wrap_all(tokens: Sequence[QueryToken]) -> bool:
+    if not (
+        tokens[0].kind == "symbol"
+        and tokens[0].value == "("
+        and tokens[-1].kind == "symbol"
+        and tokens[-1].value == ")"
+    ):
+        return False
+    depth = 0
+    for index, token in enumerate(tokens):
+        depth = _next_depth(depth, token)
+        if depth == 0 and index != len(tokens) - 1:
+            return False
+        if depth < 0:
+            return False
+    return depth == 0
+
+
+def _normalize_expression(tokens: Sequence[QueryToken]) -> tuple[str, ...]:
+    return tuple(
+        (
+            "&" + token.value.casefold()
+            if token.kind == "parameter"
+            else token.value.casefold()
+            if token.kind in {"word", "identifier"}
+            else token.value
+        )
+        for token in _strip_outer_parentheses(tokens)
+    )
+
+
+def _next_depth(depth: int, token: QueryToken) -> int:
+    if token.kind == "symbol" and token.value == "(":
+        return depth + 1
+    if token.kind == "symbol" and token.value == ")":
+        return depth - 1
+    return depth
 
 
 def parse_query(text: str) -> ParsedQuery:

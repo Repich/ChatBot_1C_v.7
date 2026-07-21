@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -28,6 +29,14 @@ def _package() -> SkillPackage:
     document = ContractHarness.discover(ROOT).validate_json_bytes(PACKAGE.read_bytes())
     assert isinstance(document, SkillPackage)
     return document
+
+
+def test_slice_one_package_is_frozen_baseline_artifact() -> None:
+    payload = PACKAGE.read_bytes()
+    assert hashlib.sha256(payload).hexdigest() == (
+        "4de313a696cf9bff478746b5d0fe9e779948b090ac3f277785c2f4818df01420"
+    )
+    assert len(_package().skills) == 8
 
 
 def test_starter_catalog_uses_canonical_ids_and_exact_query_variants() -> None:

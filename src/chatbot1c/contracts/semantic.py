@@ -5,13 +5,18 @@ from __future__ import annotations
 import re
 from collections import Counter, defaultdict, deque
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass
-from typing import TypeVar
+from dataclasses import dataclass, replace
+from typing import Literal, TypeVar
 
 from semantic_version import NpmSpec, SimpleSpec, Version
 
 from chatbot1c.contracts.errors import ContractIssue, raise_for_issues
-from chatbot1c.contracts.query import escaped_like_parameters, inspect_query_contract
+from chatbot1c.contracts.query import (
+    ParsedQuery,
+    escaped_like_parameters,
+    inspect_keyset_query_contract,
+    inspect_query_contract,
+)
 from chatbot1c.domain.evidence import (
     CitationValue,
     DocumentFragment,
@@ -41,6 +46,7 @@ from chatbot1c.domain.skill import (
     DocumentationFixture,
     DocumentationRetrievalOperation,
     FactDefinition,
+    FactEqualsParameterConstraint,
     FactValueType,
     KeysetPagination,
     McpFixture,
@@ -48,6 +54,7 @@ from chatbot1c.domain.skill import (
     ParameterValueType,
     Skill,
     UnitFromFact,
+    collection_scope_for_skill,
 )
 from chatbot1c.domain.types import EntityRef, Period
 
@@ -297,18 +304,24 @@ class SemanticValidator:
                     _issue(
                         "RESULT_CONSTRAINT_FACT_TYPE_MISMATCH",
                         pointer + "/fact_id",
-                        "fact_equals_parameter требует entity_ref output fact.",
+                        "Result entity constraint требует entity_ref output fact.",
                     )
                 )
-            if (
-                parameter is not None
-                and parameter.value_type is not ParameterValueType.ENTITY_REF
-            ):
+            expected_parameter_type = (
+                ParameterValueType.ENTITY_REF
+                if isinstance(constraint, FactEqualsParameterConstraint)
+                else ParameterValueType.ENTITY_REF_LIST
+            )
+            if parameter is not None and parameter.value_type is not expected_parameter_type:
                 issues.append(
                     _issue(
                         "RESULT_CONSTRAINT_PARAMETER_TYPE_MISMATCH",
                         pointer + "/parameter",
-                        "fact_equals_parameter требует entity_ref parameter.",
+                        (
+                            "fact_equals_parameter требует entity_ref parameter."
+                            if isinstance(constraint, FactEqualsParameterConstraint)
+                            else "fact_in_parameter требует entity_ref_list parameter."
+                        ),
                     )
                 )
             if (
@@ -533,7 +546,8 @@ class SemanticValidator:
         query_names: dict[str, int] = {}
         for index, binding in enumerate(operation.parameter_bindings):
             pointer = f"{prefix}/operation/parameter_bindings/{index}"
-            if binding.parameter not in parameters:
+            parameter = parameters.get(binding.parameter)
+            if parameter is None:
                 issues.append(
                     _issue(
                         "PARAMETER_BINDING_TARGET_MISSING",
@@ -543,7 +557,7 @@ class SemanticValidator:
                 )
             else:
                 if not _encoding_matches_parameter(
-                    binding.encoding, parameters[binding.parameter]
+                    binding.encoding, parameter
                 ):
                     issues.append(
                         _issue(
@@ -552,7 +566,22 @@ class SemanticValidator:
                             "Encoding несовместим с parameter value_type.",
                         )
                     )
-            if binding.parameter in binding_parameters:
+            prior_bindings = [
+                item
+                for item in operation.parameter_bindings[:index]
+                if item.parameter == binding.parameter
+            ]
+            period_pair = (
+                parameter is not None
+                and parameter.value_type is ParameterValueType.PERIOD
+                and len(prior_bindings) == 1
+                and {
+                    prior_bindings[0].encoding,
+                    binding.encoding,
+                }
+                == {"period_start", "period_end_exclusive"}
+            )
+            if binding.parameter in binding_parameters and not period_pair:
                 issues.append(
                     _issue(
                         "PARAMETER_BINDING_DUPLICATE",
@@ -625,7 +654,7 @@ class SemanticValidator:
                         f"Query parameter '&{name}' не имеет exact binding.",
                     )
                 )
-            for name in sorted(allowed_query_parameters - used_query_parameters):
+            for name in sorted(set(query_names) - used_query_parameters):
                 issues.append(
                     _issue(
                         "QUERY_PARAMETER_UNUSED",
@@ -715,8 +744,43 @@ class SemanticValidator:
             )
         )
         if isinstance(operation.pagination, KeysetPagination):
-            for index, sort in enumerate(operation.pagination.sort):
-                if sort.fact_id not in facts:
+            pagination = operation.pagination
+            sort_fact_ids = [item.fact_id for item in pagination.sort]
+            cursor_fact_ids = [item.fact_id for item in pagination.cursor_bindings]
+            if len(set(sort_fact_ids)) != len(sort_fact_ids):
+                issues.append(
+                    _issue(
+                        "PAGINATION_SORT_FACT_DUPLICATE",
+                        f"{prefix}/operation/pagination/sort",
+                        "Keyset sort содержит повторяющийся fact_id.",
+                    )
+                )
+            if cursor_fact_ids != sort_fact_ids:
+                issues.append(
+                    _issue(
+                        "PAGINATION_CURSOR_BIJECTION_MISMATCH",
+                        f"{prefix}/operation/pagination/cursor_bindings",
+                        "Cursor bindings должны exact совпадать с sort по fact_id и порядку.",
+                    )
+                )
+
+            ordinary_query_names = set(query_names)
+            cursor_query_names: set[str] = set()
+            has_cursor_name = pagination.has_cursor_query_parameter.casefold()
+            if has_cursor_name in ordinary_query_names:
+                issues.append(
+                    _issue(
+                        "PAGINATION_PARAMETER_COLLISION",
+                        (
+                            f"{prefix}/operation/pagination/"
+                            "has_cursor_query_parameter"
+                        ),
+                        "Has-cursor parameter конфликтует с обычным query binding.",
+                    )
+                )
+            for index, sort in enumerate(pagination.sort):
+                fact = facts.get(sort.fact_id)
+                if fact is None:
                     issues.append(
                         _issue(
                             "PAGINATION_FACT_MISSING",
@@ -724,10 +788,26 @@ class SemanticValidator:
                             "Keyset sort ссылается на необъявленный fact_id.",
                         )
                     )
-            for index, cursor_binding in enumerate(
-                operation.pagination.cursor_bindings
-            ):
-                if cursor_binding.fact_id not in facts:
+                    continue
+                if not fact.required:
+                    issues.append(
+                        _issue(
+                            "PAGINATION_SORT_COORDINATE_INVALID",
+                            f"{prefix}/operation/pagination/sort/{index}/fact_id",
+                            "Keyset sort может использовать только required fact.",
+                        )
+                    )
+                if fact.nullable:
+                    issues.append(
+                        _issue(
+                            "PAGINATION_SORT_COORDINATE_INVALID",
+                            f"{prefix}/operation/pagination/sort/{index}/fact_id",
+                            "Keyset sort не допускает nullable fact.",
+                        )
+                    )
+            for index, cursor_binding in enumerate(pagination.cursor_bindings):
+                fact = facts.get(cursor_binding.fact_id)
+                if fact is None:
                     issues.append(
                         _issue(
                             "PAGINATION_FACT_MISSING",
@@ -735,6 +815,176 @@ class SemanticValidator:
                             "Cursor binding ссылается на необъявленный fact_id.",
                         )
                     )
+                elif not _cursor_encoding_matches_fact(
+                    cursor_binding.encoding, fact
+                ):
+                    issues.append(
+                        _issue(
+                            "PAGINATION_CURSOR_ENCODING_MISMATCH",
+                            f"{prefix}/operation/pagination/cursor_bindings/{index}/encoding",
+                            "Cursor encoding несовместим с declared fact value_type.",
+                        )
+                    )
+                normalized_name = cursor_binding.query_parameter.casefold()
+                if normalized_name in cursor_query_names:
+                    issues.append(
+                        _issue(
+                            "PAGINATION_CURSOR_PARAMETER_DUPLICATE",
+                            (
+                                f"{prefix}/operation/pagination/"
+                                f"cursor_bindings/{index}/query_parameter"
+                            ),
+                            "Cursor query parameter должен быть уникальным.",
+                        )
+                    )
+                if (
+                    normalized_name == has_cursor_name
+                    or normalized_name in ordinary_query_names
+                ):
+                    issues.append(
+                        _issue(
+                            "PAGINATION_PARAMETER_COLLISION",
+                            (
+                                f"{prefix}/operation/pagination/"
+                                f"cursor_bindings/{index}/query_parameter"
+                            ),
+                            "Cursor query parameter конфликтует с другим binding.",
+                        )
+                    )
+                cursor_query_names.add(normalized_name)
+
+            identity_fact_ids = skill.output_contract.row_identity_fact_ids or ()
+            identity_suffix = sort_fact_ids[-len(identity_fact_ids) :]
+            if (
+                not identity_fact_ids
+                or len(identity_suffix) != len(identity_fact_ids)
+                or set(identity_suffix) != set(identity_fact_ids)
+            ):
+                issues.append(
+                    _issue(
+                        "PAGINATION_IDENTITY_SUFFIX_MISMATCH",
+                        f"{prefix}/operation/pagination/sort",
+                        "Keyset sort должен оканчиваться полной immutable row identity.",
+                    )
+                )
+
+            if query_contract.parsed is not None:
+                used_query_parameters = {
+                    name.casefold() for name in query_contract.parsed.parameters
+                }
+                pagination_names = {
+                    has_cursor_name,
+                    *cursor_query_names,
+                }
+                missing_pagination_names = sorted(
+                    pagination_names - used_query_parameters
+                )
+                query_contract_unproven = bool(missing_pagination_names)
+                if missing_pagination_names:
+                    issues.append(
+                        _issue(
+                            "PAGINATION_QUERY_CONTRACT_UNPROVEN",
+                            text_pointer,
+                            "Не все pagination parameters присутствуют в final query.",
+                        )
+                    )
+                column_binding_counts = Counter(
+                    binding.fact_id for binding in operation.column_bindings
+                )
+                if any(
+                    column_binding_counts[fact_id] != 1
+                    for fact_id in sort_fact_ids
+                ):
+                    issues.append(
+                        _issue(
+                            "PAGINATION_FACT_MISSING",
+                            f"{prefix}/operation/column_bindings",
+                            "Каждый keyset sort fact требует ровно один column binding.",
+                        )
+                    )
+                else:
+                    aliases_by_fact = {
+                        binding.fact_id: binding.column
+                        for binding in operation.column_bindings
+                    }
+                    query_proof = inspect_keyset_query_contract(
+                        query_contract.parsed,
+                        projection_aliases=[
+                            aliases_by_fact[fact_id] for fact_id in sort_fact_ids
+                        ],
+                        directions=[item.direction for item in pagination.sort],
+                        guard_parameter=pagination.has_cursor_query_parameter,
+                        cursor_parameters=[
+                            item.query_parameter
+                            for item in pagination.cursor_bindings
+                        ],
+                    )
+                    if query_proof.order == "mismatch":
+                        issues.append(
+                            _issue(
+                                "PAGINATION_QUERY_ORDER_MISMATCH",
+                                text_pointer,
+                                "Final ORDER BY не совпадает с declared keyset sort.",
+                            )
+                        )
+                    elif query_proof.order == "unproven":
+                        query_contract_unproven = True
+                    if query_proof.predicate == "mismatch":
+                        issues.append(
+                            _issue(
+                                "PAGINATION_QUERY_PREDICATE_MISMATCH",
+                                text_pointer,
+                                "Cursor filter не равен guarded strict lexicographic predicate.",
+                            )
+                        )
+                    elif query_proof.predicate == "unproven":
+                        query_contract_unproven = True
+                    if query_contract_unproven and not missing_pagination_names:
+                        issues.append(
+                            _issue(
+                                "PAGINATION_QUERY_CONTRACT_UNPROVEN",
+                                text_pointer,
+                                "Parser не доказал полный keyset query contract.",
+                            )
+                        )
+                if _has_static_top(query_contract.parsed):
+                    issues.append(
+                        _issue(
+                            "PAGINATION_STATIC_TOP_FORBIDDEN",
+                            text_pointer,
+                            "Keyset query не может содержать static TOP/ПЕРВЫЕ.",
+                        )
+                    )
+        if operation.pagination.strategy != "none":
+            if operation.query_template.mcp_limit.maximum < 2:
+                issues.append(
+                    _issue(
+                        "PAGINATION_PROBE_LIMIT_UNAVAILABLE",
+                        f"{prefix}/operation/query_template/mcp_limit/maximum",
+                        "Paged skill должен разрешать page_size+1 probe.",
+                    )
+                )
+            if (
+                Version(skill.version) >= Version("1.1.0")
+                and not isinstance(operation.pagination, KeysetPagination)
+            ):
+                for index, invariant in enumerate(
+                    operation.query_template.invariant_constants
+                ):
+                    if (
+                        invariant.kind == "structural_integer"
+                        and invariant.role == "top_limit"
+                    ):
+                        issues.append(
+                            _issue(
+                                "PAGINATION_STATIC_TOP_FORBIDDEN",
+                                (
+                                    f"{prefix}/operation/query_template/"
+                                    f"invariant_constants/{index}"
+                                ),
+                                "Paged skill 1.1+ не может фиксировать TOP: probe управляется MCP limit.",
+                            )
+                        )
         return issues
 
     def _documentation_operation_issues(
@@ -1111,6 +1361,17 @@ class SemanticValidator:
                     )
                 else:
                     graph[step.step_id].add(dependency)
+                    if step_index[dependency] >= index:
+                        issues.append(
+                            _issue(
+                                "PLAN_STEP_ORDER_INVALID",
+                                pointer,
+                                (
+                                    "Step dependency должна ссылаться только на "
+                                    "более ранний step."
+                                ),
+                            )
+                        )
             for binding in _step_bindings(step):
                 if isinstance(binding, SlotBinding) and binding.slot_id not in slot_ids:
                     issues.append(
@@ -1153,13 +1414,37 @@ class SemanticValidator:
                     f"Plan DAG содержит cycle: {' -> '.join(cycle)}.",
                 )
             )
+        final_roots: set[str] = set()
+        seen_final_refs: set[tuple[str, str]] = set()
         for index, output in enumerate(plan.result.final_outputs):
+            final_ref = (output.step_id, output.fact_id)
+            if final_ref in seen_final_refs:
+                issues.append(
+                    _issue(
+                        "PLAN_FINAL_OUTPUT_AMBIGUOUS",
+                        f"/result/final_outputs/{index}",
+                        "Final output reference объявлен повторно.",
+                    )
+                )
+            seen_final_refs.add(final_ref)
             if output.step_id not in step_index:
                 issues.append(
                     _issue(
                         "PLAN_FINAL_OUTPUT_STEP_MISSING",
                         f"/result/final_outputs/{index}/step_id",
                         "Final output ссылается на отсутствующий step_id.",
+                    )
+                )
+            else:
+                final_roots.add(output.step_id)
+        all_closure = _reverse_closure(final_roots, graph)
+        for index, step in enumerate(steps):
+            if step.step_id not in all_closure:
+                issues.append(
+                    _issue(
+                        "PLAN_STEP_UNUSED",
+                        f"/result/steps/{index}",
+                        "Step не входит в transitive closure ни одного final output.",
                     )
                 )
         issues.extend(_plan_coverage_issues(plan, catalog))
@@ -1172,8 +1457,32 @@ class SemanticValidator:
         available_skills: Sequence[Skill] = (),
     ) -> list[ContractIssue]:
         issues: list[ContractIssue] = []
+        if (
+            evidence.empty_reason is not None
+            and evidence.outcome is not Outcome.SUCCESS_EMPTY
+        ):
+            issues.append(
+                _issue(
+                    "EMPTY_REASON_OUTCOME_MISMATCH",
+                    "/empty_reason",
+                    "Stable empty reason разрешен только для success_empty.",
+                )
+            )
+        if (
+            evidence.schema_version == "1.1.0"
+            and evidence.outcome is Outcome.SUCCESS_EMPTY
+            and evidence.empty_reason is None
+        ):
+            issues.append(
+                _issue(
+                    "EMPTY_REASON_REQUIRED",
+                    "/empty_reason",
+                    "Evidence 1.1 success_empty требует stable reason not_found/no_rows.",
+                )
+            )
         if evidence.coverage.sufficient and any(
-            requirement.status is not CoverageStatus.COVERED
+            requirement.required
+            and requirement.status is not CoverageStatus.COVERED
             for requirement in evidence.coverage.requirements
         ):
             issues.append(
@@ -1562,6 +1871,438 @@ class _FactProof:
     identity_complete: bool
     required: bool
     nullable: bool
+    collection_scope: Literal["visible_page", "complete_set"] = "complete_set"
+    collection_obligation: Literal[
+        "fact", "visible_page", "complete_set"
+    ] = "fact"
+
+
+@dataclass(frozen=True, slots=True)
+class FactCollectionScope:
+    step_id: str
+    fact_id: str
+    collection_scope: Literal["visible_page", "complete_set"]
+
+
+@dataclass(frozen=True, slots=True)
+class StepCriticality:
+    step_id: str
+    criticality: Literal["required", "optional"]
+    predecessors: tuple[str, ...]
+    required_by_requirement_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class RequirementCoverageProof:
+    requirement_id: str
+    semantic_type: str
+    required: bool
+    final_step_id: str | None
+    final_fact_id: str | None
+    collection_obligation: Literal["fact", "visible_page", "complete_set"]
+    collection_step_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class PlanCoverageProof:
+    steps: tuple[StepCriticality, ...]
+    required_final_refs: frozenset[tuple[str, str]]
+    fact_collection_scopes: tuple[FactCollectionScope, ...] = ()
+    requirements: tuple[RequirementCoverageProof, ...] = ()
+
+    @property
+    def required_steps(self) -> frozenset[str]:
+        return frozenset(
+            step.step_id for step in self.steps if step.criticality == "required"
+        )
+
+    @property
+    def optional_steps(self) -> frozenset[str]:
+        return frozenset(
+            step.step_id for step in self.steps if step.criticality == "optional"
+        )
+
+
+def build_plan_coverage_proof(
+    plan: PlannerOutput, available_skills: Sequence[Skill]
+) -> PlanCoverageProof:
+    if not isinstance(plan.result, ExecuteResult):
+        return PlanCoverageProof((), frozenset(), (), ())
+    catalog = {
+        (skill.skill_id, skill.version): skill for skill in available_skills
+    }
+    proofs_by_step = _coverage_proofs_by_step(plan, catalog)
+    graph = {
+        step.step_id: _step_dependencies(step) for step in plan.result.steps
+    }
+    required_roots: dict[str, set[str]] = defaultdict(set)
+    required_final_refs: set[tuple[str, str]] = set()
+    all_roots: set[str] = set()
+    for output in plan.result.final_outputs:
+        proof = proofs_by_step.get(output.step_id, {}).get(output.fact_id)
+        if proof is None:
+            continue
+        matches = [
+            requirement
+            for requirement in plan.interpretation.required_facts
+            if _proof_matches(requirement, proof)
+        ]
+        if len(matches) != 1:
+            continue
+        requirement = matches[0]
+        all_roots.add(output.step_id)
+        if requirement.required:
+            required_roots[output.step_id].add(requirement.requirement_id)
+            required_final_refs.add((output.step_id, output.fact_id))
+    required_closure = _reverse_closure(required_roots, graph)
+    all_closure = _reverse_closure(all_roots, graph)
+    required_by: dict[str, set[str]] = defaultdict(set)
+    for root, requirement_ids in required_roots.items():
+        for step_id in _reverse_closure((root,), graph):
+            required_by[step_id].update(requirement_ids)
+    step_order = {step.step_id: index for index, step in enumerate(plan.result.steps)}
+    requirement_proofs: list[RequirementCoverageProof] = []
+    for requirement in plan.interpretation.required_facts:
+        matching_finals = [
+            output
+            for output in plan.result.final_outputs
+            if (
+                proof := proofs_by_step.get(output.step_id, {}).get(output.fact_id)
+            )
+            is not None
+            and _proof_matches(requirement, proof)
+        ]
+        if len(matching_finals) != 1:
+            requirement_proofs.append(
+                RequirementCoverageProof(
+                    requirement.requirement_id,
+                    requirement.semantic_type,
+                    requirement.required,
+                    None,
+                    None,
+                    "fact",
+                    (),
+                )
+            )
+            continue
+        final = matching_finals[0]
+        final_proof = proofs_by_step[final.step_id][final.fact_id]
+        closure = _reverse_closure((final.step_id,), graph)
+        collection_steps = tuple(
+            sorted(
+                (
+                    step_id
+                    for step_id in closure
+                    if any(
+                        proof.collection_obligation != "fact"
+                        for proof in proofs_by_step.get(step_id, {}).values()
+                    )
+                ),
+                key=lambda step_id: step_order.get(step_id, len(step_order)),
+            )
+        )
+        requirement_proofs.append(
+            RequirementCoverageProof(
+                requirement.requirement_id,
+                requirement.semantic_type,
+                requirement.required,
+                final.step_id,
+                final.fact_id,
+                final_proof.collection_obligation,
+                collection_steps,
+            )
+        )
+    return PlanCoverageProof(
+        steps=tuple(
+            StepCriticality(
+                step_id=step.step_id,
+                criticality=(
+                    "required" if step.step_id in required_closure else "optional"
+                ),
+                predecessors=tuple(sorted(graph.get(step.step_id, set()))),
+                required_by_requirement_ids=tuple(sorted(required_by[step.step_id])),
+            )
+            for step in plan.result.steps
+            if step.step_id in all_closure
+        ),
+        required_final_refs=frozenset(required_final_refs),
+        fact_collection_scopes=tuple(
+            FactCollectionScope(step_id, fact_id, proof.collection_scope)
+            for step_id, step_proofs in proofs_by_step.items()
+            for fact_id, proof in step_proofs.items()
+        ),
+        requirements=tuple(requirement_proofs),
+    )
+
+
+def collection_obligation_satisfied(
+    requirement: RequirementCoverageProof, evidence: EvidenceBundle
+) -> bool:
+    if requirement.final_step_id is None or requirement.final_fact_id is None:
+        return False
+    if requirement.collection_obligation == "fact":
+        return True
+    steps = {step.step_id: step for step in evidence.steps}
+    final_step = steps.get(requirement.final_step_id)
+    if final_step is None:
+        return False
+    failed = {
+        Outcome.QUERY_ERROR,
+        Outcome.MCP_UNAVAILABLE,
+        Outcome.LLM_UNAVAILABLE,
+        Outcome.CONTRACT_ERROR,
+    }
+    if final_step.status in failed:
+        return False
+    if requirement.collection_obligation == "visible_page":
+        return final_step.collection_scope in {"visible_page", "complete_set"}
+    for step_id in requirement.collection_step_ids:
+        step = steps.get(step_id)
+        if (
+            step is None
+            or step.collection_scope != "complete_set"
+            or step.truncated
+            or step.has_more
+            or step.status in failed | {Outcome.PARTIAL}
+        ):
+            return False
+    return True
+
+
+def cross_artifact_evidence_issues(
+    plan: PlannerOutput,
+    coverage_proof: PlanCoverageProof,
+    evidence: EvidenceBundle,
+) -> tuple[ContractIssue, ...]:
+    expected = {
+        requirement.requirement_id: requirement
+        for requirement in plan.interpretation.required_facts
+    }
+    actual_counts = Counter(
+        requirement.requirement_id for requirement in evidence.coverage.requirements
+    )
+    if set(actual_counts) != set(expected) or any(
+        count != 1 for count in actual_counts.values()
+    ):
+        return (
+            _issue(
+                "EVIDENCE_COVERAGE_ID_MISMATCH",
+                "/coverage/requirements",
+                "Evidence requirements не совпадают one-to-one с pinned plan.",
+            ),
+        )
+    actual = {
+        requirement.requirement_id: requirement
+        for requirement in evidence.coverage.requirements
+    }
+    proof_by_requirement = {
+        requirement.requirement_id: requirement
+        for requirement in coverage_proof.requirements
+    }
+    issues: list[ContractIssue] = []
+    for requirement_id, planned in expected.items():
+        covered = actual[requirement_id]
+        proof = proof_by_requirement.get(requirement_id)
+        if (
+            covered.semantic_type != planned.semantic_type
+            or proof is None
+            or proof.semantic_type != planned.semantic_type
+        ):
+            issues.append(
+                _issue(
+                    "EVIDENCE_COVERAGE_ID_MISMATCH",
+                    "/coverage/requirements",
+                    "Evidence semantic requirement не совпадает с pinned plan/proof.",
+                )
+            )
+            continue
+        if covered.required != planned.required or proof.required != planned.required:
+            issues.append(
+                _issue(
+                    "EVIDENCE_COVERAGE_CRITICALITY_MISMATCH",
+                    "/coverage/requirements",
+                    "Evidence required flag не совпадает с immutable CoverageProof.",
+                )
+            )
+        if proof.final_step_id is not None and proof.final_fact_id is not None:
+            mapped_fact_ids = {
+                fact.fact_instance_id
+                for fact in evidence.facts
+                if fact.step_id == proof.final_step_id
+                and fact.fact_id == proof.final_fact_id
+            }
+            if not set(covered.fact_instance_ids) <= mapped_fact_ids:
+                issues.append(
+                    _issue(
+                        "EVIDENCE_COVERAGE_ID_MISMATCH",
+                        "/coverage/requirements",
+                        "Coverage fact refs не принадлежат exact final provider.",
+                    )
+                )
+
+    expected_sufficient = all(
+        not requirement.required
+        or (
+            actual[requirement.requirement_id].status is CoverageStatus.COVERED
+            and collection_obligation_satisfied(requirement, evidence)
+        )
+        for requirement in coverage_proof.requirements
+    )
+    if evidence.coverage.sufficient != expected_sufficient:
+        if any(
+            requirement.required
+            and actual[requirement.requirement_id].status is CoverageStatus.COVERED
+            and not collection_obligation_satisfied(requirement, evidence)
+            for requirement in coverage_proof.requirements
+        ):
+            issues.append(
+                _issue(
+                    "EVIDENCE_COLLECTION_COMPLETENESS_MISMATCH",
+                    "/coverage/sufficient",
+                    "Required collection obligation не выполнен evidence steps.",
+                )
+            )
+        issues.append(
+            _issue(
+                "EVIDENCE_SUFFICIENT_MISMATCH",
+                "/coverage/sufficient",
+                "coverage.sufficient не совпадает с pinned cross-artifact proof.",
+            )
+        )
+    return _deduplicate(issues)
+
+
+def validate_evidence_against_plan(
+    plan: PlannerOutput,
+    coverage_proof: PlanCoverageProof,
+    evidence: EvidenceBundle,
+) -> None:
+    raise_for_issues(cross_artifact_evidence_issues(plan, coverage_proof, evidence))
+
+
+def _coverage_proofs_by_step(
+    plan: PlannerOutput, catalog: dict[tuple[str, str], Skill]
+) -> dict[str, dict[str, _FactProof]]:
+    if not isinstance(plan.result, ExecuteResult):
+        return {}
+    proofs_by_step: dict[str, dict[str, _FactProof]] = {}
+    for step in plan.result.steps:
+        if isinstance(step, SkillCall):
+            skill = catalog.get((step.skill_id, step.skill_version))
+            if skill is not None:
+                proofs_by_step[step.step_id] = _skill_call_proofs(step, skill)
+        elif isinstance(step, (FilterOperator, RankOperator)):
+            proofs_by_step[step.step_id] = {
+                fact_id: replace(proof, collection_obligation="complete_set")
+                for fact_id, proof in proofs_by_step.get(
+                    step.input_step_id, {}
+                ).items()
+            }
+        elif isinstance(step, JoinOperator):
+            joined = {
+                fact_id: replace(proof, collection_obligation="complete_set")
+                for fact_id, proof in proofs_by_step.get(
+                    step.left_step_id, {}
+                ).items()
+            }
+            joined.update(
+                {
+                    fact_id: replace(proof, collection_obligation="complete_set")
+                    for fact_id, proof in proofs_by_step.get(
+                        step.right_step_id, {}
+                    ).items()
+                }
+            )
+            proofs_by_step[step.step_id] = joined
+        elif isinstance(step, CountOperator):
+            source = proofs_by_step.get(step.input_step_id, {})
+            if all(fact_id in source for fact_id in step.distinct_by_fact_ids):
+                times = {
+                    proof.time_semantics
+                    for proof in source.values()
+                    if proof.time_semantics != "none"
+                }
+                proofs_by_step[step.step_id] = {
+                    step.result_fact_id: _FactProof(
+                        step.result_fact_id,
+                        "measure.count",
+                        FactValueType.INTEGER.value,
+                        "aggregate",
+                        "none",
+                        times.pop() if len(times) == 1 else "none",
+                        True,
+                        True,
+                        False,
+                        _combined_collection_scope(source.values()),
+                        "complete_set",
+                    )
+                }
+        elif isinstance(step, AggregateOperator):
+            source = proofs_by_step.get(step.input_step_id, {})
+            measure = source.get(step.measure_fact_id)
+            if measure is not None:
+                proofs_by_step[step.step_id] = {
+                    step.result_fact_id: _FactProof(
+                        step.result_fact_id,
+                        measure.semantic_type,
+                        measure.value_type,
+                        "many" if step.group_by_fact_ids else "aggregate",
+                        measure.unit_dimension,
+                        measure.time_semantics,
+                        all(item in source for item in step.group_by_fact_ids),
+                        True,
+                        False,
+                        _combined_collection_scope(source.values()),
+                        "complete_set",
+                    )
+                }
+        elif isinstance(step, CalculateOperator):
+            source = proofs_by_step.get(step.input_step_id, {})
+            times = {
+                proof.time_semantics
+                for proof in source.values()
+                if proof.time_semantics != "none"
+            }
+            proofs_by_step[step.step_id] = {
+                step.result_fact_id: _FactProof(
+                    step.result_fact_id,
+                    step.result_semantic_type,
+                    FactValueType.DECIMAL.value,
+                    "aggregate",
+                    "none",
+                    times.pop() if len(times) == 1 else "none",
+                    True,
+                    True,
+                    False,
+                    _combined_collection_scope(source.values()),
+                    "complete_set",
+                )
+            }
+        elif isinstance(step, NormalizePeriodOperator):
+            proofs_by_step[step.step_id] = {
+                step.result_fact_id: _FactProof(
+                    step.result_fact_id,
+                    "time.period",
+                    FactValueType.PERIOD.value,
+                    "exactly_one",
+                    "none",
+                    "period",
+                    True,
+                    True,
+                    False,
+                )
+            }
+    return proofs_by_step
+
+
+def _combined_collection_scope(
+    proofs: Iterable[_FactProof],
+) -> Literal["visible_page", "complete_set"]:
+    return (
+        "visible_page"
+        if any(proof.collection_scope == "visible_page" for proof in proofs)
+        else "complete_set"
+    )
 
 
 def _plan_coverage_issues(
@@ -1571,112 +2312,38 @@ def _plan_coverage_issues(
     if not isinstance(plan.result, ExecuteResult):
         return []
     issues: list[ContractIssue] = []
-    proofs_by_step: dict[str, dict[str, _FactProof]] = {}
-    for step in plan.result.steps:
-        if isinstance(step, SkillCall):
-            skill = catalog.get((step.skill_id, step.skill_version))
-            if skill is not None:
-                proofs_by_step[step.step_id] = _skill_call_proofs(step, skill)
-            continue
-        if isinstance(step, (FilterOperator, RankOperator)):
-            proofs_by_step[step.step_id] = dict(
-                proofs_by_step.get(step.input_step_id, {})
-            )
-            continue
-        if isinstance(step, JoinOperator):
-            joined = dict(proofs_by_step.get(step.left_step_id, {}))
-            joined.update(proofs_by_step.get(step.right_step_id, {}))
-            proofs_by_step[step.step_id] = joined
-            continue
-        if isinstance(step, CountOperator):
-            input_proofs = proofs_by_step.get(step.input_step_id, {})
-            if all(
-                fact_id in input_proofs for fact_id in step.distinct_by_fact_ids
-            ):
-                input_time = {
-                    proof.time_semantics
-                    for proof in input_proofs.values()
-                    if proof.time_semantics != "none"
-                }
-                proofs_by_step[step.step_id] = {
-                    step.result_fact_id: _FactProof(
-                        fact_id=step.result_fact_id,
-                        semantic_type="measure.count",
-                        value_type=FactValueType.INTEGER.value,
-                        cardinality="aggregate",
-                        unit_dimension="none",
-                        time_semantics=(
-                            input_time.pop() if len(input_time) == 1 else "none"
-                        ),
-                        identity_complete=True,
-                        required=True,
-                        nullable=False,
-                    )
-                }
-            continue
-        if isinstance(step, AggregateOperator):
-            input_proofs = proofs_by_step.get(step.input_step_id, {})
-            measure = input_proofs.get(step.measure_fact_id)
-            if measure is not None:
-                identity_complete = all(
-                    fact_id in input_proofs for fact_id in step.group_by_fact_ids
-                )
-                proofs_by_step[step.step_id] = {
-                    step.result_fact_id: _FactProof(
-                        fact_id=step.result_fact_id,
-                        semantic_type=measure.semantic_type,
-                        value_type=measure.value_type,
-                        cardinality=(
-                            "many" if step.group_by_fact_ids else "aggregate"
-                        ),
-                        unit_dimension=measure.unit_dimension,
-                        time_semantics=measure.time_semantics,
-                        identity_complete=identity_complete,
-                        required=True,
-                        nullable=False,
-                    )
-                }
-            continue
-        if isinstance(step, CalculateOperator):
-            input_proofs = proofs_by_step.get(step.input_step_id, {})
-            input_time = {
-                proof.time_semantics
-                for proof in input_proofs.values()
-                if proof.time_semantics != "none"
-            }
-            proofs_by_step[step.step_id] = {
-                step.result_fact_id: _FactProof(
-                    fact_id=step.result_fact_id,
-                    semantic_type=step.result_semantic_type,
-                    value_type=FactValueType.DECIMAL.value,
-                    cardinality="aggregate",
-                    unit_dimension="none",
-                    time_semantics=(input_time.pop() if len(input_time) == 1 else "none"),
-                    identity_complete=True,
-                    required=True,
-                    nullable=False,
-                )
-            }
-            continue
-        if isinstance(step, NormalizePeriodOperator):
-            proofs_by_step[step.step_id] = {
-                step.result_fact_id: _FactProof(
-                    fact_id=step.result_fact_id,
-                    semantic_type="time.period",
-                    value_type=FactValueType.PERIOD.value,
-                    cardinality="exactly_one",
-                    unit_dimension="none",
-                    time_semantics="period",
-                    identity_complete=True,
-                    required=True,
-                    nullable=False,
-                )
-            }
+    proofs_by_step = _coverage_proofs_by_step(plan, catalog)
 
     all_proofs = [
-        proof for step_proofs in proofs_by_step.values() for proof in step_proofs.values()
+        proof
+        for step_proofs in proofs_by_step.values()
+        for proof in step_proofs.values()
     ]
-    final_proofs: list[_FactProof] = []
+    requirements = plan.interpretation.required_facts
+    if not any(requirement.required for requirement in requirements):
+        issues.append(
+            _issue(
+                "PLAN_FACT_REQUIREMENT_UNMET",
+                "/interpretation/required_facts",
+                "Execute plan должен содержать хотя бы один required FactRequirement.",
+            )
+        )
+
+    requirement_signatures: dict[tuple[str, ...], int] = {}
+    for index, requirement in enumerate(requirements):
+        signature = _requirement_signature(requirement)
+        previous = requirement_signatures.get(signature)
+        if previous is not None:
+            issues.append(
+                _issue(
+                    "PLAN_FINAL_OUTPUT_AMBIGUOUS",
+                    f"/interpretation/required_facts/{index}",
+                    "Duplicate FactRequirement signature делает final mapping неоднозначным.",
+                )
+            )
+        requirement_signatures.setdefault(signature, index)
+
+    matched_finals: dict[int, list[int]] = defaultdict(list)
     for index, output in enumerate(plan.result.final_outputs):
         proof = proofs_by_step.get(output.step_id, {}).get(output.fact_id)
         if proof is None:
@@ -1687,10 +2354,32 @@ def _plan_coverage_issues(
                     "Final output fact не доказан outputs указанного step.",
                 )
             )
+            continue
+        matches = [
+            requirement_index
+            for requirement_index, requirement in enumerate(requirements)
+            if _proof_matches(requirement, proof)
+        ]
+        if not matches:
+            issues.append(
+                _issue(
+                    "PLAN_FINAL_OUTPUT_UNCLAIMED",
+                    f"/result/final_outputs/{index}",
+                    "Final output не покрывает ни один declared FactRequirement.",
+                )
+            )
+        elif len(matches) > 1:
+            issues.append(
+                _issue(
+                    "PLAN_FINAL_OUTPUT_AMBIGUOUS",
+                    f"/result/final_outputs/{index}",
+                    "Final output совместим более чем с одним FactRequirement.",
+                )
+            )
         else:
-            final_proofs.append(proof)
+            matched_finals[matches[0]].append(index)
 
-    for index, requirement in enumerate(plan.interpretation.required_facts):
+    for index, requirement in enumerate(requirements):
         pointer = f"/interpretation/required_facts/{index}"
         compatible = [
             proof for proof in all_proofs if _proof_matches(requirement, proof)
@@ -1698,9 +2387,16 @@ def _plan_coverage_issues(
         if not compatible:
             issues.append(_requirement_mismatch_issue(requirement, all_proofs, pointer))
             continue
-        if requirement.required and not any(
-            _proof_matches(requirement, proof) for proof in final_proofs
-        ):
+        final_count = len(matched_finals[index])
+        if final_count > 1:
+            issues.append(
+                _issue(
+                    "PLAN_FINAL_OUTPUT_AMBIGUOUS",
+                    pointer,
+                    "FactRequirement покрыт несколькими final outputs.",
+                )
+            )
+        elif requirement.required and final_count == 0:
             issues.append(
                 _issue(
                     "PLAN_FACT_REQUIREMENT_UNMET",
@@ -1726,6 +2422,8 @@ def _skill_call_proofs(step: SkillCall, skill: Skill) -> dict[str, _FactProof]:
         )
     )
     time_semantics = _contract_time_semantics(skill, requested)
+    collection_scope = collection_scope_for_skill(skill)
+    collection_obligation = _skill_collection_obligation(skill)
     return {
         fact.fact_id: _FactProof(
             fact_id=fact.fact_id,
@@ -1737,10 +2435,25 @@ def _skill_call_proofs(step: SkillCall, skill: Skill) -> dict[str, _FactProof]:
             identity_complete=identity_complete,
             required=fact.required,
             nullable=fact.nullable,
+            collection_scope=collection_scope,
+            collection_obligation=collection_obligation,
         )
         for fact in contract.facts
         if fact.fact_id in requested
     }
+
+
+def _skill_collection_obligation(
+    skill: Skill,
+) -> Literal["fact", "visible_page", "complete_set"]:
+    contract = skill.output_contract
+    if contract.cardinality == "aggregate":
+        return "complete_set"
+    if contract.cardinality != "many":
+        return "fact"
+    if contract.sufficiency.truncation_policy == "page_is_complete":
+        return "visible_page"
+    return "complete_set"
 
 
 def _contract_time_semantics(skill: Skill, requested: set[str]) -> str:
@@ -1770,6 +2483,17 @@ def _fact_unit_dimension(fact: FactDefinition) -> str:
 
 
 def _proof_matches(requirement: FactRequirement, proof: _FactProof) -> bool:
+    if not _proof_signature_matches(requirement, proof):
+        return False
+    return not (
+        proof.semantic_type == "measure.count"
+        and proof.collection_scope != "complete_set"
+    )
+
+
+def _proof_signature_matches(
+    requirement: FactRequirement, proof: _FactProof
+) -> bool:
     if proof.semantic_type != requirement.semantic_type:
         return False
     if proof.value_type != requirement.value_type.value:
@@ -1795,6 +2519,16 @@ def _proof_matches(requirement: FactRequirement, proof: _FactProof) -> bool:
     return not (requirement.required and (not proof.required or proof.nullable))
 
 
+def _requirement_signature(requirement: FactRequirement) -> tuple[str, ...]:
+    return (
+        requirement.semantic_type,
+        requirement.value_type.value,
+        requirement.cardinality,
+        requirement.unit_dimension or "none",
+        requirement.time_semantics or "none",
+    )
+
+
 def _requirement_mismatch_issue(
     requirement: FactRequirement,
     proofs: Sequence[_FactProof],
@@ -1804,6 +2538,17 @@ def _requirement_mismatch_issue(
         code = "PLAN_FACT_REQUIREMENT_UNMET"
         message = "Ни один step не предоставляет fact для FactRequirement."
         return _issue(code, pointer, message)
+
+    if requirement.semantic_type == "measure.count" and any(
+        proof.collection_scope == "visible_page"
+        and _proof_signature_matches(requirement, proof)
+        for proof in proofs
+    ):
+        return _issue(
+            "PLAN_COUNT_SCOPE_MISMATCH",
+            pointer,
+            "Count видимой страницы не может покрывать requirement общего количества.",
+        )
 
     matching = [
         proof for proof in proofs if proof.semantic_type == requirement.semantic_type
@@ -1917,6 +2662,35 @@ def _converter_matches_fact(converter: str, fact: FactDefinition) -> bool:
     return fact.value_type in allowed[converter]
 
 
+def _cursor_encoding_matches_fact(encoding: str, fact: FactDefinition) -> bool:
+    allowed: dict[str, set[FactValueType]] = {
+        "string": {FactValueType.STRING},
+        "integer": {FactValueType.INTEGER},
+        "decimal": {
+            FactValueType.DECIMAL,
+            FactValueType.MONEY,
+            FactValueType.QUANTITY,
+            FactValueType.PERCENTAGE,
+        },
+        "date": {FactValueType.DATE},
+        "datetime": {FactValueType.DATETIME},
+        "object_ref": {FactValueType.ENTITY_REF},
+    }
+    return fact.value_type in allowed[encoding]
+
+
+def _has_static_top(parsed: ParsedQuery) -> bool:
+    for statement in parsed.statements:
+        for index, token in enumerate(statement.tokens[:-1]):
+            if (
+                token.kind == "word"
+                and token.upper in {"TOP", "ПЕРВЫЕ"}
+                and statement.tokens[index + 1].kind == "number"
+            ):
+                return True
+    return False
+
+
 def _target_compatibility_issues(
     package: SkillPackage, skill: Skill, index: int
 ) -> list[ContractIssue]:
@@ -2024,6 +2798,20 @@ def _step_dependencies(step: object) -> set[str]:
     elif isinstance(step, JoinOperator):
         dependencies.update({step.left_step_id, step.right_step_id})
     return dependencies
+
+
+def _reverse_closure(
+    roots: Iterable[str], graph: dict[str, set[str]]
+) -> set[str]:
+    closure = set(roots)
+    pending = list(closure)
+    while pending:
+        step_id = pending.pop()
+        for predecessor in graph.get(step_id, set()):
+            if predecessor not in closure:
+                closure.add(predecessor)
+                pending.append(predecessor)
+    return closure
 
 
 def _step_bindings(step: object) -> tuple[Binding, ...]:

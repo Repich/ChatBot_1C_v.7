@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     mcp_channel: Annotated[str, Field(min_length=1, max_length=160)] = "default"
     ut_config_dir: Path | None = None
     database_profile_path: Path | None = None
+    database_state_marker: Annotated[str, Field(min_length=1, max_length=200)] = (
+        "manual-ut115-unversioned"
+    )
     starter_package_path: Path | None = None
     auto_import_builtin_skills: bool = False
     build_help_index_on_start: bool = False

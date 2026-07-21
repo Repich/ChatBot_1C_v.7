@@ -21,6 +21,11 @@ from starlette.responses import StreamingResponse
 
 from chatbot1c import __version__
 from chatbot1c.application.errors import ApplicationError
+from chatbot1c.application.models import (
+    ContinuationRequest,
+    MaintenanceClearRequest,
+    MaintenanceConfirmRequest,
+)
 from chatbot1c.bootstrap import RuntimeApplication, build_runtime
 from chatbot1c.config import Settings
 from chatbot1c.contracts.errors import ContractIssue, ContractValidationError
@@ -96,8 +101,24 @@ def create_app(
 
     @app.exception_handler(RequestValidationError)
     async def request_error_handler(
-        _: Request, error: RequestValidationError
+        request: Request, error: RequestValidationError
     ) -> JSONResponse:
+        if request.url.path.endswith("/continuations"):
+            return _public_rejection(
+                ApplicationError(
+                    "CONTINUATION_HANDLE_INVALID",
+                    "Continuation handle имеет неверный формат.",
+                    422,
+                )
+            )
+        if request.url.path.endswith("/maintenance/clear"):
+            return _public_rejection(
+                ApplicationError(
+                    "CLEAR_SCOPES_INVALID",
+                    "Maintenance clear DTO не соответствует контракту.",
+                    422,
+                )
+            )
         return JSONResponse(
             status_code=422,
             content={
@@ -178,6 +199,7 @@ def create_app(
                 }
             )
             if turn.assistant_text is not None:
+                public_turn = _turn_public(turn, composed)
                 messages.append(
                     {
                         "role": "assistant",
@@ -188,6 +210,7 @@ def create_app(
                         "turn_id": str(turn.turn_id),
                         "outcome": turn.outcome,
                         "citations": _turn_citations(turn.evidence_json),
+                        "pagination": public_turn.get("pagination"),
                     }
                 )
         result = _session_summary(session)
@@ -227,12 +250,37 @@ def create_app(
             "status": turn.status,
         }
 
+    @app.post(
+        f"{API_PREFIX}/sessions/{{session_id}}/continuations", status_code=202
+    )
+    async def continue_list(
+        session_id: UUID, body: ContinuationRequest
+    ) -> JSONResponse:
+        try:
+            turn = composed.chat.submit_continuation(
+                session_id=session_id,
+                continuation_handle=body.continuation_handle,
+            )
+        except ApplicationError as error:
+            return _public_rejection(error)
+        task = asyncio.create_task(composed.chat.process_turn(turn.turn_id))
+        task_set.add(task)
+        task.add_done_callback(task_set.discard)
+        return JSONResponse(
+            status_code=202,
+            content={
+                "status": "accepted",
+                "turn_id": str(turn.turn_id),
+                "trace_id": str(turn.trace_id),
+            },
+        )
+
     @app.get(f"{API_PREFIX}/turns/{{turn_id}}")
     async def get_turn(turn_id: UUID) -> dict[str, object]:
         turn = composed.store.get_turn(turn_id)
         if turn is None:
             raise ApplicationError("TURN_NOT_FOUND", "Ход диалога не найден.", 404)
-        return _turn_public(turn)
+        return _turn_public(turn, composed)
 
     @app.get(f"{API_PREFIX}/turns/{{turn_id}}/details")
     async def get_turn_details(turn_id: UUID) -> dict[str, object]:
@@ -384,6 +432,37 @@ def create_app(
             },
         )
 
+    @app.post(f"{API_PREFIX}/maintenance/clear")
+    async def maintenance_clear(body: MaintenanceClearRequest) -> JSONResponse:
+        try:
+            if isinstance(body, MaintenanceConfirmRequest):
+                result = composed.store.confirm_clear(
+                    body.confirmation_token, body.scopes
+                )
+                return JSONResponse(
+                    status_code=200,
+                    content={
+                        "status": "cleared",
+                        "scopes": list(result.scopes),
+                        "deleted": dict(result.counts),
+                    },
+                )
+            result = composed.store.preview_clear(body.scopes)
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "status": "preview",
+                    "scopes": list(result.scopes),
+                    "counts": dict(result.counts),
+                    "confirmation_token": result.confirmation_token,
+                    "expires_at": result.expires_at.isoformat().replace(
+                        "+00:00", "Z"
+                    ),
+                },
+            )
+        except ApplicationError as error:
+            return _public_rejection(error)
+
     return app
 
 
@@ -401,7 +480,9 @@ def _session_summary(session: object) -> dict[str, object]:
     }
 
 
-def _turn_public(turn: object) -> dict[str, object]:
+def _turn_public(
+    turn: object, runtime: RuntimeApplication
+) -> dict[str, object]:
     from chatbot1c.application.models import TurnRecord
 
     if not isinstance(turn, TurnRecord):
@@ -432,6 +513,27 @@ def _turn_public(turn: object) -> dict[str, object]:
         result["error"] = {
             "code": turn.error_code,
             "message": turn.assistant_text or "Ошибка обработки запроса.",
+        }
+    evidence = _evidence(turn.evidence_json)
+    if evidence is not None and evidence.empty_reason is not None:
+        result["reason"] = evidence.empty_reason
+    if evidence is not None and evidence.pagination is not None:
+        page = evidence.pagination
+        continuation: dict[str, str] | None = None
+        if page.has_more and page.continuation_handle is not None:
+            stored = runtime.store.get_continuation(page.continuation_handle)
+            if stored is not None:
+                continuation = {
+                    "handle": stored.handle,
+                    "expires_at": stored.expires_at.isoformat().replace(
+                        "+00:00", "Z"
+                    ),
+                }
+        result["pagination"] = {
+            "shown": page.shown,
+            "page_size": page.page_size,
+            "has_more": page.has_more,
+            "continuation": continuation,
         }
     return result
 
@@ -535,3 +637,18 @@ def _application_issues(error: ApplicationError) -> list[dict[str, object]]:
     return [
         {"code": error.code, "json_pointer": "", "message_ru": error.message_ru}
     ]
+
+
+def _public_rejection(error: ApplicationError) -> JSONResponse:
+    return JSONResponse(
+        status_code=error.status_code,
+        content={
+            "status": "rejected",
+            "trace_id": str(uuid4()),
+            "error": {
+                "code": error.code,
+                "message_ru": error.message_ru,
+                "retryable": False,
+            },
+        },
+    )

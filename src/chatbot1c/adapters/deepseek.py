@@ -5,11 +5,13 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Callable
+from datetime import datetime
 from typing import Any, cast
 
 import httpx
 from pydantic import ValidationError
 
+from chatbot1c.application.deadlines import retry_fits, stage_timeout
 from chatbot1c.application.errors import ApplicationError
 from chatbot1c.application.models import PlannerRequest
 from chatbot1c.application.ports import PlannerPort
@@ -52,7 +54,12 @@ class DeepSeekPlanner(PlannerPort):
 
     async def plan(self, request: PlannerRequest) -> PlannerOutput:
         messages = self._messages(request)
-        content = await self._completion(messages, attempts=2, timeout=12.0)
+        content = await self._completion(
+            messages,
+            attempts=2,
+            timeout=12.0,
+            deadline_at=request.deadline_at,
+        )
         try:
             return self._parse(content)
         except (ContractValidationError, ValidationError, ValueError) as first_error:
@@ -79,7 +86,12 @@ class DeepSeekPlanner(PlannerPort):
                     ),
                 },
             ]
-            repaired = await self._completion(repair, attempts=1, timeout=10.0)
+            repaired = await self._completion(
+                repair,
+                attempts=1,
+                timeout=10.0,
+                deadline_at=request.deadline_at,
+            )
             try:
                 return self._parse(repaired)
             except (ContractValidationError, ValidationError, ValueError) as error:
@@ -142,7 +154,12 @@ class DeepSeekPlanner(PlannerPort):
         ]
 
     async def _completion(
-        self, messages: list[dict[str, str]], *, attempts: int, timeout: float
+        self,
+        messages: list[dict[str, str]],
+        *,
+        attempts: int,
+        timeout: float,
+        deadline_at: datetime | None,
     ) -> str:
         payload = {
             "model": self._model,
@@ -155,11 +172,18 @@ class DeepSeekPlanner(PlannerPort):
         last_error: BaseException | None = None
         for attempt in range(1, attempts + 1):
             try:
+                try:
+                    attempt_timeout = stage_timeout(deadline_at, timeout)
+                except ApplicationError as error:
+                    raise _llm_unavailable() from error
                 response = await self._client.post(
                     f"{self._base_url}/chat/completions",
                     headers={"Authorization": f"Bearer {self._api_key}"},
                     json=payload,
-                    timeout=httpx.Timeout(timeout, connect=2.0),
+                    timeout=httpx.Timeout(
+                        attempt_timeout,
+                        connect=min(2.0, attempt_timeout),
+                    ),
                 )
                 if len(response.content) > MAX_PROVIDER_BODY:
                     raise ApplicationError(
@@ -195,13 +219,11 @@ class DeepSeekPlanner(PlannerPort):
                 raise
             except (httpx.TimeoutException, httpx.TransportError, _RetryableStatus) as error:
                 last_error = error
-                if attempt < attempts:
+                if attempt < attempts and retry_fits(deadline_at, backoff=0.5):
                     await self._sleep(0.5)
-        raise ApplicationError(
-            "LLM_UNAVAILABLE",
-            "DeepSeek временно недоступен; запрос к данным не выполнялся.",
-            503,
-        ) from last_error
+                    continue
+                break
+        raise _llm_unavailable() from last_error
 
     def _parse(self, content: str) -> PlannerOutput:
         document = loads_bounded_json(content.encode("utf-8"))
@@ -227,6 +249,14 @@ class FixturePlanner(PlannerPort):
 
 class _RetryableStatus(Exception):
     pass
+
+
+def _llm_unavailable() -> ApplicationError:
+    return ApplicationError(
+        "LLM_UNAVAILABLE",
+        "DeepSeek временно недоступен; запрос к данным не выполнялся.",
+        503,
+    )
 
 
 def _bounded_provider_object(payload: bytes) -> dict[str, Any]:

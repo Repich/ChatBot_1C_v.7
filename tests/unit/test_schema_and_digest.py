@@ -40,6 +40,27 @@ def test_repository_loads_all_root_draft_2020_12_schemas() -> None:
     )
 
 
+def test_evidence_schema_versions_new_fields_without_rewriting_legacy() -> None:
+    repository = SchemaRepository.discover(ROOT)
+    legacy = _json("valid/data_evidence_empty.json")
+    assert legacy["schema_version"] == "1.0.0"
+    assert "collection_scope" not in legacy["steps"][0]
+    assert "required" not in legacy["coverage"]["requirements"][0]
+    repository.validate(legacy, "evidence.schema.json")
+
+    current = copy.deepcopy(legacy)
+    current["schema_version"] = "1.1.0"
+    issues = repository.issues(current, "evidence.schema.json")
+    assert {issue.json_pointer for issue in issues} == {
+        "/coverage/requirements/0/required",
+        "/steps/0/collection_scope",
+    }
+
+    current["steps"][0]["collection_scope"] = "complete_set"
+    current["coverage"]["requirements"][0]["required"] = True
+    repository.validate(current, "evidence.schema.json")
+
+
 def test_json_pointer_escapes_reference_tokens() -> None:
     assert json_pointer(["a/b", "~value", 0]) == "/a~1b/~0value/0"
 

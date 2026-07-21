@@ -69,6 +69,42 @@
 10. LLM ограничена plan/grounded wording; execution/coverage/evidence/core
     полностью детерминированы.
 
+### 2.1. Аудит неоднозначностей slice 2
+
+| ID | Проверка на противоречие | Единое решение | Статус |
+| --- | --- | --- | --- |
+| SB-01 | One-row `null` мог стать empty, zero или contract failure | Nullability проверяется первой; допустимый null-sentinel идет по полной матрице `empty_semantics`, никогда не становится zero/partial | Разрешено |
+| SB-02 | Rows с нарушенным contract могли называться `partial` | Нарушение producer contract всегда `contract_error` и строки discarded; `partial` содержит только independently valid facts при неполном coverage | Разрешено |
+| SB-03 | Continuation не имел public DTO, TTL и точных stale errors | Closed body/response, TTL 30 минут, single-use claim и отдельные forged/session/consumed/expired/catalog/marker codes | Разрешено |
+| SB-04 | Clear упоминал preview/token без wire contract | Один двухфазный endpoint, exact scopes/counts, 5-minute server-side token, target fingerprint и atomic confirm | Разрешено |
+| SB-05 | Slice 2 преждевременно объявлял весь AC-024 green | Slice 2 закрывает только `AC-024.list`; rank и global остаются `not_run` до M07 oracle | Разрешено |
+| SB-06 | R06 обещал direct organization/purpose без metadata fields | R06 ограничен name/`ТипСклада`/`Подразделение`; organization требует proved join, purpose остается отдельной dimension | Разрешено |
+| SB-07 | Required/optional failure semantics не имели step flag в PlannerOutput | Criticality вычисляется reverse closure от required final requirements; `required_output_fact_ids` остается producer demand, ambiguous/unused plans rejected | Разрешено |
+| SB-08 | Q015/Q031 могли назвать rows текущей page общим количеством полного set | Slice 2 закрывает только list subcases; page count имеет scope `visible_page`, total требует отдельный aggregate producer, до него full scenario `not_run` | Разрешено |
+| SB-09 | `prefix:1000` использовался как guessed cap для потенциально unbounded producers | Prefix требует cited cardinality invariant и exact M behavior; оставшиеся R01A-D/SP03/SL01 обязаны перейти на keyset, уже-keyset R06/SP04 не регрессируют | Разрешено |
+| SB-10 | Evidence терял `required/optional`, а validator включал missing optional в `sufficient` | `coverage.requirements[*].required` обязателен и exact-copy из CoverageProof; optional status/completeness остается наблюдаемым и исключается из sufficient | Разрешено |
+| SB-11 | Безусловная обязательность новых evidence fields ломала frozen 1.0 fixtures, а defaults ослабляли новый контракт | Evidence 1.1 обязателен для новых writes и требует `collection_scope`/`required`; explicit 1.0 read branch применяет legacy defaults in-memory без rewrite | Разрешено |
+| SB-12 | Общие transferable keyset skills проходили import без ordered cursor proof и проверки query semantics | Import validator проверяет bijection/uniqueness/type/nullability/full identity, а dedicated AST contract доказывает ORDER BY и strict lexicographic after-predicate | Разрешено |
+| SB-13 | Status-only `sufficient` отвергал legitimate `partial_until_all_pages` с валидными covered facts | Coverage status остается fact-level; immutable proof задает collection obligation, а sufficient требует status и полноту только required requirements | Разрешено |
+| SB-14 | Cardinality-only mutation делала keyset list «aggregate», конфликтуя с required `complete_set` и превращая typed zero в partial | Paged strategies разрешены только для `many`; zero aggregate требует отдельный non-paginated one-row complete-set producer | Разрешено |
+
+Cross-document check выполнен против `architecture.md`, `request_lifecycle.md`,
+`persistence_and_observability.md`, `integration_contracts.md`,
+`full_catalog_blueprint.md`, `implementation_slices.md`,
+`requirements_mapping.md`, `schemas/evidence.schema.json` и testing contracts.
+Outcome precedence, TTL, error codes, clear scopes, count scope и AC-024 status
+совпадают; test
+strategy сравнивает list composition отдельно от total count и от rank
+order/direction/measure. Required step во всех документах означает только member
+immutable `CoverageProof.required_closure`, не любое выполненное skill call.
+Prefix bound во всех документах является proved invariant, не query/UI cap.
+Evidence sufficient во всех документах игнорирует optional requirement, но
+для required одновременно требует typed coverage и collection completeness;
+partial page facts не удаляются и не получают ложный `wrong_cardinality`.
+Evidence version не выводится по shape: 1.0 совместим только на read, 1.1 strict
+на read/write. Keyset correctness является общим import gate, а не только
+built-in package acceptance.
+
 ## 3. Саморевью 116 сценариев
 
 | ID | Проверяемый архитектурный путь | Результат ревью |
@@ -87,7 +123,7 @@
 | Q012 | Contains parameter, list/full pagination | Путь есть |
 | Q013 | Item ambiguity then barcode detail | Путь есть |
 | Q014 | Unit fact, not stock quantity | Путь есть |
-| Q015 | Empty article predicate + count/list limit | Путь есть |
+| Q015 | Empty article list plus found-position total | Slice 2: list path; total/full scenario `not_run` до отдельного aggregate producer |
 | Q016 | Group resolver + distinct item count/nesting rule | Путь есть |
 | Q017 | Customer semantic type + details | Путь есть |
 | Q018 | Supplier role hard fact + substring | Путь есть |
@@ -103,7 +139,7 @@
 | Q028 | Exact price type, zero remains value | Путь есть |
 | Q029 | Missing price type -> clarification then group prices | Путь есть |
 | Q030 | Point-in-time current-price contract | Путь есть |
-| Q031 | Calendar period + list count/page message | Путь есть |
+| Q031 | Calendar period + SP04 keyset page + separate SP06 distinct total | Slice 2: list path есть, total/full scenario `not_run`; full path активируется со SP06 |
 | Q032 | Count documents grouped month | Путь есть |
 | Q033 | Sum documents + currency/inclusion rule | Путь есть |
 | Q034 | Average + denominator document count | Путь есть |

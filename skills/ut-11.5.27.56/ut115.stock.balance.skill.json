@@ -2,10 +2,10 @@
   "schema_version": "1.0.0",
   "document_type": "skill",
   "skill_id": "ut115.stock.balance",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "display": {
     "name_ru": "Фактический остаток подтвержденной номенклатуры",
-    "purpose_ru": "Возвращает физический ВНаличииОстаток регистра ТоварыНаСкладах по exact номенклатуре и моменту.",
+    "purpose_ru": "Возвращает физический ВНаличииОстаток регистра ТоварыНаСкладах по моменту и optional exact номенклатуре/списку складов.",
     "limitations_ru": [
       "Показывает физическое наличие, а не доступность с учетом резервов."
     ]
@@ -65,17 +65,15 @@
     "anti_examples_ru": [
       "сколько товара доступно с учетом резервов"
     ],
-    "required_context_fact_types": [
-      "catalog.item"
-    ]
+    "required_context_fact_types": []
   },
   "parameters": [
     {
       "name": "item",
       "title_ru": "Номенклатура",
-      "description_ru": "Подтвержденная exact ссылка номенклатуры.",
+      "description_ru": "Опциональная подтвержденная exact ссылка номенклатуры.",
       "value_type": "entity_ref",
-      "required": true,
+      "required": false,
       "allowed_sources": [
         "session_context",
         "previous_step"
@@ -84,6 +82,22 @@
       "semantic_type": "catalog.item",
       "entity_types": [
         "catalog.item"
+      ]
+    },
+    {
+      "name": "warehouses",
+      "title_ru": "Склады",
+      "description_ru": "Опциональный список подтвержденных exact ссылок складов.",
+      "value_type": "entity_ref_list",
+      "required": false,
+      "allowed_sources": [
+        "session_context",
+        "previous_step"
+      ],
+      "normalization": "object_ref",
+      "semantic_type": "catalog.warehouse",
+      "entity_types": [
+        "catalog.warehouse"
       ]
     },
     {
@@ -106,13 +120,21 @@
     "query_template": {
       "template_id": "ut115.stock.balance.v1",
       "language": "1c-query",
-      "text": "ВЫБРАТЬ\n  Остатки.Номенклатура КАК Номенклатура,\n  Остатки.Склад КАК Склад,\n  Остатки.Помещение КАК Помещение,\n  Остатки.Характеристика КАК Характеристика,\n  Остатки.Назначение КАК Назначение,\n  Остатки.Номенклатура.ЕдиницаИзмерения.Наименование КАК Единица,\n  Остатки.ВНаличииОстаток КАК ВНаличииОстаток,\n  &Момент КАК Момент\nИЗ РегистрНакопления.ТоварыНаСкладах.Остатки(&Момент, Номенклатура = &Номенклатура) КАК Остатки\nУПОРЯДОЧИТЬ ПО Остатки.Склад, Остатки.Помещение",
+      "text": "ВЫБРАТЬ\n  Остатки.Номенклатура КАК Номенклатура,\n  Остатки.Склад КАК Склад,\n  Остатки.Помещение КАК Помещение,\n  Остатки.Характеристика КАК Характеристика,\n  Остатки.Назначение КАК Назначение,\n  Остатки.Номенклатура.ЕдиницаИзмерения.Наименование КАК Единица,\n  Остатки.ВНаличииОстаток КАК ВНаличииОстаток,\n  &Момент КАК Момент\nИЗ РегистрНакопления.ТоварыНаСкладах.Остатки(\n  &Момент,\n  (&Номенклатура ЕСТЬ NULL ИЛИ Номенклатура = &Номенклатура)\n  И (&Склады ЕСТЬ NULL ИЛИ Склад В (&Склады))) КАК Остатки\nГДЕ НЕ &ЕстьКурсор\n  ИЛИ Остатки.Склад > &СкладКурсора\n  ИЛИ (Остатки.Склад = &СкладКурсора\n    И Остатки.Помещение > &ПомещениеКурсора)\n  ИЛИ (Остатки.Склад = &СкладКурсора\n    И Остатки.Помещение = &ПомещениеКурсора\n    И Остатки.Номенклатура > &НоменклатураКурсора)\n  ИЛИ (Остатки.Склад = &СкладКурсора\n    И Остатки.Помещение = &ПомещениеКурсора\n    И Остатки.Номенклатура = &НоменклатураКурсора\n    И Остатки.Характеристика > &ХарактеристикаКурсора)\n  ИЛИ (Остатки.Склад = &СкладКурсора\n    И Остатки.Помещение = &ПомещениеКурсора\n    И Остатки.Номенклатура = &НоменклатураКурсора\n    И Остатки.Характеристика = &ХарактеристикаКурсора\n    И Остатки.Назначение > &НазначениеКурсора)\nУПОРЯДОЧИТЬ ПО Остатки.Склад, Остатки.Помещение, Остатки.Номенклатура, Остатки.Характеристика, Остатки.Назначение",
       "execution": {
         "kind": "single_select",
         "statement_count": 1,
         "final_statement": 1
       },
-      "invariant_constants": [],
+      "invariant_constants": [
+        {
+          "kind": "null_literal",
+          "statement": 1,
+          "value": "NULL",
+          "role": "computed_value",
+          "occurrences": 2
+        }
+      ],
       "include_schema": true,
       "mcp_limit": {
         "default": 20,
@@ -124,6 +146,11 @@
         "parameter": "item",
         "query_parameter": "Номенклатура",
         "encoding": "object_ref"
+      },
+      {
+        "parameter": "warehouses",
+        "query_parameter": "Склады",
+        "encoding": "object_ref_list"
       },
       {
         "parameter": "moment",
@@ -198,13 +225,57 @@
       }
     ],
     "pagination": {
-      "strategy": "prefix",
-      "stable_order_fact_ids": [
-        "warehouse.ref",
-        "storage_bin.ref",
-        "item.ref"
+      "strategy": "keyset",
+      "has_cursor_query_parameter": "ЕстьКурсор",
+      "sort": [
+        {
+          "fact_id": "warehouse.ref",
+          "direction": "asc"
+        },
+        {
+          "fact_id": "storage_bin.ref",
+          "direction": "asc"
+        },
+        {
+          "fact_id": "item.ref",
+          "direction": "asc"
+        },
+        {
+          "fact_id": "characteristic.ref",
+          "direction": "asc"
+        },
+        {
+          "fact_id": "assignment.ref",
+          "direction": "asc"
+        }
       ],
-      "maximum_total": 1000
+      "cursor_bindings": [
+        {
+          "fact_id": "warehouse.ref",
+          "query_parameter": "СкладКурсора",
+          "encoding": "object_ref"
+        },
+        {
+          "fact_id": "storage_bin.ref",
+          "query_parameter": "ПомещениеКурсора",
+          "encoding": "object_ref"
+        },
+        {
+          "fact_id": "item.ref",
+          "query_parameter": "НоменклатураКурсора",
+          "encoding": "object_ref"
+        },
+        {
+          "fact_id": "characteristic.ref",
+          "query_parameter": "ХарактеристикаКурсора",
+          "encoding": "object_ref"
+        },
+        {
+          "fact_id": "assignment.ref",
+          "query_parameter": "НазначениеКурсора",
+          "encoding": "object_ref"
+        }
+      ]
     }
   },
   "output_contract": {
@@ -358,6 +429,11 @@
       "kind": "fact_equals_parameter",
       "fact_id": "item.ref",
       "parameter": "item"
+    },
+    {
+      "kind": "fact_in_parameter",
+      "fact_id": "warehouse.ref",
+      "parameter": "warehouses"
     }
   ],
   "dependencies": {
@@ -515,6 +591,136 @@
       }
     },
     {
+      "test_id": "ut.stock.retail-warehouses",
+      "case_kind": "positive",
+      "bindings": [
+        {
+          "parameter": "warehouses",
+          "value": [
+            {
+              "_objectRef": true,
+              "УникальныйИдентификатор": "00000000-0000-4000-8000-000000000201",
+              "ТипОбъекта": "СправочникСсылка.Склады",
+              "Представление": "Основной склад"
+            }
+          ]
+        },
+        {
+          "parameter": "moment",
+          "value": "2026-07-21T12:00:00+03:00"
+        }
+      ],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": true,
+          "data": [
+            {
+              "Номенклатура": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000000101",
+                "ТипОбъекта": "СправочникСсылка.Номенклатура",
+                "Представление": "Куртка демисезонная"
+              },
+              "Склад": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000000201",
+                "ТипОбъекта": "СправочникСсылка.Склады",
+                "Представление": "Основной склад"
+              },
+              "Помещение": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000000202",
+                "ТипОбъекта": "СправочникСсылка.СкладскиеПомещения",
+                "Представление": "Основное помещение"
+              },
+              "Характеристика": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000000203",
+                "ТипОбъекта": "СправочникСсылка.ХарактеристикиНоменклатуры",
+                "Представление": "Без характеристики"
+              },
+              "Назначение": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000000204",
+                "ТипОбъекта": "СправочникСсылка.Назначения",
+                "Представление": "Без назначения"
+              },
+              "Единица": "шт",
+              "ВНаличииОстаток": 7.0,
+              "Момент": "2026-07-21T12:00:00+03:00"
+            }
+          ],
+          "schema": {
+            "columns": [
+              {
+                "name": "Номенклатура",
+                "types": [
+                  "СправочникСсылка.Номенклатура"
+                ]
+              },
+              {
+                "name": "Склад",
+                "types": [
+                  "СправочникСсылка.Склады"
+                ]
+              },
+              {
+                "name": "Помещение",
+                "types": [
+                  "СправочникСсылка.СкладскиеПомещения"
+                ]
+              },
+              {
+                "name": "Характеристика",
+                "types": [
+                  "СправочникСсылка.ХарактеристикиНоменклатуры"
+                ]
+              },
+              {
+                "name": "Назначение",
+                "types": [
+                  "СправочникСсылка.Назначения"
+                ]
+              },
+              {
+                "name": "Единица",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "ВНаличииОстаток",
+                "types": [
+                  "Число"
+                ]
+              },
+              {
+                "name": "Момент",
+                "types": [
+                  "Дата"
+                ]
+              }
+            ]
+          },
+          "count": 1
+        }
+      },
+      "expected": {
+        "status": "success_with_rows",
+        "required_fact_ids": [
+          "item.ref",
+          "warehouse.ref",
+          "storage_bin.ref",
+          "characteristic.ref",
+          "assignment.ref",
+          "item.unit",
+          "stock.balance",
+          "stock.moment"
+        ]
+      }
+    },
+    {
       "test_id": "ut.stock.empty",
       "case_kind": "negative",
       "bindings": [],
@@ -524,7 +730,56 @@
           "success": true,
           "data": [],
           "schema": {
-            "columns": []
+            "columns": [
+              {
+                "name": "Номенклатура",
+                "types": [
+                  "СправочникСсылка.Номенклатура"
+                ]
+              },
+              {
+                "name": "Склад",
+                "types": [
+                  "СправочникСсылка.Склады"
+                ]
+              },
+              {
+                "name": "Помещение",
+                "types": [
+                  "СправочникСсылка.СкладскиеПомещения"
+                ]
+              },
+              {
+                "name": "Характеристика",
+                "types": [
+                  "СправочникСсылка.ХарактеристикиНоменклатуры"
+                ]
+              },
+              {
+                "name": "Назначение",
+                "types": [
+                  "СправочникСсылка.Назначения"
+                ]
+              },
+              {
+                "name": "Единица",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "ВНаличииОстаток",
+                "types": [
+                  "Число"
+                ]
+              },
+              {
+                "name": "Момент",
+                "types": [
+                  "Дата"
+                ]
+              }
+            ]
           },
           "count": 0
         }
@@ -563,6 +818,6 @@
     "algorithm": "sha256",
     "canonicalization": "RFC8785",
     "scope": "document_without_integrity",
-    "digest": "d83818552ec0f5e9cf7aade3bf3ef38dde1d96211b14081fd524be01ddede48d"
+    "digest": "cf50bd1cd9c319493a438542434f48daec0536ac06e95a2b3184700c9600a756"
   }
 }

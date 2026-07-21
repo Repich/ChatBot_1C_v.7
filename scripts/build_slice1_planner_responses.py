@@ -138,8 +138,8 @@ def build() -> dict[str, dict[str, Any]]:
                 "binding": {"source": "slot", "slot_id": "article"},
             }
         ],
-        required_outputs=["item.ref", "item.article", "item.name"],
-        final_outputs=["item.ref", "item.article", "item.name"],
+        required_outputs=["item.ref", "item.code", "item.name"],
+        final_outputs=["item.ref"],
         plan_number=9111,
     )
     q036 = _execute(
@@ -202,7 +202,7 @@ def build() -> dict[str, dict[str, Any]]:
             "line.unit",
             "line.quantity",
         ],
-        final_outputs=["line.item", "line.unit", "line.quantity"],
+        final_outputs=["line.item", "line.quantity"],
         plan_number=9137,
     )
     q102 = copy.deepcopy(q011)

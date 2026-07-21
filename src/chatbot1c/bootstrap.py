@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass
 from importlib.resources import files
 from pathlib import Path
 from typing import cast
 
+from chatbot1c.adapters.database_marker import ExplicitDatabaseStateMarker
 from chatbot1c.adapters.deepseek import DeepSeekPlanner
 from chatbot1c.adapters.diagnostics import DiagnosticExporter
 from chatbot1c.adapters.help_index import HelpIndexBuilder, SQLiteHelpIndex
@@ -18,9 +20,14 @@ from chatbot1c.application.chat import ChatService
 from chatbot1c.application.errors import ApplicationError
 from chatbot1c.application.execution import PlanExecutor
 from chatbot1c.application.models import ConfigurationProfile, PlannerRequest
-from chatbot1c.application.ports import PlannerPort, ReadOnly1CPort
+from chatbot1c.application.ports import (
+    DatabaseStateMarkerPort,
+    PlannerPort,
+    ReadOnly1CPort,
+)
 from chatbot1c.application.shortlist import LexicalSkillShortlist
 from chatbot1c.config import Settings, load_settings
+from chatbot1c.contracts.digest import canonicalize
 from chatbot1c.contracts.harness import ContractHarness
 from chatbot1c.contracts.json_limits import validate_json_structure
 from chatbot1c.domain.plan import PlannerOutput
@@ -58,6 +65,7 @@ class RuntimeApplication:
     executor: PlanExecutor
     chat: ChatService
     diagnostics: DiagnosticExporter
+    marker: DatabaseStateMarkerPort
 
     async def close(self) -> None:
         if isinstance(self.planner, DeepSeekPlanner):
@@ -88,6 +96,7 @@ def build_runtime(
     planner: PlannerPort | None = None,
     one_c: ReadOnly1CPort | None = None,
     profile: ConfigurationProfile | None = None,
+    marker: DatabaseStateMarkerPort | None = None,
     auto_import: bool | None = None,
 ) -> RuntimeApplication:
     """Initialize all local state and compose bounded production adapters."""
@@ -127,6 +136,30 @@ def build_runtime(
         help_builder.build(resolved.ut_config_dir)
     help_index = SQLiteHelpIndex(store.engine)
     active_help = help_index.active_revision()
+    profile_digest = hashlib.sha256(
+        canonicalize(
+            {
+                "configuration_id": configuration_profile.configuration_id,
+                "configuration_name": configuration_profile.configuration_name,
+                "release": configuration_profile.release,
+                "compatibility_mode": configuration_profile.compatibility_mode,
+                "metadata": {
+                    name: sorted(attributes)
+                    for name, attributes in sorted(configuration_profile.metadata.items())
+                },
+            }
+        )
+    ).hexdigest()
+    marker_adapter = marker or ExplicitDatabaseStateMarker(
+        marker_value=resolved.database_state_marker,
+        configuration_profile_digest=profile_digest,
+        documentation_revision=(active_help[0] if active_help else "unavailable"),
+        documentation_manifest_digest=(
+            active_help[1]
+            if active_help
+            else hashlib.sha256(b"unavailable").hexdigest()
+        ),
+    )
 
     planner_adapter = planner or _live_planner(resolved, base.contracts)
     one_c_adapter = one_c or McpReadOnlyAdapter(
@@ -147,7 +180,10 @@ def build_runtime(
         executor=executor,
         harness=base.contracts,
         shortlist=LexicalSkillShortlist(),
+        continuations=store,
+        marker=marker_adapter,
         default_list_limit=resolved.default_list_limit,
+        request_deadline_seconds=resolved.request_deadline_seconds,
     )
     secrets = (
         ()
@@ -168,6 +204,7 @@ def build_runtime(
         executor=executor,
         chat=chat,
         diagnostics=diagnostics,
+        marker=marker_adapter,
     )
 
 
@@ -241,7 +278,7 @@ def _starter_package_bytes(settings: Settings) -> bytes:
         return settings.starter_package_path.expanduser().read_bytes()
     relative = Path(
         "ut-11.5.27.56",
-        "ut.starter.slice-one.package.json",
+        "ut.starter.slice-two.package.json",
     )
     packaged = files("chatbot1c").joinpath("builtin_skills", *relative.parts)
     if packaged.is_file():

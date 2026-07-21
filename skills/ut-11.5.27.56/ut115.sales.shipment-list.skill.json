@@ -1,0 +1,779 @@
+{
+  "schema_version": "1.0.0",
+  "document_type": "skill",
+  "skill_id": "ut115.sales.shipment-list",
+  "version": "1.0.0",
+  "display": {
+    "name_ru": "Список реализаций товаров и услуг",
+    "purpose_ru": "Возвращает реализации за typed период с exact ссылками, статусом, суммой, валютой и metadata-proven измерениями.",
+    "limitations_ru": [
+      "Не ранжирует реализации и не вычисляет среднее; slice 2 закрывает только list component."
+    ]
+  },
+  "provides": {
+    "capability_ids": [
+      "CAP-SALES-SHIPMENT-LIST"
+    ],
+    "fact_types": [
+      "document.sales_shipment",
+      "document.number",
+      "time.document_moment",
+      "document.posted",
+      "party.customer",
+      "catalog.organization",
+      "catalog.warehouse",
+      "document.sales_shipment.status",
+      "measure.document_amount",
+      "currency.code",
+      "document.sales_order"
+    ]
+  },
+  "compatibility": {
+    "configuration_id": "УправлениеТорговлейБазовая",
+    "configuration_name": "1С:Управление торговлей (базовая), редакция 11",
+    "release_range": {
+      "minimum": "11.5.27.56",
+      "maximum": "11.5.27.56",
+      "include_minimum": true,
+      "include_maximum": true
+    },
+    "compatibility_modes": [
+      "8.3.27"
+    ],
+    "required_metadata": [
+      {
+        "object_name": "Документ.РеализацияТоваровУслуг",
+        "attributes": [
+          "Ссылка",
+          "Номер",
+          "Дата",
+          "Проведен",
+          "Партнер",
+          "Организация",
+          "Склад",
+          "Статус",
+          "СуммаДокумента",
+          "Валюта",
+          "ЗаказКлиента"
+        ]
+      }
+    ],
+    "metadata_snapshot_sha256": "1ebe12622345cbce608283575d39b8835013a61d817787c4e98c6ddbbb4d105d"
+  },
+  "selection": {
+    "intent_kinds": [
+      "data"
+    ],
+    "aliases_ru": [
+      "показать реализации за период",
+      "список отгрузок клиентам"
+    ],
+    "anti_examples_ru": [
+      "показать топ реализаций по сумме"
+    ],
+    "required_context_fact_types": []
+  },
+  "parameters": [
+    {
+      "name": "period",
+      "title_ru": "Период",
+      "description_ru": "Нормализованный полуинтервал дат реализации.",
+      "value_type": "period",
+      "required": true,
+      "allowed_sources": [
+        "user_slot",
+        "previous_step"
+      ],
+      "normalization": "normalize_period"
+    },
+    {
+      "name": "customer",
+      "title_ru": "Клиент",
+      "description_ru": "Опциональная подтвержденная exact ссылка клиента.",
+      "value_type": "entity_ref",
+      "required": false,
+      "allowed_sources": [
+        "session_context",
+        "previous_step"
+      ],
+      "normalization": "object_ref",
+      "semantic_type": "party.customer",
+      "entity_types": [
+        "party.customer"
+      ]
+    },
+    {
+      "name": "organization",
+      "title_ru": "Организация",
+      "description_ru": "Опциональная подтвержденная exact ссылка организации.",
+      "value_type": "entity_ref",
+      "required": false,
+      "allowed_sources": [
+        "session_context",
+        "previous_step"
+      ],
+      "normalization": "object_ref",
+      "semantic_type": "catalog.organization",
+      "entity_types": [
+        "catalog.organization"
+      ]
+    },
+    {
+      "name": "warehouse",
+      "title_ru": "Склад",
+      "description_ru": "Опциональная подтвержденная exact ссылка склада.",
+      "value_type": "entity_ref",
+      "required": false,
+      "allowed_sources": [
+        "session_context",
+        "previous_step"
+      ],
+      "normalization": "object_ref",
+      "semantic_type": "catalog.warehouse",
+      "entity_types": [
+        "catalog.warehouse"
+      ]
+    }
+  ],
+  "operation": {
+    "kind": "data_query",
+    "tool": "execute_query",
+    "read_only": true,
+    "query_template": {
+      "template_id": "ut115.sales.shipment-list.v1",
+      "language": "1c-query",
+      "text": "ВЫБРАТЬ\n  Реализация.Ссылка КАК Реализация,\n  Реализация.Номер КАК Номер,\n  Реализация.Дата КАК Дата,\n  Реализация.Проведен КАК Проведен,\n  Реализация.Партнер КАК Клиент,\n  Реализация.Организация КАК Организация,\n  Реализация.Склад КАК Склад,\n  ПРЕДСТАВЛЕНИЕ(Реализация.Статус) КАК Статус,\n  Реализация.СуммаДокумента КАК СуммаДокумента,\n  Реализация.Валюта.Код КАК Валюта,\n  Реализация.ЗаказКлиента КАК ЗаказКлиента\nИЗ Документ.РеализацияТоваровУслуг КАК Реализация\nГДЕ Реализация.Дата >= &НачалоПериода\n  И Реализация.Дата < &КонецПериода\n  И (&Клиент ЕСТЬ NULL ИЛИ Реализация.Партнер = &Клиент)\n  И (&Организация ЕСТЬ NULL ИЛИ Реализация.Организация = &Организация)\n  И (&Склад ЕСТЬ NULL ИЛИ Реализация.Склад = &Склад)\n  И (НЕ &ЕстьКурсор\n    ИЛИ Реализация.Дата < &ДатаКурсора\n    ИЛИ (Реализация.Дата = &ДатаКурсора\n      И Реализация.Ссылка > &СсылкаКурсора))\nУПОРЯДОЧИТЬ ПО Реализация.Дата УБЫВ, Реализация.Ссылка",
+      "execution": {
+        "kind": "single_select",
+        "statement_count": 1,
+        "final_statement": 1
+      },
+      "invariant_constants": [
+        {
+          "kind": "null_literal",
+          "statement": 1,
+          "value": "NULL",
+          "role": "absence_filter",
+          "occurrences": 3
+        }
+      ],
+      "include_schema": true,
+      "mcp_limit": {
+        "default": 20,
+        "maximum": 1000
+      }
+    },
+    "parameter_bindings": [
+      {
+        "parameter": "period",
+        "query_parameter": "НачалоПериода",
+        "encoding": "period_start"
+      },
+      {
+        "parameter": "period",
+        "query_parameter": "КонецПериода",
+        "encoding": "period_end_exclusive"
+      },
+      {
+        "parameter": "customer",
+        "query_parameter": "Клиент",
+        "encoding": "object_ref"
+      },
+      {
+        "parameter": "organization",
+        "query_parameter": "Организация",
+        "encoding": "object_ref"
+      },
+      {
+        "parameter": "warehouse",
+        "query_parameter": "Склад",
+        "encoding": "object_ref"
+      }
+    ],
+    "column_bindings": [
+      {
+        "column": "Реализация",
+        "fact_id": "shipment.ref",
+        "accepted_mcp_types": [
+          "ДокументСсылка.РеализацияТоваровУслуг"
+        ],
+        "converter": "object_ref"
+      },
+      {
+        "column": "Номер",
+        "fact_id": "shipment.number",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "Дата",
+        "fact_id": "shipment.date",
+        "accepted_mcp_types": [
+          "Дата"
+        ],
+        "converter": "datetime"
+      },
+      {
+        "column": "Проведен",
+        "fact_id": "shipment.posted",
+        "accepted_mcp_types": [
+          "Булево"
+        ],
+        "converter": "boolean"
+      },
+      {
+        "column": "Клиент",
+        "fact_id": "shipment.customer",
+        "accepted_mcp_types": [
+          "СправочникСсылка.Партнеры"
+        ],
+        "converter": "object_ref"
+      },
+      {
+        "column": "Организация",
+        "fact_id": "shipment.organization",
+        "accepted_mcp_types": [
+          "СправочникСсылка.Организации"
+        ],
+        "converter": "object_ref"
+      },
+      {
+        "column": "Склад",
+        "fact_id": "shipment.warehouse",
+        "accepted_mcp_types": [
+          "СправочникСсылка.Склады"
+        ],
+        "converter": "object_ref"
+      },
+      {
+        "column": "Статус",
+        "fact_id": "shipment.status",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "СуммаДокумента",
+        "fact_id": "shipment.amount",
+        "accepted_mcp_types": [
+          "Число"
+        ],
+        "converter": "decimal"
+      },
+      {
+        "column": "Валюта",
+        "fact_id": "shipment.currency",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "ЗаказКлиента",
+        "fact_id": "shipment.order",
+        "accepted_mcp_types": [
+          "ДокументСсылка.ЗаказКлиента"
+        ],
+        "converter": "object_ref"
+      }
+    ],
+    "pagination": {
+      "strategy": "keyset",
+      "has_cursor_query_parameter": "ЕстьКурсор",
+      "sort": [
+        {
+          "fact_id": "shipment.date",
+          "direction": "desc"
+        },
+        {
+          "fact_id": "shipment.ref",
+          "direction": "asc"
+        }
+      ],
+      "cursor_bindings": [
+        {
+          "fact_id": "shipment.date",
+          "query_parameter": "ДатаКурсора",
+          "encoding": "datetime"
+        },
+        {
+          "fact_id": "shipment.ref",
+          "query_parameter": "СсылкаКурсора",
+          "encoding": "object_ref"
+        }
+      ]
+    }
+  },
+  "output_contract": {
+    "contract_id": "ut115.sales.shipment-list.v1",
+    "contract_version": "1.0.0",
+    "cardinality": "many",
+    "facts": [
+      {
+        "fact_id": "shipment.ref",
+        "semantic_type": "document.sales_shipment",
+        "value_type": "entity_ref",
+        "role": "entity",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Реализация",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "shipment.number",
+        "semantic_type": "document.number",
+        "value_type": "string",
+        "role": "attribute",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Номер",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "shipment.date",
+        "semantic_type": "time.document_moment",
+        "value_type": "datetime",
+        "role": "time",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Дата",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "shipment.posted",
+        "semantic_type": "document.posted",
+        "value_type": "boolean",
+        "role": "attribute",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Проведен",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "shipment.customer",
+        "semantic_type": "party.customer",
+        "value_type": "entity_ref",
+        "role": "dimension",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Клиент",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "shipment.organization",
+        "semantic_type": "catalog.organization",
+        "value_type": "entity_ref",
+        "role": "dimension",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Организация",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "shipment.warehouse",
+        "semantic_type": "catalog.warehouse",
+        "value_type": "entity_ref",
+        "role": "dimension",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Склад",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "shipment.status",
+        "semantic_type": "document.sales_shipment.status",
+        "value_type": "string",
+        "role": "attribute",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Статус",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "shipment.amount",
+        "semantic_type": "measure.document_amount",
+        "value_type": "money",
+        "role": "measure",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Сумма документа",
+        "unit_contract": {
+          "mode": "from_fact",
+          "fact_id": "shipment.currency"
+        }
+      },
+      {
+        "fact_id": "shipment.currency",
+        "semantic_type": "currency.code",
+        "value_type": "string",
+        "role": "dimension",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Валюта",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "shipment.order",
+        "semantic_type": "document.sales_order",
+        "value_type": "entity_ref",
+        "role": "dimension",
+        "required": false,
+        "nullable": true,
+        "title_ru": "Заказ клиента",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      }
+    ],
+    "sufficiency": {
+      "required_fact_sets": [
+        [
+          "shipment.ref",
+          "shipment.number",
+          "shipment.date",
+          "shipment.posted",
+          "shipment.customer",
+          "shipment.organization",
+          "shipment.warehouse",
+          "shipment.status",
+          "shipment.amount",
+          "shipment.currency"
+        ]
+      ],
+      "empty_semantics": "confirmed_no_rows",
+      "zero_fact_ids": [],
+      "truncation_policy": "page_is_complete"
+    },
+    "renderer": {
+      "kind": "table",
+      "primary_fact_ids": [
+        "shipment.currency"
+      ],
+      "column_fact_ids": [
+        "shipment.ref",
+        "shipment.number",
+        "shipment.date",
+        "shipment.posted",
+        "shipment.customer",
+        "shipment.organization",
+        "shipment.warehouse",
+        "shipment.status",
+        "shipment.amount",
+        "shipment.currency",
+        "shipment.order"
+      ]
+    },
+    "row_identity_fact_ids": [
+      "shipment.ref"
+    ]
+  },
+  "result_constraints": [],
+  "dependencies": {
+    "runtime_contracts": [
+      {
+        "contract": "skill-runtime",
+        "version_range": "^1.0.0"
+      },
+      {
+        "contract": "mcp.execute_query",
+        "version_range": "^1.0.0"
+      }
+    ],
+    "skills": []
+  },
+  "examples": [
+    {
+      "question_ru": "показать реализации за период?",
+      "applicability": "applicable",
+      "reason_ru": "Вопрос соответствует назначению и typed outputs навыка."
+    },
+    {
+      "question_ru": "показать топ реализаций по сумме?",
+      "applicability": "not_applicable",
+      "reason_ru": "Вопрос находится за явно объявленной границей навыка."
+    }
+  ],
+  "tests": [
+    {
+      "test_id": "ut.shipment-list.positive",
+      "case_kind": "positive",
+      "bindings": [
+        {
+          "parameter": "period",
+          "value": {
+            "start": "2026-07-01T00:00:00+03:00",
+            "end_exclusive": "2026-08-01T00:00:00+03:00",
+            "timezone": "Europe/Moscow",
+            "precision": "month"
+          }
+        }
+      ],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": true,
+          "data": [
+            {
+              "Реализация": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000000501",
+                "ТипОбъекта": "ДокументСсылка.РеализацияТоваровУслуг",
+                "Представление": "Реализация товаров и услуг 0000-000031 от 15.07.2026"
+              },
+              "Номер": "0000-000031",
+              "Дата": "2026-07-15T11:30:00+03:00",
+              "Проведен": true,
+              "Клиент": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000000401",
+                "ТипОбъекта": "СправочникСсылка.Партнеры",
+                "Представление": "Торговый дом Север"
+              },
+              "Организация": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000000402",
+                "ТипОбъекта": "СправочникСсылка.Организации",
+                "Представление": "ООО Торговая компания"
+              },
+              "Склад": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000000201",
+                "ТипОбъекта": "СправочникСсылка.Склады",
+                "Представление": "Основной склад"
+              },
+              "Статус": "Реализовано",
+              "СуммаДокумента": 4500.0,
+              "Валюта": "RUB",
+              "ЗаказКлиента": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000000301",
+                "ТипОбъекта": "ДокументСсылка.ЗаказКлиента",
+                "Представление": "Заказ клиента 0000-000005 от 12.02.2025"
+              }
+            }
+          ],
+          "schema": {
+            "columns": [
+              {
+                "name": "Реализация",
+                "types": [
+                  "ДокументСсылка.РеализацияТоваровУслуг"
+                ]
+              },
+              {
+                "name": "Номер",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Дата",
+                "types": [
+                  "Дата"
+                ]
+              },
+              {
+                "name": "Проведен",
+                "types": [
+                  "Булево"
+                ]
+              },
+              {
+                "name": "Клиент",
+                "types": [
+                  "СправочникСсылка.Партнеры"
+                ]
+              },
+              {
+                "name": "Организация",
+                "types": [
+                  "СправочникСсылка.Организации"
+                ]
+              },
+              {
+                "name": "Склад",
+                "types": [
+                  "СправочникСсылка.Склады"
+                ]
+              },
+              {
+                "name": "Статус",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "СуммаДокумента",
+                "types": [
+                  "Число"
+                ]
+              },
+              {
+                "name": "Валюта",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "ЗаказКлиента",
+                "types": [
+                  "ДокументСсылка.ЗаказКлиента"
+                ]
+              }
+            ]
+          },
+          "count": 1
+        }
+      },
+      "expected": {
+        "status": "success_with_rows",
+        "required_fact_ids": [
+          "shipment.ref",
+          "shipment.number",
+          "shipment.date",
+          "shipment.posted",
+          "shipment.customer",
+          "shipment.organization",
+          "shipment.warehouse",
+          "shipment.status",
+          "shipment.amount",
+          "shipment.currency"
+        ]
+      }
+    },
+    {
+      "test_id": "ut.shipment-list.empty",
+      "case_kind": "negative",
+      "bindings": [],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": true,
+          "data": [],
+          "schema": {
+            "columns": [
+              {
+                "name": "Реализация",
+                "types": [
+                  "ДокументСсылка.РеализацияТоваровУслуг"
+                ]
+              },
+              {
+                "name": "Номер",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Дата",
+                "types": [
+                  "Дата"
+                ]
+              },
+              {
+                "name": "Проведен",
+                "types": [
+                  "Булево"
+                ]
+              },
+              {
+                "name": "Клиент",
+                "types": [
+                  "СправочникСсылка.Партнеры"
+                ]
+              },
+              {
+                "name": "Организация",
+                "types": [
+                  "СправочникСсылка.Организации"
+                ]
+              },
+              {
+                "name": "Склад",
+                "types": [
+                  "СправочникСсылка.Склады"
+                ]
+              },
+              {
+                "name": "Статус",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "СуммаДокумента",
+                "types": [
+                  "Число"
+                ]
+              },
+              {
+                "name": "Валюта",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "ЗаказКлиента",
+                "types": [
+                  "ДокументСсылка.ЗаказКлиента"
+                ]
+              }
+            ]
+          },
+          "count": 0
+        }
+      },
+      "expected": {
+        "status": "success_empty",
+        "required_fact_ids": []
+      }
+    }
+  ],
+  "provenance": {
+    "author": "ChatBot 1C slice 1",
+    "created_at": "2026-07-21T00:00:00Z",
+    "reviewed_by": "Architecture and PM source proof",
+    "reviewed_at": "2026-07-21T00:00:00Z",
+    "source_configuration": {
+      "configuration_id": "УправлениеТорговлейБазовая",
+      "release": "11.5.27.56",
+      "compatibility_mode": "8.3.27",
+      "metadata_snapshot_sha256": "1ebe12622345cbce608283575d39b8835013a61d817787c4e98c6ddbbb4d105d"
+    },
+    "source_references": [
+      {
+        "kind": "configuration_metadata",
+        "uri": "ut-config://11.5.27.56/Documents/РеализацияТоваровУслуг.xml",
+        "sha256": "1ebe12622345cbce608283575d39b8835013a61d817787c4e98c6ddbbb4d105d"
+      }
+    ],
+    "change_note_ru": "Навык построен по проверенным metadata/help исходникам УТ 11.5.27.56."
+  },
+  "integrity": {
+    "algorithm": "sha256",
+    "canonicalization": "RFC8785",
+    "scope": "document_without_integrity",
+    "digest": "50379ef01c09952dbd82f42f0348b27fc0c47500082084a367516aefc7344f06"
+  }
+}

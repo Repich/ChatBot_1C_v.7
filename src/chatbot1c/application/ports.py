@@ -16,13 +16,17 @@ from chatbot1c.application.models import (
     GetMetadataRequest,
     HelpChunk,
     HelpSearchRequest,
+    MaintenancePreview,
     MetadataEnvelope,
+    PageContinuation,
+    PageStrategy,
     PinnedCatalog,
     PlannerRequest,
     SessionRecord,
     TurnEvent,
     TurnRecord,
 )
+from chatbot1c.domain.evidence import DatabaseStateMarker
 from chatbot1c.domain.plan import PlannerOutput
 from chatbot1c.domain.skill import Skill
 
@@ -58,10 +62,16 @@ class Clock(Protocol):
     def now(self) -> datetime: ...
 
 
+class DatabaseStateMarkerPort(Protocol):
+    def capture(self, catalog: PinnedCatalog) -> DatabaseStateMarker: ...
+
+
 class CatalogRepository(Protocol):
     def initialize(self) -> None: ...
 
     def load_catalog(self) -> PinnedCatalog: ...
+
+    def load_catalog_revision(self, revision: int) -> PinnedCatalog: ...
 
     def commit_catalog(
         self,
@@ -134,3 +144,50 @@ class TraceRepository(Protocol):
     def put_artifact(self, trace_id: UUID, name: str, content: bytes) -> None: ...
 
     def artifacts(self, trace_id: UUID) -> Mapping[str, bytes]: ...
+
+
+class ContinuationRepository(Protocol):
+    def create_continuation(
+        self,
+        *,
+        session_id: UUID,
+        origin_turn_id: UUID,
+        step_id: str,
+        skill_id: str,
+        skill_version: str,
+        skill_digest: str,
+        catalog_snapshot_id: UUID,
+        catalog_revision: int,
+        arguments: Mapping[str, JsonValue],
+        plan_json: str,
+        strategy: PageStrategy,
+        page_size: int,
+        shown: int,
+        database_marker: str,
+        sort_tuple: Sequence[JsonValue],
+        cursor_values: Mapping[str, JsonValue],
+    ) -> PageContinuation: ...
+
+    def claim_continuation(
+        self,
+        handle: str,
+        *,
+        session_id: UUID,
+        active_catalog: PinnedCatalog,
+        database_marker: str,
+    ) -> tuple[PageContinuation, TurnRecord]: ...
+
+    def get_continuation(self, handle: str) -> PageContinuation | None: ...
+
+    def continuation_for_turn(self, turn_id: UUID) -> PageContinuation | None: ...
+
+
+class MaintenanceRepository(Protocol):
+    def preview_clear(
+        self,
+        scopes: Sequence[str],
+    ) -> MaintenancePreview: ...
+
+    def confirm_clear(
+        self, confirmation_token: str, scopes: Sequence[str]
+    ) -> MaintenancePreview: ...

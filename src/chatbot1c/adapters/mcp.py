@@ -5,11 +5,13 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Awaitable, Callable, Mapping
+from datetime import datetime
 from typing import Any, Protocol, cast
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import JsonValue, ValidationError
 
+from chatbot1c.application.deadlines import retry_fits, stage_timeout
 from chatbot1c.application.errors import ApplicationError
 from chatbot1c.application.models import (
     ExecuteQueryEnvelope,
@@ -140,13 +142,14 @@ class McpReadOnlyAdapter(ReadOnly1CPort):
     async def execute_query(
         self, request: ExecuteQueryRequest
     ) -> ExecuteQueryEnvelope:
-        raw = await self._call_tool(
+        raw, attempts = await self._call_tool(
             "execute_query",
             cast(
                 dict[str, JsonValue],
                 request.model_dump(mode="json", by_alias=True),
             ),
             timeout=self._basic_timeout,
+            deadline_at=request.deadline_at,
         )
         envelope = _extract_envelope(raw)
         _reject_transport_extras(envelope)
@@ -161,6 +164,7 @@ class McpReadOnlyAdapter(ReadOnly1CPort):
                 schema=McpSchema(columns=()),
                 count=0,
                 error=error if isinstance(error, str) else "Ошибка выполнения запроса.",
+                attempts=attempts,
             )
         required = {"data", "schema"}
         if not required <= envelope.keys():
@@ -176,6 +180,7 @@ class McpReadOnlyAdapter(ReadOnly1CPort):
             "count": envelope.get("count", len(data)),
             "truncated": envelope.get("truncated", inferred_boundary),
             "has_more": envelope.get("has_more", inferred_boundary),
+            "attempts": attempts,
         }
         try:
             normalized = ExecuteQueryEnvelope.model_validate(domain_envelope)
@@ -187,10 +192,11 @@ class McpReadOnlyAdapter(ReadOnly1CPort):
         return normalized
 
     async def get_metadata(self, request: GetMetadataRequest) -> MetadataEnvelope:
-        raw = await self._call_tool(
+        raw, _ = await self._call_tool(
             "get_metadata",
             cast(dict[str, JsonValue], request.model_dump(mode="json")),
             timeout=self._metadata_timeout,
+            deadline_at=None,
         )
         envelope = _extract_envelope(raw)
         _reject_transport_extras(envelope)
@@ -214,8 +220,13 @@ class McpReadOnlyAdapter(ReadOnly1CPort):
             raise _invalid("Metadata envelope не соответствует typed DTO.") from error
 
     async def _call_tool(
-        self, name: str, arguments: Mapping[str, JsonValue], *, timeout: float
-    ) -> object:
+        self,
+        name: str,
+        arguments: Mapping[str, JsonValue],
+        *,
+        timeout: float,
+        deadline_at: datetime | None,
+    ) -> tuple[object, int]:
         if name not in MCP_ALLOWLIST:
             raise ApplicationError(
                 "MCP_TOOL_FORBIDDEN",
@@ -225,19 +236,23 @@ class McpReadOnlyAdapter(ReadOnly1CPort):
         last_error: BaseException | None = None
         for attempt in range(1, self._attempts + 1):
             try:
-                async with asyncio.timeout(timeout):
-                    return await self._transport.call_tool(name, arguments)
+                try:
+                    attempt_timeout = stage_timeout(deadline_at, timeout)
+                except ApplicationError as error:
+                    raise _mcp_unavailable() from error
+                async with asyncio.timeout(attempt_timeout):
+                    return await self._transport.call_tool(name, arguments), attempt
             except asyncio.TimeoutError as error:
                 last_error = error
             except McpTransportError as error:
                 last_error = error
                 if not error.retryable:
                     break
-            if attempt < self._attempts:
+            if attempt < self._attempts and retry_fits(deadline_at, backoff=0.25):
                 await asyncio.sleep(0.25)
-        raise ApplicationError(
-            "MCP_UNAVAILABLE", "Read-only MCP 1С временно недоступен.", 503
-        ) from last_error
+                continue
+            break
+        raise _mcp_unavailable() from last_error
 
 
 def _extract_envelope(raw: object) -> dict[str, Any]:
@@ -316,6 +331,12 @@ def _validate_rows_against_schema(envelope: ExecuteQueryEnvelope) -> None:
 
 def _invalid(message: str) -> ApplicationError:
     return ApplicationError("MCP_ENVELOPE_INVALID", message, 502)
+
+
+def _mcp_unavailable() -> ApplicationError:
+    return ApplicationError(
+        "MCP_UNAVAILABLE", "Read-only MCP 1С временно недоступен.", 503
+    )
 
 
 def _reject_transport_extras(envelope: Mapping[str, object]) -> None:

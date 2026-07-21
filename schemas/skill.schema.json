@@ -72,7 +72,14 @@
       "maxItems": 40,
       "uniqueItems": true,
       "items": {
-        "$ref": "#/$defs/factEqualsParameterConstraint"
+        "oneOf": [
+          {
+            "$ref": "#/$defs/factEqualsParameterConstraint"
+          },
+          {
+            "$ref": "#/$defs/factInParameterConstraint"
+          }
+        ]
       }
     },
     "dependencies": {
@@ -1391,6 +1398,27 @@
       "properties": {
         "kind": {
           "const": "fact_equals_parameter"
+        },
+        "fact_id": {
+          "$ref": "#/$defs/factId"
+        },
+        "parameter": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,63}$"
+        }
+      }
+    },
+    "factInParameterConstraint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "fact_id",
+        "parameter"
+      ],
+      "properties": {
+        "kind": {
+          "const": "fact_in_parameter"
         },
         "fact_id": {
           "$ref": "#/$defs/factId"

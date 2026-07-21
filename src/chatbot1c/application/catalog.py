@@ -44,6 +44,9 @@ class CatalogManager:
                 self._snapshot = persisted
             return self._snapshot
 
+    def load_revision(self, revision: int) -> PinnedCatalog:
+        return self._repository.load_catalog_revision(revision)
+
     def activate(self, snapshot: PinnedCatalog) -> None:
         with self._lock:
             if snapshot.revision < self._snapshot.revision:

@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import AwareDatetime, Field
+from pydantic import AwareDatetime, Field, model_validator
 
 from chatbot1c.domain.base import ClosedModel
 from chatbot1c.domain.outcomes import CoverageStatus, Outcome
@@ -75,10 +76,10 @@ class StepEvidence(ClosedModel):
     row_count: Annotated[int, Field(ge=0)]
     truncated: bool
     has_more: bool
-    produced_fact_instance_ids: Annotated[
-        tuple[UUID, ...], Field(max_length=100000)
-    ]
+    produced_fact_instance_ids: Annotated[tuple[UUID, ...], Field(max_length=100000)]
     error_ids: Annotated[tuple[UUID, ...], Field(max_length=100)]
+    # The enclosing bundle accepts this implicit value only for legacy 1.0 reads.
+    collection_scope: Literal["visible_page", "complete_set"] = "complete_set"
 
 
 class SourceLocator(ClosedModel):
@@ -170,12 +171,8 @@ class Citation(ClosedModel):
 
 class DisagreementPosition(ClosedModel):
     position_id: Annotated[str, Field(pattern=r"^p[1-9][0-9]?$")]
-    fact_instance_ids: Annotated[
-        tuple[UUID, ...], Field(min_length=1, max_length=1000)
-    ]
-    citation_ids: Annotated[
-        tuple[UUID, ...], Field(min_length=1, max_length=100)
-    ]
+    fact_instance_ids: Annotated[tuple[UUID, ...], Field(min_length=1, max_length=1000)]
+    citation_ids: Annotated[tuple[UUID, ...], Field(min_length=1, max_length=100)]
 
 
 class DocumentationDisagreement(ClosedModel):
@@ -196,6 +193,8 @@ class CoverageRequirement(ClosedModel):
     semantic_type: SemanticType
     status: CoverageStatus
     fact_instance_ids: Annotated[tuple[UUID, ...], Field(max_length=100000)]
+    # The enclosing bundle accepts this implicit value only for legacy 1.0 reads.
+    required: bool = True
 
 
 class Coverage(ClosedModel):
@@ -238,7 +237,7 @@ class EvidenceError(ClosedModel):
 
 
 class EvidenceBundle(ClosedModel):
-    schema_version: Literal["1.0.0"]
+    schema_version: Literal["1.0.0", "1.1.0"]
     document_type: Literal["evidence_bundle"]
     trace_id: UUID
     request_id: UUID
@@ -246,6 +245,7 @@ class EvidenceBundle(ClosedModel):
     created_at: AwareDatetime
     source_boundary: Literal["data", "documentation", "mixed", "none"]
     outcome: Outcome
+    empty_reason: Literal["not_found", "no_rows"] | None = None
     catalog_snapshot: CatalogSnapshot
     database_state_marker: DatabaseStateMarker
     steps: Annotated[tuple[StepEvidence, ...], Field(max_length=50)]
@@ -258,3 +258,34 @@ class EvidenceBundle(ClosedModel):
     pagination: Pagination | None = None
     context_exports: Annotated[tuple[ContextExport, ...], Field(max_length=100)]
     errors: Annotated[tuple[EvidenceError, ...], Field(max_length=100)]
+
+    @model_validator(mode="before")
+    @classmethod
+    def require_explicit_v11_fields(cls, value: object) -> object:
+        if not isinstance(value, Mapping) or value.get("schema_version") != "1.1.0":
+            return value
+        steps = value.get("steps")
+        if isinstance(steps, (list, tuple)) and any(
+            not _field_was_supplied(step, "collection_scope") for step in steps
+        ):
+            raise ValueError("evidence 1.1.0 requires steps[*].collection_scope")
+        coverage = value.get("coverage")
+        requirements = (
+            coverage.get("requirements") if isinstance(coverage, Mapping) else None
+        )
+        if isinstance(requirements, (list, tuple)) and any(
+            not _field_was_supplied(requirement, "required")
+            for requirement in requirements
+        ):
+            raise ValueError(
+                "evidence 1.1.0 requires coverage.requirements[*].required"
+            )
+        return value
+
+
+def _field_was_supplied(value: object, field: str) -> bool:
+    if isinstance(value, Mapping):
+        return field in value
+    if isinstance(value, ClosedModel):
+        return field in value.model_fields_set
+    return False

@@ -25,7 +25,10 @@
   ],
   "properties": {
     "schema_version": {
-      "const": "1.0.0"
+      "enum": [
+        "1.0.0",
+        "1.1.0"
+      ]
     },
     "document_type": {
       "const": "evidence_bundle"
@@ -53,6 +56,13 @@
     },
     "outcome": {
       "$ref": "#/$defs/outcome"
+    },
+    "empty_reason": {
+      "enum": [
+        "not_found",
+        "no_rows",
+        null
+      ]
     },
     "catalog_snapshot": {
       "$ref": "#/$defs/catalogSnapshot"
@@ -127,6 +137,42 @@
       "maxItems": 100
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "schema_version": {
+            "const": "1.1.0"
+          }
+        },
+        "required": [
+          "schema_version"
+        ]
+      },
+      "then": {
+        "properties": {
+          "steps": {
+            "items": {
+              "required": [
+                "collection_scope"
+              ]
+            }
+          },
+          "coverage": {
+            "properties": {
+              "requirements": {
+                "items": {
+                  "required": [
+                    "required"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
   "$defs": {
     "uuid": {
       "type": "string",
@@ -340,6 +386,12 @@
         "has_more": {
           "type": "boolean"
         },
+        "collection_scope": {
+          "enum": [
+            "visible_page",
+            "complete_set"
+          ]
+        },
         "produced_fact_instance_ids": {
           "type": "array",
           "maxItems": 100000,
@@ -525,11 +577,25 @@
           ]
         },
         "moment": {
-          "type": "string",
-          "format": "date-time"
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "period": {
-          "$ref": "#/$defs/period"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/period"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       }
     },
@@ -791,6 +857,9 @@
               "semantic_type": {
                 "$ref": "#/$defs/semanticType"
               },
+              "required": {
+                "type": "boolean"
+              },
               "status": {
                 "enum": [
                   "covered",
@@ -836,8 +905,15 @@
           "type": "boolean"
         },
         "continuation_handle": {
-          "type": "string",
-          "pattern": "^page_[A-Za-z0-9_-]{32,100}$"
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^page_[A-Za-z0-9_-]{32,100}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       }
     },

@@ -81,13 +81,42 @@ lock entry/digest conflict и молчаливый выбор disagreement posit
 
 - все outcomes `success_with_rows`, `success_empty`, `zero_aggregate`, `partial`,
   `query_error`, `mcp_unavailable`, `llm_unavailable`, `contract_error`;
-- keyset/prefix page policies, default 20, continuation handles;
+- exact null/empty matrix and strict `partial` versus `contract_error` boundary;
+- reverse-closure derivation of required/optional steps from typed final
+  requirements, required-first scheduling and branch-aware failure reduction;
+- evidence coverage exact-copies `requirement_id/required`; optional missing is
+  reported but excluded from `coverage.sufficient`; required collection
+  completeness is checked separately from fact status;
+- emit Evidence 1.1 with explicit `collection_scope`/`required`, while reading
+  frozen 1.0 through the version-specific compatibility branch only;
+- keyset для unbounded producers и prefix только по cited/digest-pinned
+  cardinality proof, exact behavior на `maximum_total`, default 20,
+  30-minute single-use continuation handles и public continuation DTO/errors;
+- reject paged aggregate/exact skills; typed zero aggregate uses a dedicated
+  non-paginated one-row complete-set producer;
+- reject transferable keyset skills unless sort/cursor ordered bijection,
+  unique parameters, typed non-null coordinates, full identity suffix and
+  parsed query ORDER BY/after-predicate are all proved at import;
 - deterministic answer fallback;
 - dependency diagnostics и timeout/retry policies;
-- manual session/trace clear.
+- two-phase manual session/trace/raw-payload clear с preview и confirmation
+  token;
+- R06 warehouse resolver только по metadata-proven name/`ТипСклада`/
+  `Подразделение`, без direct `Организация`/`Назначение`.
+- migration оставшихся R01A/R01B/R01C/R01D, SP03 и SL01 с недоказанного
+  `prefix:1000` на metadata-proven stable keyset; R06 и SP04 остаются keyset.
 
-Тесты: Q012/Q015/Q031/Q054/Q099/Q102-Q106, malformed MCP envelope, one-row
-zero/null aggregate, truncated required result, retry deadline exhaustion.
+Тесты: Q012/Q054/Q099/Q102-Q106 и `Q015.list`/`Q031.list`; total/full Q015 и
+Q031 остаются `not_run` до отдельных aggregate producers. Дополнительно:
+malformed MCP envelope, one-row zero/null aggregate, 22-row Q031 page that must
+not be labeled total, truncated required result, keyset no-duplicate/no-skip,
+proved-prefix `M-1/M/M+1`, continuation state matrix, clear preview/confirm,
+retry deadline exhaustion. Нормативный black-box contract:
+`docs/testing/slice2_acceptance_contract.md`.
+
+Срез закрывает только list component `AC-024.list`. Rank component и глобальный
+`AC-024` остаются `not_run` до отдельного прогона M07 с проверкой состава,
+порядка, направления и показателя ранжирования.
 
 ## 3. Entity/context slice
 
@@ -106,7 +135,9 @@ identity и wrong semantic type отклоняется.
 
 Реализовать allowlist operators полностью:
 
-- count distinct semantics;
+- count distinct semantics с обязательным `visible_page|complete_set` scope;
+  total count разрешен только для complete-set/aggregate producer и никогда не
+  запускает скрытый drain paged input;
 - aggregate с unit/currency;
 - rank с stable tie policy;
 - filter zero/positive/negative/null;
@@ -117,6 +148,13 @@ identity и wrong semantic type отклоняется.
 Тесты: Q016, Q023-Q024, Q032-Q040, Q043-Q050, Q053-Q055, Q061, Q067,
 Q071-Q077, Q084-Q090. Отдельные negative tests различают rows/documents/items,
 revenue/profit/debt и несопоставимые валюты.
+
+После появления SP06 этот срез дополнительно активирует full Q031 composite:
+SP04 дает только visible keyset page, SP06 - distinct total на том же
+period/filter fingerprint. До этого full Q031 не повышается из `not_run`.
+Full Q015 аналогично активируется только после отдельного item aggregate
+producer с тем же normalized empty-article filter; его skill contract должен
+быть добавлен в business package до full-catalog gate.
 
 ## 5. Business data packages
 

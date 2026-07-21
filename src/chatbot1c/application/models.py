@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from types import MappingProxyType
-from typing import Annotated, Literal, Mapping
+from typing import Annotated, Literal, Mapping, TypeAlias
 from uuid import UUID
 
 from pydantic import Field, JsonValue, model_validator
@@ -21,6 +21,15 @@ from chatbot1c.domain.skill import (
     Skill,
     UnitFixed,
     UnitFromFact,
+)
+from chatbot1c.domain.types import EntityRef
+
+PageStrategy: TypeAlias = Literal["prefix", "keyset"]
+MaintenanceScope: TypeAlias = Literal["sessions", "traces", "raw_payloads"]
+_MAINTENANCE_SCOPE_ORDER: tuple[MaintenanceScope, ...] = (
+    "sessions",
+    "traces",
+    "raw_payloads",
 )
 
 
@@ -139,8 +148,6 @@ class ContextFact(ClosedModel):
 
     @model_validator(mode="after")
     def exact_origin(self) -> "ContextFact":
-        from chatbot1c.domain.types import EntityRef
-
         fact = self.origin.fact
         if self.origin_fact_instance_id != fact.fact_instance_id:
             raise ValueError("context origin_fact_instance_id mismatch")
@@ -176,6 +183,7 @@ class PlannerRequest(ClosedModel):
     confirmed_facts: tuple[ContextFact, ...]
     recent_user_messages: Annotated[tuple[str, ...], Field(max_length=8)]
     skill_cards: Annotated[tuple[SkillCard, ...], Field(max_length=16)]
+    deadline_at: datetime | None = Field(default=None, exclude=True)
 
 
 class ExecuteQueryRequest(ClosedModel):
@@ -183,6 +191,7 @@ class ExecuteQueryRequest(ClosedModel):
     params: dict[str, JsonValue]
     limit: Annotated[int, Field(ge=1, le=1000)]
     include_schema: Literal[True] = True
+    deadline_at: datetime | None = Field(default=None, exclude=True)
 
 
 class McpColumn(ClosedModel):
@@ -202,6 +211,44 @@ class ExecuteQueryEnvelope(ClosedModel):
     truncated: bool = False
     has_more: bool = False
     error: str | None = None
+    attempts: Annotated[int, Field(ge=1, le=10)] = 1
+
+
+class ContinuationRequest(ClosedModel):
+    continuation_handle: Annotated[
+        str, Field(pattern=r"^page_[A-Za-z0-9_-]{32}$")
+    ]
+
+
+class MaintenancePreviewRequest(ClosedModel):
+    mode: Literal["preview"]
+    scopes: Annotated[tuple[MaintenanceScope, ...], Field(min_length=1, max_length=3)]
+
+    @model_validator(mode="after")
+    def unique_scopes(self) -> "MaintenancePreviewRequest":
+        if len(set(self.scopes)) != len(self.scopes):
+            raise ValueError("maintenance scopes must be unique")
+        return self
+
+
+class MaintenanceConfirmRequest(ClosedModel):
+    mode: Literal["confirm"]
+    scopes: Annotated[tuple[MaintenanceScope, ...], Field(min_length=1, max_length=3)]
+    confirmation_token: Annotated[
+        str, Field(pattern=r"^clear_[A-Za-z0-9_-]{32}$")
+    ]
+
+    @model_validator(mode="after")
+    def unique_scopes(self) -> "MaintenanceConfirmRequest":
+        if len(set(self.scopes)) != len(self.scopes):
+            raise ValueError("maintenance scopes must be unique")
+        return self
+
+
+MaintenanceClearRequest = Annotated[
+    MaintenancePreviewRequest | MaintenanceConfirmRequest,
+    Field(discriminator="mode"),
+]
 
 
 class GetMetadataRequest(ClosedModel):
@@ -462,3 +509,58 @@ class ImportResult:
     revision: int
     snapshot_id: UUID
     skills: tuple[tuple[str, str, str], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class PageContinuation:
+    handle: str
+    session_id: UUID
+    origin_turn_id: UUID
+    step_id: str
+    skill_id: str
+    skill_version: str
+    skill_digest: str
+    catalog_snapshot_id: UUID
+    catalog_revision: int
+    normalized_params_digest: str
+    arguments: Mapping[str, JsonValue]
+    plan_json: str
+    strategy: PageStrategy
+    page_size: int
+    shown: int
+    database_marker: str
+    sort_tuple: tuple[JsonValue, ...]
+    cursor_values: Mapping[str, JsonValue]
+    created_at: datetime
+    expires_at: datetime
+    consumed_at: datetime | None = None
+    accepted_turn_id: UUID | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class MaintenancePreview:
+    confirmation_token: str
+    scopes: tuple[MaintenanceScope, ...]
+    session_count: int
+    trace_count: int
+    raw_payload_count: int
+    target_fingerprint: str
+    issued_at: datetime
+    expires_at: datetime
+    consumed_at: datetime | None = None
+
+    @property
+    def counts(self) -> Mapping[str, int]:
+        return MappingProxyType(
+            {
+                "sessions": self.session_count,
+                "traces": self.trace_count,
+                "raw_payloads": self.raw_payload_count,
+            }
+        )
+
+
+def canonical_maintenance_scopes(
+    scopes: tuple[MaintenanceScope, ...],
+) -> tuple[MaintenanceScope, ...]:
+    return tuple(scope for scope in _MAINTENANCE_SCOPE_ORDER if scope in scopes)

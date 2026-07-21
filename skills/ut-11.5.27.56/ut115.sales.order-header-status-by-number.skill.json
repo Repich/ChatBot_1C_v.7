@@ -2,10 +2,10 @@
   "schema_version": "1.0.0",
   "document_type": "skill",
   "skill_id": "ut115.sales.order-header-status-by-number",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "display": {
-    "name_ru": "Поиск заказа клиента и его статуса по номеру",
-    "purpose_ru": "Находит уникальный заказ клиента по typed номеру, возвращает статус и exact document ref.",
+    "name_ru": "Заголовок и статус заказа клиента по номеру",
+    "purpose_ru": "Находит уникальный заказ по typed номеру и возвращает полный заголовок, статус, сумму, валюту и подтвержденные показатели исполнения.",
     "limitations_ru": [
       "При нескольких совпадениях требует уточнение и не выбирает заказ автоматически."
     ]
@@ -13,6 +13,7 @@
   "provides": {
     "capability_ids": [
       "CAP-COMMON-ENTITY",
+      "CAP-SALES-ORDER-HEADER",
       "CAP-SALES-ORDER-STATUS"
     ],
     "fact_types": [
@@ -20,7 +21,17 @@
       "document.number",
       "time.document_moment",
       "document.posted",
-      "document.sales_order.status"
+      "party.customer",
+      "catalog.organization",
+      "catalog.warehouse",
+      "document.sales_order.status",
+      "measure.document_amount",
+      "currency.code",
+      "document.sales_order.execution_state",
+      "measure.sales_order.payment_percent",
+      "measure.sales_order.shipment_percent",
+      "measure.sales_order.debt_percent",
+      "time.sales_order_state_moment"
     ]
   },
   "compatibility": {
@@ -43,11 +54,27 @@
           "Номер",
           "Дата",
           "Проведен",
-          "Статус"
+          "Партнер",
+          "Организация",
+          "Склад",
+          "Статус",
+          "СуммаДокумента",
+          "Валюта"
+        ]
+      },
+      {
+        "object_name": "РегистрСведений.СостоянияЗаказовКлиентов",
+        "attributes": [
+          "Заказ",
+          "Состояние",
+          "ДатаСобытия",
+          "ПроцентОплаты",
+          "ПроцентОтгрузки",
+          "ПроцентДолга"
         ]
       }
     ],
-    "metadata_snapshot_sha256": "dbb8b95230a929de03c7af4534adea7550d6de72fdaca9e2defb9c38978d1a61"
+    "metadata_snapshot_sha256": "65523b85cf50bbe795e0cc6f0c2d6ed3d0429d1fb70c56b9ee212e081d75f371"
   },
   "selection": {
     "intent_kinds": [
@@ -82,7 +109,7 @@
     "query_template": {
       "template_id": "ut115.sales.order-header-status-by-number.v1",
       "language": "1c-query",
-      "text": "ВЫБРАТЬ ПЕРВЫЕ 2\n  Заказ.Ссылка КАК Заказ,\n  Заказ.Номер КАК Номер,\n  Заказ.Дата КАК Дата,\n  Заказ.Проведен КАК Проведен,\n  ПРЕДСТАВЛЕНИЕ(Заказ.Статус) КАК Статус\nИЗ Документ.ЗаказКлиента КАК Заказ\nГДЕ Заказ.Номер = &Номер\nУПОРЯДОЧИТЬ ПО Заказ.Дата УБЫВ",
+      "text": "ВЫБРАТЬ ПЕРВЫЕ 2\n  Заказ.Ссылка КАК Заказ,\n  Заказ.Номер КАК Номер,\n  Заказ.Дата КАК Дата,\n  Заказ.Проведен КАК Проведен,\n  Заказ.Партнер КАК Клиент,\n  Заказ.Организация КАК Организация,\n  Заказ.Склад КАК Склад,\n  ПРЕДСТАВЛЕНИЕ(Заказ.Статус) КАК Статус,\n  Заказ.СуммаДокумента КАК СуммаДокумента,\n  Заказ.Валюта.Код КАК Валюта,\n  ПРЕДСТАВЛЕНИЕ(Состояния.Состояние) КАК СостояниеИсполнения,\n  ЕСТЬNULL(Состояния.ПроцентОплаты, 0) КАК ПроцентОплаты,\n  ЕСТЬNULL(Состояния.ПроцентОтгрузки, 0) КАК ПроцентОтгрузки,\n  ЕСТЬNULL(Состояния.ПроцентДолга, 0) КАК ПроцентДолга,\n  ЕСТЬNULL(Состояния.ДатаСобытия, Заказ.Дата) КАК ДатаСобытия\nИЗ Документ.ЗаказКлиента КАК Заказ\n  ЛЕВОЕ СОЕДИНЕНИЕ РегистрСведений.СостоянияЗаказовКлиентов КАК Состояния\n  ПО Состояния.Заказ = Заказ.Ссылка\nГДЕ Заказ.Номер = &Номер\nУПОРЯДОЧИТЬ ПО Заказ.Дата УБЫВ, Заказ.Ссылка",
       "execution": {
         "kind": "single_select",
         "statement_count": 1,
@@ -95,6 +122,13 @@
           "value": 2,
           "role": "top_limit",
           "occurrences": 1
+        },
+        {
+          "kind": "zero_boundary",
+          "statement": 1,
+          "value": 0,
+          "role": "null_substitution",
+          "occurrences": 3
         }
       ],
       "include_schema": true,
@@ -144,12 +178,92 @@
         "converter": "boolean"
       },
       {
+        "column": "Клиент",
+        "fact_id": "order.customer",
+        "accepted_mcp_types": [
+          "СправочникСсылка.Партнеры"
+        ],
+        "converter": "object_ref"
+      },
+      {
+        "column": "Организация",
+        "fact_id": "order.organization",
+        "accepted_mcp_types": [
+          "СправочникСсылка.Организации"
+        ],
+        "converter": "object_ref"
+      },
+      {
+        "column": "Склад",
+        "fact_id": "order.warehouse",
+        "accepted_mcp_types": [
+          "СправочникСсылка.Склады"
+        ],
+        "converter": "object_ref"
+      },
+      {
         "column": "Статус",
         "fact_id": "order.status",
         "accepted_mcp_types": [
           "Строка"
         ],
         "converter": "string"
+      },
+      {
+        "column": "СуммаДокумента",
+        "fact_id": "order.amount",
+        "accepted_mcp_types": [
+          "Число"
+        ],
+        "converter": "decimal"
+      },
+      {
+        "column": "Валюта",
+        "fact_id": "order.currency",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "СостояниеИсполнения",
+        "fact_id": "order.execution_state",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "ПроцентОплаты",
+        "fact_id": "order.payment_percent",
+        "accepted_mcp_types": [
+          "Число"
+        ],
+        "converter": "decimal"
+      },
+      {
+        "column": "ПроцентОтгрузки",
+        "fact_id": "order.shipment_percent",
+        "accepted_mcp_types": [
+          "Число"
+        ],
+        "converter": "decimal"
+      },
+      {
+        "column": "ПроцентДолга",
+        "fact_id": "order.debt_percent",
+        "accepted_mcp_types": [
+          "Число"
+        ],
+        "converter": "decimal"
+      },
+      {
+        "column": "ДатаСобытия",
+        "fact_id": "order.state_event_date",
+        "accepted_mcp_types": [
+          "Дата"
+        ],
+        "converter": "datetime"
       }
     ],
     "pagination": {
@@ -210,6 +324,42 @@
         }
       },
       {
+        "fact_id": "order.customer",
+        "semantic_type": "party.customer",
+        "value_type": "entity_ref",
+        "role": "dimension",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Клиент",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "order.organization",
+        "semantic_type": "catalog.organization",
+        "value_type": "entity_ref",
+        "role": "dimension",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Организация",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "order.warehouse",
+        "semantic_type": "catalog.warehouse",
+        "value_type": "entity_ref",
+        "role": "dimension",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Склад",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
         "fact_id": "order.status",
         "semantic_type": "document.sales_order.status",
         "value_type": "string",
@@ -217,6 +367,94 @@
         "required": true,
         "nullable": false,
         "title_ru": "Статус",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "order.amount",
+        "semantic_type": "measure.document_amount",
+        "value_type": "money",
+        "role": "measure",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Сумма документа",
+        "unit_contract": {
+          "mode": "from_fact",
+          "fact_id": "order.currency"
+        }
+      },
+      {
+        "fact_id": "order.currency",
+        "semantic_type": "currency.code",
+        "value_type": "string",
+        "role": "dimension",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Валюта",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "order.execution_state",
+        "semantic_type": "document.sales_order.execution_state",
+        "value_type": "string",
+        "role": "attribute",
+        "required": false,
+        "nullable": true,
+        "title_ru": "Состояние исполнения",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "order.payment_percent",
+        "semantic_type": "measure.sales_order.payment_percent",
+        "value_type": "percentage",
+        "role": "measure",
+        "required": false,
+        "nullable": false,
+        "title_ru": "Оплачено",
+        "unit_contract": {
+          "mode": "fixed",
+          "code": "%"
+        }
+      },
+      {
+        "fact_id": "order.shipment_percent",
+        "semantic_type": "measure.sales_order.shipment_percent",
+        "value_type": "percentage",
+        "role": "measure",
+        "required": false,
+        "nullable": false,
+        "title_ru": "Отгружено",
+        "unit_contract": {
+          "mode": "fixed",
+          "code": "%"
+        }
+      },
+      {
+        "fact_id": "order.debt_percent",
+        "semantic_type": "measure.sales_order.debt_percent",
+        "value_type": "percentage",
+        "role": "measure",
+        "required": false,
+        "nullable": false,
+        "title_ru": "Долг",
+        "unit_contract": {
+          "mode": "fixed",
+          "code": "%"
+        }
+      },
+      {
+        "fact_id": "order.state_event_date",
+        "semantic_type": "time.sales_order_state_moment",
+        "value_type": "datetime",
+        "role": "time",
+        "required": false,
+        "nullable": false,
+        "title_ru": "Момент состояния",
         "unit_contract": {
           "mode": "not_applicable"
         }
@@ -229,7 +467,12 @@
           "order.number",
           "order.date",
           "order.posted",
-          "order.status"
+          "order.customer",
+          "order.organization",
+          "order.warehouse",
+          "order.status",
+          "order.amount",
+          "order.currency"
         ]
       ],
       "empty_semantics": "confirmed_not_found",
@@ -239,14 +482,24 @@
     "renderer": {
       "kind": "scalar",
       "primary_fact_ids": [
-        "order.status"
+        "order.currency"
       ],
       "column_fact_ids": [
         "order.ref",
         "order.number",
         "order.date",
         "order.posted",
-        "order.status"
+        "order.customer",
+        "order.organization",
+        "order.warehouse",
+        "order.status",
+        "order.amount",
+        "order.currency",
+        "order.execution_state",
+        "order.payment_percent",
+        "order.shipment_percent",
+        "order.debt_percent",
+        "order.state_event_date"
       ]
     },
     "row_identity_fact_ids": [
@@ -304,7 +557,32 @@
               "Номер": "0000-000005",
               "Дата": "2025-02-12T10:00:00+03:00",
               "Проведен": true,
-              "Статус": "К выполнению"
+              "Клиент": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000000401",
+                "ТипОбъекта": "СправочникСсылка.Партнеры",
+                "Представление": "Торговый дом Север"
+              },
+              "Организация": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000000402",
+                "ТипОбъекта": "СправочникСсылка.Организации",
+                "Представление": "ООО Торговая компания"
+              },
+              "Склад": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000000201",
+                "ТипОбъекта": "СправочникСсылка.Склады",
+                "Представление": "Основной склад"
+              },
+              "Статус": "К выполнению",
+              "СуммаДокумента": 3000.0,
+              "Валюта": "RUB",
+              "СостояниеИсполнения": "Ожидается обеспечение",
+              "ПроцентОплаты": 100.0,
+              "ПроцентОтгрузки": 0.0,
+              "ПроцентДолга": 0.0,
+              "ДатаСобытия": "2025-02-12T10:05:00+03:00"
             }
           ],
           "schema": {
@@ -334,9 +612,69 @@
                 ]
               },
               {
+                "name": "Клиент",
+                "types": [
+                  "СправочникСсылка.Партнеры"
+                ]
+              },
+              {
+                "name": "Организация",
+                "types": [
+                  "СправочникСсылка.Организации"
+                ]
+              },
+              {
+                "name": "Склад",
+                "types": [
+                  "СправочникСсылка.Склады"
+                ]
+              },
+              {
                 "name": "Статус",
                 "types": [
                   "Строка"
+                ]
+              },
+              {
+                "name": "СуммаДокумента",
+                "types": [
+                  "Число"
+                ]
+              },
+              {
+                "name": "Валюта",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "СостояниеИсполнения",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "ПроцентОплаты",
+                "types": [
+                  "Число"
+                ]
+              },
+              {
+                "name": "ПроцентОтгрузки",
+                "types": [
+                  "Число"
+                ]
+              },
+              {
+                "name": "ПроцентДолга",
+                "types": [
+                  "Число"
+                ]
+              },
+              {
+                "name": "ДатаСобытия",
+                "types": [
+                  "Дата"
                 ]
               }
             ]
@@ -351,7 +689,12 @@
           "order.number",
           "order.date",
           "order.posted",
-          "order.status"
+          "order.customer",
+          "order.organization",
+          "order.warehouse",
+          "order.status",
+          "order.amount",
+          "order.currency"
         ]
       }
     },
@@ -365,7 +708,98 @@
           "success": true,
           "data": [],
           "schema": {
-            "columns": []
+            "columns": [
+              {
+                "name": "Заказ",
+                "types": [
+                  "ДокументСсылка.ЗаказКлиента"
+                ]
+              },
+              {
+                "name": "Номер",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Дата",
+                "types": [
+                  "Дата"
+                ]
+              },
+              {
+                "name": "Проведен",
+                "types": [
+                  "Булево"
+                ]
+              },
+              {
+                "name": "Клиент",
+                "types": [
+                  "СправочникСсылка.Партнеры"
+                ]
+              },
+              {
+                "name": "Организация",
+                "types": [
+                  "СправочникСсылка.Организации"
+                ]
+              },
+              {
+                "name": "Склад",
+                "types": [
+                  "СправочникСсылка.Склады"
+                ]
+              },
+              {
+                "name": "Статус",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "СуммаДокумента",
+                "types": [
+                  "Число"
+                ]
+              },
+              {
+                "name": "Валюта",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "СостояниеИсполнения",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "ПроцентОплаты",
+                "types": [
+                  "Число"
+                ]
+              },
+              {
+                "name": "ПроцентОтгрузки",
+                "types": [
+                  "Число"
+                ]
+              },
+              {
+                "name": "ПроцентДолга",
+                "types": [
+                  "Число"
+                ]
+              },
+              {
+                "name": "ДатаСобытия",
+                "types": [
+                  "Дата"
+                ]
+              }
+            ]
           },
           "count": 0
         }
@@ -385,13 +819,22 @@
       "configuration_id": "УправлениеТорговлейБазовая",
       "release": "11.5.27.56",
       "compatibility_mode": "8.3.27",
-      "metadata_snapshot_sha256": "dbb8b95230a929de03c7af4534adea7550d6de72fdaca9e2defb9c38978d1a61"
+      "metadata_snapshot_sha256": "65523b85cf50bbe795e0cc6f0c2d6ed3d0429d1fb70c56b9ee212e081d75f371"
     },
     "source_references": [
       {
         "kind": "configuration_metadata",
         "uri": "ut-config://11.5.27.56/Documents/ЗаказКлиента.xml",
         "sha256": "dbb8b95230a929de03c7af4534adea7550d6de72fdaca9e2defb9c38978d1a61"
+      },
+      {
+        "kind": "configuration_metadata",
+        "uri": "ut-config://11.5.27.56/InformationRegisters/СостоянияЗаказовКлиентов.xml",
+        "sha256": "bc2d443177b72cac60286e96b170118bd1e007a9e1bb536989c4a251439c491d"
+      },
+      {
+        "kind": "configuration_source",
+        "uri": "ut-config://11.5.27.56/CommonModules/ОбменССайтомПереопределяемый/Ext/Module.bsl"
       }
     ],
     "change_note_ru": "Навык построен по проверенным metadata/help исходникам УТ 11.5.27.56."
@@ -400,6 +843,6 @@
     "algorithm": "sha256",
     "canonicalization": "RFC8785",
     "scope": "document_without_integrity",
-    "digest": "bf145039f269f4a1de9be4a9f16590efa8c35121e1a3b701db6299a5c97a7959"
+    "digest": "5c23cdbc65026345684dc6bd584fe529256569935310b5d9dba1a903c8a5aeda"
   }
 }

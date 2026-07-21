@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from chatbot1c.contracts.errors import ContractIssue
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class ApplicationError(Exception):
     code: str
     message_ru: str

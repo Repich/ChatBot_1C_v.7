@@ -266,6 +266,9 @@ scripts/                  # index, marker, baseline and package validation entry
 | `REQUEST_DEADLINE_SECONDS` | `90`; базовый SLO отдельно 30 секунд |
 | `LOG_LEVEL` | `INFO`, без raw payload в обычном логе |
 
+`MAX_MCP_ROWS` является transport limit одного вызова, а не доказательством
+`prefix.maximum_total` и не общим пределом keyset continuation chain.
+
 Пути обрабатываются через `pathlib`; конфигурация не содержит разделителей,
 специфичных для ОС. На Windows сервис запускается тем же wheel/venv и получает
 пути через environment или `.env.local`, исключенный из Git.

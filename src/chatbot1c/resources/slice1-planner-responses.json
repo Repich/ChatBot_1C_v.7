@@ -126,7 +126,7 @@
           ],
           "required_output_fact_ids": [
             "item.ref",
-            "item.article",
+            "item.code",
             "item.name"
           ],
           "on_empty": "stop_not_found"
@@ -136,14 +136,6 @@
         {
           "step_id": "s1",
           "fact_id": "item.ref"
-        },
-        {
-          "step_id": "s1",
-          "fact_id": "item.article"
-        },
-        {
-          "step_id": "s1",
-          "fact_id": "item.name"
         }
       ]
     }
@@ -391,10 +383,6 @@
         },
         {
           "step_id": "s1",
-          "fact_id": "line.unit"
-        },
-        {
-          "step_id": "s1",
           "fact_id": "line.quantity"
         }
       ]
@@ -478,10 +466,6 @@
         {
           "step_id": "s1",
           "fact_id": "line.item"
-        },
-        {
-          "step_id": "s1",
-          "fact_id": "line.unit"
         },
         {
           "step_id": "s1",
@@ -588,7 +572,7 @@
           ],
           "required_output_fact_ids": [
             "item.ref",
-            "item.article",
+            "item.code",
             "item.name"
           ],
           "on_empty": "stop_not_found"
@@ -598,14 +582,6 @@
         {
           "step_id": "s1",
           "fact_id": "item.ref"
-        },
-        {
-          "step_id": "s1",
-          "fact_id": "item.article"
-        },
-        {
-          "step_id": "s1",
-          "fact_id": "item.name"
         }
       ]
     }
@@ -667,7 +643,7 @@
           ],
           "required_output_fact_ids": [
             "item.ref",
-            "item.article",
+            "item.code",
             "item.name"
           ],
           "on_empty": "stop_not_found"
@@ -677,14 +653,6 @@
         {
           "step_id": "s1",
           "fact_id": "item.ref"
-        },
-        {
-          "step_id": "s1",
-          "fact_id": "item.article"
-        },
-        {
-          "step_id": "s1",
-          "fact_id": "item.name"
         }
       ]
     }
@@ -746,7 +714,7 @@
           ],
           "required_output_fact_ids": [
             "item.ref",
-            "item.article",
+            "item.code",
             "item.name"
           ],
           "on_empty": "stop_not_found"
@@ -756,14 +724,6 @@
         {
           "step_id": "s1",
           "fact_id": "item.ref"
-        },
-        {
-          "step_id": "s1",
-          "fact_id": "item.article"
-        },
-        {
-          "step_id": "s1",
-          "fact_id": "item.name"
         }
       ]
     }
@@ -825,7 +785,7 @@
           ],
           "required_output_fact_ids": [
             "item.ref",
-            "item.article",
+            "item.code",
             "item.name"
           ],
           "on_empty": "stop_not_found"
@@ -835,14 +795,6 @@
         {
           "step_id": "s1",
           "fact_id": "item.ref"
-        },
-        {
-          "step_id": "s1",
-          "fact_id": "item.article"
-        },
-        {
-          "step_id": "s1",
-          "fact_id": "item.name"
         }
       ]
     }
@@ -904,7 +856,7 @@
           ],
           "required_output_fact_ids": [
             "item.ref",
-            "item.article",
+            "item.code",
             "item.name"
           ],
           "on_empty": "stop_not_found"
@@ -914,14 +866,6 @@
         {
           "step_id": "s1",
           "fact_id": "item.ref"
-        },
-        {
-          "step_id": "s1",
-          "fact_id": "item.article"
-        },
-        {
-          "step_id": "s1",
-          "fact_id": "item.name"
         }
       ]
     }
@@ -983,7 +927,7 @@
           ],
           "required_output_fact_ids": [
             "item.ref",
-            "item.article",
+            "item.code",
             "item.name"
           ],
           "on_empty": "stop_not_found"
@@ -993,14 +937,6 @@
         {
           "step_id": "s1",
           "fact_id": "item.ref"
-        },
-        {
-          "step_id": "s1",
-          "fact_id": "item.article"
-        },
-        {
-          "step_id": "s1",
-          "fact_id": "item.name"
         }
       ]
     }

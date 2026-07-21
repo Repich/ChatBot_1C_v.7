@@ -173,6 +173,12 @@ Product capability ID остается requirement/test label. В колонке
 | AC-058 | Q107 проверяет назначение, только фактические возможности и read-only mode |
 | AC-059 | Coverage audit на Q001-Q116 требует упоминания и end-to-end результата всех 87 capability IDs |
 
+Статус составного `AC-024` агрегируется без досрочного закрытия. Slice 2 может
+записать отдельное evidence `AC-024.list` для canonical composition и
+lossless pagination. Пока M07 oracle не проверил rank composition, order,
+direction и measure, `AC-024.rank=not_run` и глобальный `AC-024=not_run` даже
+при `AC-024.list=pass`. Глобальный `pass` является conjunction двух частей.
+
 ## 5. 116 сценариев на механизмы
 
 Полная поштучная проверка находится в `self_review.md`. Групповая связь:
@@ -209,3 +215,24 @@ Product capability ID остается requirement/test label. В колонке
 4. Принят marker `acceptance_observable_state`: контрольные проекции/агрегаты
    `Q001-Q116` плюс configuration/profile/catalog/docs revisions. Его ограничение
    описано в PO; token MCP и полный snapshot не входят в MVP.
+5. Q015 и Q031 имеют independently reported list/total части. `Q031.list`
+   проверяет SP04 keyset page/continuation, `Q031.total` - distinct
+   shipment-document aggregate на тех же period/filter coordinates; Q015
+   аналогично разделяет item list и found-position total. Slice 2 закрывает
+   только list; total/full scenarios остаются `not_run` до aggregate producers.
+   Page count не является total.
+6. `prefix.maximum_total` не является safety cap. Любой unbounded producer
+   обязан использовать keyset; prefix принимается только с cited
+   metadata/config-enforced cardinality proof и exact M boundary tests.
+7. Evidence coverage сохраняет `required` для каждого planner requirement.
+   `sufficient` требует для каждого `required=true` одновременно
+   `status=covered` и выполненную collection obligation; optional missing или
+   incomplete остается видимым и не превращает достаточный ответ в
+   partial/error. Новые bundles имеют version 1.1; legacy 1.0 defaults
+   применяются только при чтении.
+8. Keyset import проверяет ordered sort/cursor bijection, case-insensitive
+   uniqueness/collision параметров, encoding/type, non-null coordinates, full
+   row-identity suffix и AST-equivalent ORDER BY/strict after-predicate.
+9. `keyset|prefix` допустимы только для `cardinality=many`; aggregate/exact
+   producers используют `strategy=none`, иначе import reject
+   `PAGINATION_CARDINALITY_MISMATCH`.

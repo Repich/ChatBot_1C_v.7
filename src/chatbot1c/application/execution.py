@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Literal, cast
 from uuid import NAMESPACE_URL, UUID, uuid5
@@ -17,9 +17,14 @@ from chatbot1c.application.models import (
     ExecuteQueryRequest,
     HelpChunk,
     HelpSearchRequest,
+    PageContinuation,
     PinnedCatalog,
 )
 from chatbot1c.application.operators import normalize_period
+from chatbot1c.application.outcome_machine import (
+    classify_failure,
+    combine_step_outcomes,
+)
 from chatbot1c.application.ports import (
     DocumentationPort,
     ReadOnly1CPort,
@@ -27,6 +32,12 @@ from chatbot1c.application.ports import (
 )
 from chatbot1c.application.trace_paths import step_trace_prefix
 from chatbot1c.contracts.digest import canonicalize
+from chatbot1c.contracts.semantic import (
+    PlanCoverageProof,
+    build_plan_coverage_proof,
+    collection_obligation_satisfied,
+    validate_evidence_against_plan,
+)
 from chatbot1c.domain.evidence import (
     CatalogSkill,
     CatalogSnapshot,
@@ -51,10 +62,12 @@ from chatbot1c.domain.outcomes import CoverageStatus, Outcome
 from chatbot1c.domain.plan import (
     Binding,
     ContextBinding,
+    CountOperator,
     ExecuteResult,
     LiteralBinding,
     NormalizePeriodOperator,
     PlannerOutput,
+    PlanStep,
     SkillCall,
     SlotBinding,
     StepBinding,
@@ -64,10 +77,14 @@ from chatbot1c.domain.skill import (
     DataQueryOperation,
     DocumentationRetrievalOperation,
     FactDefinition,
+    FactEqualsParameterConstraint,
     FactValueType,
+    KeysetPagination,
+    PrefixPagination,
     Skill,
     UnitFixed,
     UnitFromFact,
+    collection_scope_for_skill,
 )
 from chatbot1c.domain.types import EntityRef, Period
 
@@ -82,6 +99,8 @@ class ExecutionContext:
     default_list_limit: int
     catalog: PinnedCatalog
     context_facts: tuple[ContextFact, ...]
+    database_state_marker: DatabaseStateMarker
+    deadline_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,6 +117,24 @@ class StepResult:
     error: EvidenceError | None = None
     truncated: bool = False
     has_more: bool = False
+    continuation: ContinuationDraft | None = None
+    criticality: Literal["required", "optional"] = "required"
+    collection_scope: Literal["visible_page", "complete_set"] = "complete_set"
+    empty_reason: Literal["not_found", "no_rows"] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ContinuationDraft:
+    step_id: str
+    skill_id: str
+    skill_version: str
+    skill_digest: str
+    arguments: dict[str, JsonValue]
+    strategy: Literal["prefix", "keyset"]
+    page_size: int
+    cumulative_shown: int
+    sort_tuple: tuple[JsonValue, ...]
+    cursor_values: dict[str, JsonValue]
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,6 +143,7 @@ class ExecutionResult:
     evidence: EvidenceBundle
     context_facts: tuple[ContextFact, ...]
     steps: tuple[StepResult, ...]
+    continuation: ContinuationDraft | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,6 +151,16 @@ class ResolvedBinding:
     value: JsonValue
     source: Literal["user_slot", "session_context", "previous_step", "system"]
     origins: tuple[EntityFactOrigin, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class _PageRequest:
+    strategy: Literal["none", "prefix", "keyset"]
+    page_size: int
+    request_limit: int
+    skip: int
+    cumulative_before: int
+    query_params: dict[str, JsonValue]
 
 
 class PlanExecutor:
@@ -140,56 +188,218 @@ class PlanExecutor:
     ) -> ExecutionResult:
         if not isinstance(plan.result, ExecuteResult):
             raise ValueError("PlanExecutor accepts execute decisions only")
+        coverage_proof = build_plan_coverage_proof(
+            plan, tuple(context.catalog.skills.values())
+        )
         context_index = {fact.handle: fact for fact in context.context_facts}
         step_results: dict[str, StepResult] = {}
         ordered: list[StepResult] = []
-        for step in plan.result.steps:
-            if isinstance(step, SkillCall):
-                skill = context.catalog.skills.get(step.skill_id)
-                if skill is None or skill.version != step.skill_version:
-                    raise ApplicationError(
-                        "PLAN_SKILL_MISSING",
-                        f"Pinned skill {step.skill_id}@{step.skill_version} отсутствует.",
-                        409,
-                    )
-                result = await self._execute_skill(
+        required_ids = coverage_proof.required_steps
+        scheduled = (
+            [step for step in plan.result.steps if step.step_id in required_ids],
+            [step for step in plan.result.steps if step.step_id not in required_ids],
+        )
+        failed_or_blocked: set[str] = set()
+        required_failed = False
+        stop_all = False
+        for phase, steps in enumerate(scheduled):
+            if phase == 1 and (required_failed or stop_all):
+                break
+            for step in steps:
+                if _runtime_step_dependencies(step) & failed_or_blocked:
+                    failed_or_blocked.add(step.step_id)
+                    continue
+                criticality: Literal["required", "optional"] = (
+                    "required" if phase == 0 else "optional"
+                )
+                result = await self._execute_plan_step(
                     plan,
                     step,
-                    skill,
                     context,
                     context_index,
                     step_results,
                 )
-            elif isinstance(step, NormalizePeriodOperator):
-                result = self._execute_normalize_period(
-                    plan, step, context, context_index, step_results
-                )
-            else:
-                raise ApplicationError(
-                    "OPERATOR_NOT_IMPLEMENTED",
-                    f"Оператор {step.operator} еще не входит в slice 1.",
-                    422,
-                )
-            step_results[step.step_id] = result
-            ordered.append(result)
-            if result.outcome in {
-                Outcome.QUERY_ERROR,
-                Outcome.MCP_UNAVAILABLE,
-                Outcome.CONTRACT_ERROR,
-                Outcome.CLARIFICATION_REQUIRED,
-            }:
-                break
-            if (
-                result.outcome in {Outcome.SUCCESS_EMPTY, Outcome.DOCUMENTATION_EMPTY}
-                and isinstance(step, SkillCall)
-                and step.on_empty == "stop_not_found"
-            ):
+                result = replace(result, criticality=criticality)
+                step_results[step.step_id] = result
+                ordered.append(result)
+                failure = result.outcome in {
+                    Outcome.QUERY_ERROR,
+                    Outcome.MCP_UNAVAILABLE,
+                    Outcome.CONTRACT_ERROR,
+                }
+                if failure:
+                    failed_or_blocked.add(step.step_id)
+                    if criticality == "required":
+                        required_failed = True
+                        if result.outcome is Outcome.CONTRACT_ERROR:
+                            stop_all = True
+                            break
+                    continue
+                if result.outcome is Outcome.CLARIFICATION_REQUIRED:
+                    stop_all = True
+                    break
+                if (
+                    criticality == "required"
+                    and result.outcome
+                    in {Outcome.SUCCESS_EMPTY, Outcome.DOCUMENTATION_EMPTY}
+                    and isinstance(step, SkillCall)
+                    and step.on_empty == "stop_not_found"
+                ):
+                    stop_all = True
+                    break
+            if stop_all:
                 break
 
-        outcome = _overall_outcome(ordered, plan.interpretation.intent_kind)
-        evidence = self._build_evidence(plan, context, tuple(ordered), outcome)
-        exported_context = _context_facts(evidence, context.turn_id, tuple(ordered))
-        return ExecutionResult(outcome, evidence, exported_context, tuple(ordered))
+        step_order = {
+            step.step_id: index for index, step in enumerate(plan.result.steps)
+        }
+        ordered.sort(key=lambda result: step_order[result.step_id])
+        outcome = _overall_outcome(ordered, plan, coverage_proof)
+        evidence = self._build_evidence(
+            plan, coverage_proof, context, tuple(ordered), outcome
+        )
+        outcome, evidence = _finalize_coverage_outcome(
+            plan, coverage_proof, outcome, evidence
+        )
+        exported_context = (
+            ()
+            if outcome is Outcome.CONTRACT_ERROR
+            else _context_facts(evidence, context.turn_id, tuple(ordered))
+        )
+        continuations = [
+            result.continuation
+            for result in ordered
+            if result.continuation is not None
+        ]
+        if len(continuations) > 1:
+            raise ApplicationError(
+                "MULTIPLE_CONTINUATIONS_UNSUPPORTED",
+                "Один turn не может публиковать несколько продолжений списка.",
+                422,
+            )
+        return ExecutionResult(
+            outcome,
+            evidence,
+            exported_context,
+            tuple(ordered),
+            continuations[0] if continuations else None,
+        )
+
+    async def execute_continuation(
+        self,
+        plan: PlannerOutput,
+        context: ExecutionContext,
+        continuation: PageContinuation,
+    ) -> ExecutionResult:
+        if not isinstance(plan.result, ExecuteResult):
+            raise ApplicationError(
+                "CONTINUATION_PLAN_INVALID",
+                "Сохраненный plan не является execute-plan.",
+                409,
+            )
+        call = next(
+            (
+                step
+                for step in plan.result.steps
+                if isinstance(step, SkillCall) and step.step_id == continuation.step_id
+            ),
+            None,
+        )
+        skill = context.catalog.skills.get(continuation.skill_id)
+        if (
+            call is None
+            or skill is None
+            or call.skill_id != continuation.skill_id
+            or call.skill_version != continuation.skill_version
+            or skill.version != continuation.skill_version
+            or skill.integrity.digest != continuation.skill_digest
+        ):
+            raise ApplicationError(
+                "CONTINUATION_CATALOG_CHANGED",
+                "Сохраненный шаг не совпадает с pinned catalog.",
+                409,
+            )
+        if not isinstance(skill.operation, DataQueryOperation):
+            raise ApplicationError(
+                "CONTINUATION_PLAN_INVALID",
+                "Продолжение разрешено только для data-query skill.",
+                409,
+            )
+        started = datetime.now(UTC)
+        try:
+            result = await self._execute_data(
+                call,
+                skill,
+                dict(continuation.arguments),
+                context,
+                started,
+                continuation=continuation,
+            )
+        except ApplicationError as error:
+            result = _failed_step(
+                call.step_id,
+                skill,
+                (
+                    Outcome.MCP_UNAVAILABLE
+                    if error.code in {"MCP_UNAVAILABLE", "MCP_DEADLINE_EXCEEDED"}
+                    else Outcome.CONTRACT_ERROR
+                ),
+                error,
+                started,
+            )
+        coverage_proof = build_plan_coverage_proof(
+            plan, tuple(context.catalog.skills.values())
+        )
+        outcome = _overall_outcome([result], plan, coverage_proof)
+        evidence = self._build_evidence(
+            plan, coverage_proof, context, (result,), outcome
+        )
+        outcome, evidence = _finalize_coverage_outcome(
+            plan, coverage_proof, outcome, evidence
+        )
+        exported_context = (
+            ()
+            if outcome is Outcome.CONTRACT_ERROR
+            else _context_facts(evidence, context.turn_id, (result,))
+        )
+        return ExecutionResult(
+            outcome,
+            evidence,
+            exported_context,
+            (result,),
+            result.continuation,
+        )
+
+    async def _execute_plan_step(
+        self,
+        plan: PlannerOutput,
+        step: PlanStep,
+        context: ExecutionContext,
+        context_index: dict[str, ContextFact],
+        previous: dict[str, StepResult],
+    ) -> StepResult:
+        if isinstance(step, SkillCall):
+            skill = context.catalog.skills.get(step.skill_id)
+            if skill is None or skill.version != step.skill_version:
+                raise ApplicationError(
+                    "PLAN_SKILL_MISSING",
+                    f"Pinned skill {step.skill_id}@{step.skill_version} отсутствует.",
+                    409,
+                )
+            return await self._execute_skill(
+                plan, step, skill, context, context_index, previous
+            )
+        if isinstance(step, NormalizePeriodOperator):
+            return self._execute_normalize_period(
+                plan, step, context, context_index, previous
+            )
+        if isinstance(step, CountOperator):
+            return self._execute_count(step, context, previous)
+        raise ApplicationError(
+            "OPERATOR_NOT_IMPLEMENTED",
+            f"Оператор {step.operator} еще не входит в slice 2.",
+            422,
+        )
 
     async def _execute_skill(
         self,
@@ -227,17 +437,7 @@ class PlanExecutor:
                 )
             return result
         except ApplicationError as error:
-            if error.code in {
-                "MCP_ENVELOPE_INVALID",
-                "MCP_RESPONSE_TOO_LARGE",
-                "MCP_TOOL_RESULT_INVALID",
-            }:
-                raise
-            outcome = (
-                Outcome.MCP_UNAVAILABLE
-                if error.code == "MCP_UNAVAILABLE"
-                else Outcome.CONTRACT_ERROR
-            )
+            outcome = classify_failure(error.code, stage="mcp")
             return _failed_step(call.step_id, skill, outcome, error, started)
 
     async def _execute_data(
@@ -247,27 +447,40 @@ class PlanExecutor:
         arguments: dict[str, JsonValue],
         context: ExecutionContext,
         started: datetime,
+        *,
+        continuation: PageContinuation | None = None,
     ) -> StepResult:
         operation = cast(DataQueryOperation, skill.operation)
         params: dict[str, JsonValue] = {}
         for binding in operation.parameter_bindings:
             if binding.parameter not in arguments:
+                parameter = next(
+                    item
+                    for item in skill.parameters
+                    if item.name == binding.parameter
+                )
+                if not parameter.required:
+                    params[binding.query_parameter] = (
+                        None
+                        if parameter.default is None
+                        else _encode_parameter(parameter.default, binding.encoding)
+                    )
                 continue
             params[binding.query_parameter] = _encode_parameter(
                 arguments[binding.parameter], binding.encoding
             )
-        limit = operation.query_template.mcp_limit.default
-        for value in arguments.values():
-            pagination_limit = value.get("limit") if isinstance(value, dict) else None
-            if type(pagination_limit) is int:
-                limit = min(
-                    pagination_limit, operation.query_template.mcp_limit.maximum
-                )
+        page = _page_request(
+            operation,
+            default_page_size=context.default_list_limit,
+            continuation=continuation,
+        )
+        params.update(page.query_params)
         request = ExecuteQueryRequest(
             query=operation.query_template.text,
             params=params,
-            limit=limit,
+            limit=page.request_limit,
             include_schema=True,
+            deadline_at=context.deadline_at,
         )
         self._traces.put_artifact(
             context.trace_id,
@@ -299,22 +512,57 @@ class PlanExecutor:
                 0,
                 started,
                 finished,
-                1,
+                envelope.attempts,
                 error=error,
+                collection_scope=collection_scope_for_skill(skill),
             )
-        if envelope.count == 0:
-            return StepResult(
+        _validate_response_columns(skill, envelope)
+        raw_rows = tuple(envelope.data)
+        if page.skip > len(raw_rows):
+            raise ApplicationError(
+                "CONTINUATION_PREFIX_DRIFT",
+                "Prefix page больше не содержит ранее показанные строки.",
+                409,
+            )
+        if continuation is not None and page.strategy == "prefix" and page.skip:
+            boundary_row = raw_rows[page.skip - 1]
+            _validate_projected_rows(skill, (boundary_row,))
+            boundary_tuple, _ = _continuation_values(operation, boundary_row)
+            if canonicalize(boundary_tuple) != canonicalize(continuation.sort_tuple):
+                raise ApplicationError(
+                    "CONTINUATION_PREFIX_DRIFT",
+                    "Stable-order boundary исходной страницы изменилась.",
+                    409,
+                )
+        page_rows = raw_rows[page.skip :]
+        if continuation is not None and not page_rows:
+            raise ApplicationError(
+                "CONTINUATION_PREFIX_DRIFT",
+                "Продолжение не вернуло ожидаемую следующую строку.",
+                409,
+            )
+        has_probe_row = len(page_rows) > page.page_size
+        has_more = has_probe_row or (
+            (envelope.has_more or envelope.truncated)
+            and len(page_rows) >= page.page_size
+        )
+        visible_rows = page_rows[: page.page_size]
+        structural_rows = page_rows[: page.page_size + 1]
+        effective_empty = _validate_projected_rows(skill, structural_rows)
+        if effective_empty:
+            return _empty_step(
                 call.step_id,
                 skill,
-                Outcome.SUCCESS_EMPTY,
-                (),
-                (),
-                0,
+                arguments,
                 started,
                 finished,
-                1,
+                envelope.attempts,
             )
-        if skill.output_contract.cardinality in {"exactly_one", "zero_or_one"} and envelope.count > 1:
+        _validate_result_cardinality(skill, len(page_rows))
+        if (
+            skill.output_contract.cardinality in {"exactly_one", "zero_or_one"}
+            and len(page_rows) > 1
+        ):
             error = _evidence_error(
                 "ENTITY_RESULT_AMBIGUOUS",
                 "execution",
@@ -329,32 +577,84 @@ class PlanExecutor:
                 Outcome.CLARIFICATION_REQUIRED,
                 (),
                 (),
-                envelope.count,
+                len(page_rows),
                 started,
                 finished,
-                1,
+                envelope.attempts,
                 error=error,
+                collection_scope=collection_scope_for_skill(skill),
             )
-        facts = _normalize_data_facts(context.trace_id, call.step_id, skill, envelope)
+        if has_more and operation.pagination.strategy == "none":
+            raise ApplicationError(
+                "RESULT_PAGINATION_UNDECLARED",
+                "MCP вернул неполный результат для skill без pagination contract.",
+                502,
+            )
+        truncation_policy = skill.output_contract.sufficiency.truncation_policy
+        if has_more and truncation_policy == "error_if_truncated":
+            raise ApplicationError(
+                "RESULT_TRUNCATED_FORBIDDEN",
+                "Skill contract запрещает усеченный результат.",
+                502,
+            )
+        visible_envelope = envelope.model_copy(
+            update={"data": visible_rows, "count": len(visible_rows)}
+        )
+        facts = _normalize_data_facts(
+            context.trace_id, call.step_id, skill, visible_envelope
+        )
         _validate_bound_entity_identity(skill, arguments, facts)
+        _validate_result_sufficiency(skill, facts)
         zero = skill.output_contract.cardinality == "aggregate" and any(
             fact.fact_id in skill.output_contract.sufficiency.zero_fact_ids
             and type(fact.value) in {int, float}
             and fact.value == 0
             for fact in facts
         )
+        continuation_draft: ContinuationDraft | None = None
+        if has_more:
+            if not visible_rows:
+                raise ApplicationError(
+                    "RESULT_PAGINATION_INVALID",
+                    "Нельзя построить continuation без показанной строки.",
+                    502,
+                )
+            sort_tuple, cursor_values = _continuation_values(
+                operation, visible_rows[-1]
+            )
+            continuation_draft = ContinuationDraft(
+                step_id=call.step_id,
+                skill_id=skill.skill_id,
+                skill_version=skill.version,
+                skill_digest=skill.integrity.digest,
+                arguments=dict(arguments),
+                strategy=cast(Literal["prefix", "keyset"], page.strategy),
+                page_size=page.page_size,
+                cumulative_shown=page.cumulative_before + len(visible_rows),
+                sort_tuple=sort_tuple,
+                cursor_values=cursor_values,
+            )
+        step_outcome = (
+            Outcome.ZERO_AGGREGATE
+            if zero
+            else Outcome.PARTIAL
+            if has_more and truncation_policy == "partial_until_all_pages"
+            else Outcome.SUCCESS_WITH_ROWS
+        )
         return StepResult(
             call.step_id,
             skill,
-            Outcome.ZERO_AGGREGATE if zero else Outcome.SUCCESS_WITH_ROWS,
+            step_outcome,
             facts,
             (),
-            envelope.count,
+            len(visible_rows),
             started,
             finished,
-            1,
-            truncated=envelope.truncated,
-            has_more=envelope.has_more,
+            envelope.attempts,
+            truncated=has_more,
+            has_more=has_more,
+            continuation=continuation_draft,
+            collection_scope=collection_scope_for_skill(skill),
         )
 
     async def _execute_documentation(
@@ -394,6 +694,7 @@ class PlanExecutor:
                 started,
                 finished,
                 1,
+                collection_scope="visible_page",
             )
         facts, citations = _normalize_documentation_facts(
             context.trace_id, call.step_id, skill, chunks
@@ -408,6 +709,7 @@ class PlanExecutor:
             started,
             finished,
             1,
+            collection_scope="visible_page",
         )
 
     def _execute_normalize_period(
@@ -451,6 +753,95 @@ class PlanExecutor:
             started,
             finished,
             0,
+            collection_scope="complete_set",
+        )
+
+    def _execute_count(
+        self,
+        step: CountOperator,
+        context: ExecutionContext,
+        previous: dict[str, StepResult],
+    ) -> StepResult:
+        started = datetime.now(UTC)
+        source = previous.get(step.input_step_id)
+        if source is None:
+            raise ApplicationError(
+                "OPERATOR_INPUT_STEP_MISSING",
+                "Count operator не получил declared input step.",
+                422,
+            )
+        if source.collection_scope != "complete_set":
+            raise ApplicationError(
+                "OPERATOR_COLLECTION_SCOPE_MISMATCH",
+                "Count operator не вычисляет total по page-scoped evidence.",
+                422,
+            )
+        if source.has_more or source.truncated:
+            raise ApplicationError(
+                "OPERATOR_INPUT_INCOMPLETE",
+                "Count operator не вычисляет total по неполной странице.",
+                422,
+            )
+        if not step.distinct_by_fact_ids:
+            raise ApplicationError(
+                "OPERATOR_DISTINCT_IDENTITY_MISSING",
+                "Count operator требует declared distinct identity.",
+                422,
+            )
+        by_row: dict[str, dict[str, Fact]] = {}
+        for fact in source.facts:
+            row = by_row.setdefault(fact.row_id, {})
+            if fact.fact_id in row:
+                raise ApplicationError(
+                    "OPERATOR_INPUT_FACT_DUPLICATE",
+                    "Count operator получил duplicate identity fact в одной строке.",
+                    502,
+                )
+            row[fact.fact_id] = fact
+        identities: set[bytes] = set()
+        for row in by_row.values():
+            if any(fact_id not in row for fact_id in step.distinct_by_fact_ids):
+                raise ApplicationError(
+                    "OPERATOR_INPUT_FACT_MISSING",
+                    "Count operator не получил полную declared row identity.",
+                    502,
+                )
+            identities.add(
+                canonicalize(
+                    [
+                        _json_value(row[fact_id].value)
+                        for fact_id in step.distinct_by_fact_ids
+                    ]
+                )
+            )
+        value = len(identities)
+        row_id = f"row_{_sha(step.step_id + ':' + str(value))[:16]}"
+        fact = Fact(
+            fact_instance_id=uuid5(
+                context.trace_id, f"{step.step_id}:{row_id}:{step.result_fact_id}"
+            ),
+            row_id=row_id,
+            fact_id=step.result_fact_id,
+            semantic_type="measure.count",
+            value_type=FactValueType.INTEGER,
+            value=value,
+            confirmation="confirmed",
+            step_id=step.step_id,
+            source_locator=SourceLocator(kind="operator_result", reference="count"),
+            unit=UnitNotApplicable(mode="not_applicable"),
+        )
+        finished = datetime.now(UTC)
+        return StepResult(
+            step.step_id,
+            None,
+            Outcome.ZERO_AGGREGATE if value == 0 else Outcome.SUCCESS_WITH_ROWS,
+            (fact,),
+            (),
+            1,
+            started,
+            finished,
+            0,
+            collection_scope=source.collection_scope,
         )
 
     def _resolve_binding(
@@ -529,9 +920,7 @@ class PlanExecutor:
             if binding.name == "default_list_limit":
                 return ResolvedBinding(context.default_list_limit, "system")
             if binding.name == "database_state_marker":
-                return ResolvedBinding(
-                    _sha(str(context.catalog.snapshot_id)), "system"
-                )
+                return ResolvedBinding(context.database_state_marker.digest, "system")
             raise ApplicationError(
                 "PAGE_CURSOR_MISSING", "Continuation cursor отсутствует.", 409
             )
@@ -554,6 +943,7 @@ class PlanExecutor:
     def _build_evidence(
         self,
         plan: PlannerOutput,
+        coverage_proof: PlanCoverageProof,
         context: ExecutionContext,
         results: tuple[StepResult, ...],
         outcome: Outcome,
@@ -569,18 +959,32 @@ class PlanExecutor:
             else set()
         )
         requirements: list[CoverageRequirement] = []
+        proof_by_requirement = {
+            requirement.requirement_id: requirement
+            for requirement in coverage_proof.requirements
+        }
         for requirement in plan.interpretation.required_facts:
-            candidates = tuple(
-                fact
-                for fact in facts
-                if fact.semantic_type == requirement.semantic_type
-                and (fact.step_id, fact.fact_id) in final_refs
+            proof = proof_by_requirement.get(requirement.requirement_id)
+            candidates = (
+                ()
+                if proof is None
+                or proof.final_step_id is None
+                or proof.final_fact_id is None
+                else tuple(
+                    fact
+                    for fact in facts
+                    if fact.semantic_type == requirement.semantic_type
+                    and fact.step_id == proof.final_step_id
+                    and fact.fact_id == proof.final_fact_id
+                    and (fact.step_id, fact.fact_id) in final_refs
+                )
             )
             covered = _runtime_requirement_covered(requirement, candidates)
             requirements.append(
                 CoverageRequirement(
                     requirement_id=requirement.requirement_id,
                     semantic_type=requirement.semantic_type,
+                    required=requirement.required,
                     status=(
                         CoverageStatus.COVERED if covered else CoverageStatus.MISSING
                     ),
@@ -591,20 +995,7 @@ class PlanExecutor:
                     ),
                 )
             )
-        sufficient = all(
-            requirement.status is CoverageStatus.COVERED
-            for requirement in requirements
-            if next(
-                item.required
-                for item in plan.interpretation.required_facts
-                if item.requirement_id == requirement.requirement_id
-            )
-        ) and outcome in {
-            Outcome.SUCCESS_WITH_ROWS,
-            Outcome.ZERO_AGGREGATE,
-            Outcome.DOCUMENTATION_FOUND,
-        }
-        exports = _context_exports(facts)
+        exports = () if outcome is Outcome.CONTRACT_ERROR else _context_exports(facts)
         source_boundary = cast(
             Literal["data", "documentation", "mixed", "none"],
             (
@@ -615,7 +1006,7 @@ class PlanExecutor:
             ),
         )
         evidence = EvidenceBundle(
-            schema_version="1.0.0",
+            schema_version="1.1.0",
             document_type="evidence_bundle",
             trace_id=context.trace_id,
             request_id=context.request_id,
@@ -623,6 +1014,7 @@ class PlanExecutor:
             created_at=datetime.now(UTC),
             source_boundary=source_boundary,
             outcome=outcome,
+            empty_reason=_empty_reason_for_outcome(results, outcome),
             catalog_snapshot=CatalogSnapshot(
                 snapshot_id=context.catalog.snapshot_id,
                 revision=context.catalog.revision,
@@ -637,54 +1029,297 @@ class PlanExecutor:
                     )
                 ),
             ),
-            database_state_marker=self._marker(context.catalog),
+            database_state_marker=self._marker(context),
             steps=tuple(_step_evidence(result) for result in results),
             facts=facts,
             citations=citations,
             documentation_disagreements=(),
-            coverage=Coverage(sufficient=sufficient, requirements=tuple(requirements)),
-            pagination=(
-                Pagination(
-                    shown=sum(result.row_count for result in results),
-                    page_size=context.default_list_limit,
-                    has_more=False,
-                )
-                if any(result.row_count for result in results)
-                else None
-            ),
+            coverage=Coverage(sufficient=False, requirements=tuple(requirements)),
+            pagination=_evidence_pagination(results, context.default_list_limit),
             context_exports=exports,
             errors=errors,
         )
-        return evidence
-
-    def _marker(self, catalog: PinnedCatalog) -> DatabaseStateMarker:
-        projection_digest = _sha("[]")
-        components = {
-            "configuration_revision": "11.5.27.56",
-            "configuration_profile_digest": self._configuration_profile_digest,
-            "catalog_revision": catalog.revision,
-            "catalog_snapshot_digest": catalog.digest,
-            "documentation_revision": self._documentation_revision,
-            "documentation_manifest_digest": self._documentation_digest,
-            "projection_manifest_digest": projection_digest,
-        }
-        digest = hashlib.sha256(canonicalize(components)).hexdigest()
-        return DatabaseStateMarker(
-            marker_id=uuid5(NAMESPACE_URL, digest),
-            algorithm="sha256",
-            scope="acceptance_observable_state",
-            digest=digest,
-            captured_at=datetime.now(UTC),
-            profile_version="1.0.0",
-            acceptance_suite_version="q001-q116-v1",
-            configuration_revision="11.5.27.56",
-            configuration_profile_digest=self._configuration_profile_digest,
-            catalog_revision=catalog.revision,
-            catalog_snapshot_digest=catalog.digest,
-            documentation_revision=self._documentation_revision,
-            documentation_manifest_digest=self._documentation_digest,
-            projection_manifest_digest=projection_digest,
+        sufficient = all(
+            not requirement.required
+            or (
+                requirement.status is CoverageStatus.COVERED
+                and (proof := proof_by_requirement.get(requirement.requirement_id))
+                is not None
+                and collection_obligation_satisfied(proof, evidence)
+            )
+            for requirement in requirements
         )
+        return evidence.model_copy(
+            update={
+                "coverage": Coverage(
+                    sufficient=sufficient,
+                    requirements=tuple(requirements),
+                )
+            }
+        )
+
+    def _marker(self, context: ExecutionContext) -> DatabaseStateMarker:
+        return context.database_state_marker
+
+
+def _page_request(
+    operation: DataQueryOperation,
+    *,
+    default_page_size: int,
+    continuation: PageContinuation | None,
+) -> _PageRequest:
+    pagination = operation.pagination
+    maximum = operation.query_template.mcp_limit.maximum
+    if pagination.strategy == "none":
+        if continuation is not None:
+            raise ApplicationError(
+                "CONTINUATION_PLAN_INVALID",
+                "Skill больше не объявляет pagination.",
+                409,
+            )
+        return _PageRequest(
+            "none",
+            operation.query_template.mcp_limit.default,
+            operation.query_template.mcp_limit.default,
+            0,
+            0,
+            {},
+        )
+
+    page_size = (
+        continuation.page_size
+        if continuation is not None
+        else min(default_page_size, maximum - 1)
+    )
+    if page_size < 1 or page_size + 1 > maximum:
+        raise ApplicationError(
+            "RESULT_PAGINATION_INVALID",
+            "Pagination contract не оставляет место для probe row.",
+            502,
+        )
+    if continuation is not None and continuation.strategy != pagination.strategy:
+        raise ApplicationError(
+            "CONTINUATION_PLAN_INVALID",
+            "Pagination strategy сохраненного continuation изменилась.",
+            409,
+        )
+    if isinstance(pagination, PrefixPagination):
+        shown = 0 if continuation is None else continuation.shown
+        request_limit = min(
+            shown + page_size + 1,
+            pagination.maximum_total,
+            maximum,
+        )
+        if request_limit <= shown:
+            raise ApplicationError(
+                "CONTINUATION_PREFIX_EXHAUSTED",
+                "Prefix continuation достиг declared maximum_total.",
+                409,
+            )
+        return _PageRequest(
+            "prefix", page_size, request_limit, shown, shown, {}
+        )
+    if not isinstance(pagination, KeysetPagination):
+        raise TypeError("unknown pagination policy")
+    query_params: dict[str, JsonValue] = {
+        pagination.has_cursor_query_parameter: continuation is not None
+    }
+    if continuation is None:
+        query_params.update(
+            {binding.query_parameter: None for binding in pagination.cursor_bindings}
+        )
+        shown = 0
+    else:
+        expected = {
+            binding.query_parameter for binding in pagination.cursor_bindings
+        }
+        if set(continuation.cursor_values) != expected:
+            raise ApplicationError(
+                "CONTINUATION_PLAN_INVALID",
+                "Сохраненные cursor bindings не совпадают с skill contract.",
+                409,
+            )
+        query_params.update(dict(continuation.cursor_values))
+        shown = continuation.shown
+    return _PageRequest(
+        "keyset", page_size, page_size + 1, 0, shown, query_params
+    )
+
+
+def _validate_response_columns(skill: Skill, envelope: object) -> None:
+    from chatbot1c.application.models import ExecuteQueryEnvelope
+
+    normalized = cast(ExecuteQueryEnvelope, envelope)
+    operation = cast(DataQueryOperation, skill.operation)
+    expected = {binding.column for binding in operation.column_bindings}
+    actual = {column.name for column in normalized.schema_.columns}
+    if actual != expected:
+        raise ApplicationError(
+            "MCP_COLUMN_CONTRACT_MISMATCH",
+            "MCP schema columns не совпадают с exact skill bindings.",
+            502,
+        )
+    schema = {column.name: set(column.types) for column in normalized.schema_.columns}
+    for binding in operation.column_bindings:
+        if not schema[binding.column] & set(binding.accepted_mcp_types):
+            raise ApplicationError(
+                "MCP_COLUMN_TYPE_MISMATCH",
+                f"Колонка {binding.column} имеет несовместимый MCP type.",
+                502,
+            )
+
+
+def _validate_projected_rows(
+    skill: Skill, rows: tuple[dict[str, JsonValue], ...]
+) -> bool:
+    if not rows:
+        return True
+    operation = cast(DataQueryOperation, skill.operation)
+    definitions = {fact.fact_id: fact for fact in skill.output_contract.facts}
+    bindings = {binding.fact_id: binding for binding in operation.column_bindings}
+    identities = skill.output_contract.row_identity_fact_ids or ()
+    seen_identities: set[bytes] = set()
+    for row in rows:
+        for fact_id, binding in bindings.items():
+            raw = row[binding.column]
+            definition = definitions[fact_id]
+            if raw is None:
+                if not definition.nullable:
+                    raise ApplicationError(
+                        "RESULT_REQUIRED_FACT_NULL",
+                        f"Fact {fact_id} не допускает null.",
+                        502,
+                    )
+                continue
+            _convert_value(raw, binding.converter)
+        if identities:
+            identity = tuple(row[bindings[fact_id].column] for fact_id in identities)
+            if all(value is not None for value in identity):
+                key = canonicalize(list(identity))
+                if key in seen_identities:
+                    raise ApplicationError(
+                        "RESULT_ROW_IDENTITY_DUPLICATE",
+                        "MCP result содержит duplicate row identity.",
+                        502,
+                    )
+                seen_identities.add(key)
+
+    if len(rows) == 1:
+        row = rows[0]
+        no_identity = not identities or all(
+            row[bindings[fact_id].column] is None for fact_id in identities
+        )
+        sentinel_set = any(
+            all(
+                row[bindings[fact_id].column] is None
+                and definitions[fact_id].nullable
+                for fact_id in required_set
+            )
+            for required_set in skill.output_contract.sufficiency.required_fact_sets
+        )
+        if no_identity and sentinel_set:
+            return True
+
+    for row in rows:
+        if identities and any(
+            row[bindings[fact_id].column] is None for fact_id in identities
+        ):
+            raise ApplicationError(
+                "RESULT_ROW_IDENTITY_INVALID",
+                "Factual row не содержит полную row identity.",
+                502,
+            )
+    return False
+
+
+def _validate_result_cardinality(skill: Skill, row_count: int) -> None:
+    if skill.output_contract.cardinality == "aggregate" and row_count != 1:
+        raise ApplicationError(
+            "RESULT_CARDINALITY_MISMATCH",
+            "Aggregate skill должен вернуть ровно одну factual row.",
+            502,
+        )
+
+
+def _validate_result_sufficiency(skill: Skill, facts: tuple[Fact, ...]) -> None:
+    by_row: dict[str, set[str]] = {}
+    for fact in facts:
+        by_row.setdefault(fact.row_id, set()).add(fact.fact_id)
+    required_sets = skill.output_contract.sufficiency.required_fact_sets
+    for fact_ids in by_row.values():
+        if not any(set(required_set) <= fact_ids for required_set in required_sets):
+            raise ApplicationError(
+                "RESULT_REQUIRED_FACT_SET_UNSATISFIED",
+                "Factual row не удовлетворяет ни одному required_fact_set.",
+                502,
+            )
+
+
+def _empty_step(
+    step_id: str,
+    skill: Skill,
+    arguments: dict[str, JsonValue],
+    started: datetime,
+    finished: datetime,
+    attempts: int,
+) -> StepResult:
+    del arguments
+    semantics = skill.output_contract.sufficiency.empty_semantics
+    if semantics == "not_applicable":
+        raise ApplicationError(
+            "RESULT_EMPTY_SEMANTICS_NOT_APPLICABLE",
+            "Пустой результат неприменим для этого skill contract.",
+            502,
+        )
+    if semantics == "error_if_empty":
+        raise ApplicationError(
+            "RESULT_EMPTY_FORBIDDEN",
+            "Skill contract запрещает пустой результат.",
+            502,
+        )
+    return StepResult(
+        step_id,
+        skill,
+        Outcome.SUCCESS_EMPTY,
+        (),
+        (),
+        0,
+        started,
+        finished,
+        attempts,
+        collection_scope=collection_scope_for_skill(skill),
+        empty_reason=(
+            "not_found" if semantics == "confirmed_not_found" else "no_rows"
+        ),
+    )
+
+
+def _continuation_values(
+    operation: DataQueryOperation,
+    row: dict[str, JsonValue],
+) -> tuple[tuple[JsonValue, ...], dict[str, JsonValue]]:
+    bindings = {binding.fact_id: binding for binding in operation.column_bindings}
+    pagination = operation.pagination
+    if isinstance(pagination, PrefixPagination):
+        values = tuple(
+            row[bindings[fact_id].column]
+            for fact_id in pagination.stable_order_fact_ids
+        )
+        return values, {}
+    if isinstance(pagination, KeysetPagination):
+        values = tuple(
+            row[bindings[item.fact_id].column] for item in pagination.sort
+        )
+        cursor_values = {
+            item.query_parameter: row[bindings[item.fact_id].column]
+            for item in pagination.cursor_bindings
+        }
+        return values, cursor_values
+    raise ApplicationError(
+        "RESULT_PAGINATION_UNDECLARED",
+        "Skill не объявляет continuation sort.",
+        502,
+    )
 
 
 def _validate_runtime_arguments(
@@ -778,19 +1413,33 @@ def _validate_bound_entity_identity(
     for constraint in skill.result_constraints:
         if constraint.parameter not in arguments:
             continue
-        expected = EntityRef.model_validate(arguments[constraint.parameter])
         definition = definitions[constraint.fact_id]
         matching = [fact for fact in facts if fact.fact_id == constraint.fact_id]
+        raw_expected = arguments[constraint.parameter]
+        expected: tuple[EntityRef, ...]
+        if isinstance(constraint, FactEqualsParameterConstraint):
+            expected = (EntityRef.model_validate(raw_expected),)
+        else:
+            if not isinstance(raw_expected, list):
+                raise ApplicationError(
+                    "ENTITY_REF_BINDING_MISMATCH",
+                    "Bound entity membership parameter не является списком exact refs.",
+                    502,
+                )
+            expected = tuple(EntityRef.model_validate(item) for item in raw_expected)
+        allowed_identities = {
+            (item.object_type, item.unique_id) for item in expected
+        }
         for fact in matching:
             if (
                 fact.semantic_type != definition.semantic_type
                 or not isinstance(fact.value, EntityRef)
-                or fact.value.object_type != expected.object_type
-                or fact.value.unique_id != expected.unique_id
+                or (fact.value.object_type, fact.value.unique_id)
+                not in allowed_identities
             ):
                 raise ApplicationError(
                     "ENTITY_REF_BINDING_MISMATCH",
-                    "Результат содержит business identity, отличную от bound entity parameter.",
+                    "Результат содержит business identity вне bound entity parameter.",
                     502,
                 )
 
@@ -836,6 +1485,8 @@ def _normalize_data_facts(
         for binding in operation.column_bindings:
             definition = definitions[binding.fact_id]
             raw = row[binding.column]
+            if raw is None:
+                continue
             value = _convert_value(raw, binding.converter)
             if isinstance(value, EntityRef) and value.object_type not in binding.accepted_mcp_types:
                 raise ApplicationError(
@@ -1058,6 +1709,33 @@ def _context_exports(facts: tuple[Fact, ...]) -> tuple[ContextExport, ...]:
     )
 
 
+def _evidence_pagination(
+    results: tuple[StepResult, ...], default_page_size: int
+) -> Pagination | None:
+    paged = next(
+        (
+            result
+            for result in reversed(results)
+            if result.skill is not None
+            and isinstance(result.skill.operation, DataQueryOperation)
+            and result.skill.operation.pagination.strategy != "none"
+        ),
+        None,
+    )
+    if paged is None:
+        return None
+    return Pagination(
+        shown=paged.row_count,
+        page_size=(
+            paged.continuation.page_size
+            if paged.continuation is not None
+            else default_page_size
+        ),
+        has_more=paged.has_more,
+        continuation_handle=None,
+    )
+
+
 def _context_facts(
     evidence: EvidenceBundle,
     turn_id: UUID,
@@ -1149,7 +1827,12 @@ def _step_evidence(result: StepResult) -> StepEvidence:
             )
         ),
         operation_ref=(
-            "operator:normalize_period"
+            (
+                "operator:" + result.facts[0].source_locator.reference
+                if result.facts
+                and result.facts[0].source_locator.kind == "operator_result"
+                else "operator:unknown"
+            )
             if result.skill is None
             else f"skill://{result.skill.skill_id}/{result.skill.version}"
         ),
@@ -1164,6 +1847,7 @@ def _step_evidence(result: StepResult) -> StepEvidence:
             fact.fact_instance_id for fact in result.facts
         ),
         error_ids=() if result.error is None else (result.error.error_id,),
+        collection_scope=result.collection_scope,
     )
 
 
@@ -1193,6 +1877,7 @@ def _failed_step(
         datetime.now(UTC),
         0,
         evidence_error,
+        collection_scope=collection_scope_for_skill(skill),
     )
 
 
@@ -1219,31 +1904,113 @@ def _evidence_error(
     )
 
 
-def _overall_outcome(results: list[StepResult], intent: str) -> Outcome:
-    outcomes = [result.outcome for result in results]
-    for terminal in (
-        Outcome.CLARIFICATION_REQUIRED,
-        Outcome.MCP_UNAVAILABLE,
-        Outcome.QUERY_ERROR,
-        Outcome.CONTRACT_ERROR,
-    ):
-        if terminal in outcomes:
-            if any(result.facts for result in results):
-                return Outcome.PARTIAL
-            return terminal
-    if Outcome.ZERO_AGGREGATE in outcomes:
-        return Outcome.ZERO_AGGREGATE
-    if intent == "documentation":
+def _runtime_step_dependencies(step: PlanStep) -> set[str]:
+    dependencies: set[str] = set()
+    if isinstance(step, SkillCall):
+        dependencies.update(
+            argument.binding.step_id
+            for argument in step.arguments
+            if isinstance(argument.binding, StepBinding)
+        )
+    elif isinstance(step, NormalizePeriodOperator):
+        if isinstance(step.expression, StepBinding):
+            dependencies.add(step.expression.step_id)
+    elif isinstance(step, CountOperator):
+        dependencies.add(step.input_step_id)
+    return dependencies
+
+
+def _overall_outcome(
+    results: list[StepResult],
+    plan: PlannerOutput,
+    coverage_proof: PlanCoverageProof,
+) -> Outcome:
+    required_results = [
+        result for result in results if result.criticality == "required"
+    ]
+    outcomes = [result.outcome for result in required_results]
+    if Outcome.CONTRACT_ERROR in outcomes:
+        return Outcome.CONTRACT_ERROR
+    if Outcome.CLARIFICATION_REQUIRED in outcomes:
+        return Outcome.CLARIFICATION_REQUIRED
+    if plan.interpretation.intent_kind == "documentation":
         return (
             Outcome.DOCUMENTATION_FOUND
-            if any(result.facts for result in results)
+            if any(result.facts for result in required_results)
             else Outcome.DOCUMENTATION_EMPTY
         )
-    return (
-        Outcome.SUCCESS_WITH_ROWS
-        if any(result.facts for result in results)
-        else Outcome.SUCCESS_EMPTY
-    )
+    produced_required_refs = {
+        (fact.step_id, fact.fact_id)
+        for result in required_results
+        for fact in result.facts
+        if (fact.step_id, fact.fact_id) in coverage_proof.required_final_refs
+    }
+    has_final_facts = bool(produced_required_refs)
+    if coverage_proof.required_final_refs <= produced_required_refs:
+        return combine_step_outcomes(outcomes, has_facts=has_final_facts)
+    if has_final_facts:
+        return Outcome.PARTIAL
+    for result in required_results:
+        if result.outcome in {
+            Outcome.QUERY_ERROR,
+            Outcome.MCP_UNAVAILABLE,
+            Outcome.LLM_UNAVAILABLE,
+        }:
+            return result.outcome
+        if result.outcome in {
+            Outcome.SUCCESS_EMPTY,
+            Outcome.DOCUMENTATION_EMPTY,
+        }:
+            return Outcome.SUCCESS_EMPTY
+    return combine_step_outcomes(outcomes, has_facts=False)
+
+
+def _finalize_coverage_outcome(
+    plan: PlannerOutput,
+    coverage_proof: PlanCoverageProof,
+    outcome: Outcome,
+    evidence: EvidenceBundle,
+) -> tuple[Outcome, EvidenceBundle]:
+    finalized_outcome = outcome
+    if (
+        not evidence.coverage.sufficient
+        and evidence.facts
+        and outcome
+        in {
+            Outcome.SUCCESS_WITH_ROWS,
+            Outcome.ZERO_AGGREGATE,
+            Outcome.DOCUMENTATION_FOUND,
+        }
+    ):
+        finalized_outcome = Outcome.PARTIAL
+        evidence = evidence.model_copy(update={"outcome": finalized_outcome})
+    validate_evidence_against_plan(plan, coverage_proof, evidence)
+    return finalized_outcome, evidence
+
+
+def _empty_reason_for_outcome(
+    results: tuple[StepResult, ...], outcome: Outcome
+) -> Literal["not_found", "no_rows"] | None:
+    if outcome is not Outcome.SUCCESS_EMPTY:
+        return None
+    reasons = {
+        result.empty_reason
+        for result in results
+        if result.criticality == "required" and result.empty_reason is not None
+    }
+    if len(reasons) > 1:
+        raise ApplicationError(
+            "EMPTY_REASON_CONFLICT",
+            "Required empty producers объявили несовместимые stable reasons.",
+            502,
+        )
+    if not reasons:
+        raise ApplicationError(
+            "EMPTY_REASON_MISSING",
+            "Required success_empty producer не объявил stable reason.",
+            502,
+        )
+    return reasons.pop()
 
 
 def _documentation_role(

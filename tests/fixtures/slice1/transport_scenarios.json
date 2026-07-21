@@ -200,7 +200,14 @@
     "q102": {
       "success": true,
       "data": [],
-      "schema": {"columns": []},
+      "schema": {
+        "columns": [
+          {"name": "Номенклатура", "types": ["СправочникСсылка.Номенклатура"]},
+          {"name": "Код", "types": ["Строка"]},
+          {"name": "Артикул", "types": ["Строка"]},
+          {"name": "Наименование", "types": ["Строка"]}
+        ]
+      },
       "count": 0,
       "truncated": false,
       "has_more": false
