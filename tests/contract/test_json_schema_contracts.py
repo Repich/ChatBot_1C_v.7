@@ -11,7 +11,6 @@ from jsonschema import Draft202012Validator, FormatChecker
 from jsonschema.exceptions import ValidationError
 from referencing import Registry, Resource
 
-
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_DIR = ROOT / "schemas"
 FIXTURE_DIR = ROOT / "tests/fixtures/contracts"
@@ -127,21 +126,74 @@ def test_skill_package_relative_ref_validates_embedded_skill() -> None:
     assert any(list(error.absolute_path)[:2] == ["skills", 0] for error in flattened)
 
 
-@pytest.mark.parametrize(
-    "relative_path",
-    [
-        "valid/data_skill.json",
-        "valid/documentation_skill.json",
-        "valid/skill_package.json",
-        "invalid/unresolved_query_placeholder.json",
-        "invalid/missing_required_output_binding.json",
-        "invalid/prohibited_concrete_value.json",
-    ],
+def _document_digest(document: dict) -> str:
+    payload = copy.deepcopy(document)
+    payload.pop("integrity")
+    return hashlib.sha256(rfc8785.dumps(payload)).hexdigest()
+
+
+DATA_QUERY_PATHS = sorted(
+    item["file"]
+    for group in (MANIFEST["valid"], MANIFEST["invalid"])
+    for item in group
+    if item["schema"] == "skill.schema.json"
+    and _load_json(FIXTURE_DIR / item["file"])
+    .get("operation", {})
+    .get("kind")
+    == "data_query"
 )
-def test_schema_valid_skill_documents_have_correct_rfc8785_digest(
+
+
+@pytest.mark.parametrize("relative_path", DATA_QUERY_PATHS)
+def test_every_data_query_fixture_has_adr0003_fields_and_correct_digest(
     relative_path: str,
 ) -> None:
     document = _load_json(FIXTURE_DIR / relative_path)
-    expected = document.pop("integrity")["digest"]
-    actual = hashlib.sha256(rfc8785.dumps(document)).hexdigest()
-    assert actual == expected
+    template = document["operation"]["query_template"]
+
+    assert "execution" in template
+    assert "invariant_constants" in template
+    assert _document_digest(document) == document["integrity"]["digest"]
+
+
+PACKAGE_PATHS = sorted(
+    item["file"]
+    for group in (MANIFEST["valid"], MANIFEST["invalid"])
+    for item in group
+    if item["schema"] == "skill-package.schema.json"
+)
+
+
+@pytest.mark.parametrize("relative_path", PACKAGE_PATHS)
+def test_package_embedded_skills_locks_and_package_digest_are_jcs_consistent(
+    relative_path: str,
+) -> None:
+    package = _load_json(FIXTURE_DIR / relative_path)
+    embedded = {
+        (skill["skill_id"], skill["version"]): skill["integrity"]["digest"]
+        for skill in package["skills"]
+    }
+
+    assert _document_digest(package) == package["integrity"]["digest"]
+    for skill in package["skills"]:
+        assert _document_digest(skill) == skill["integrity"]["digest"]
+        if skill["operation"]["kind"] == "data_query":
+            assert "execution" in skill["operation"]["query_template"]
+            assert "invariant_constants" in skill["operation"]["query_template"]
+    for lock in package["dependency_lock"]:
+        key = (lock["skill_id"], lock["version"])
+        if key in embedded:
+            assert lock["digest"] == embedded[key]
+
+
+def test_evidence_catalog_snapshot_uses_current_data_skill_digest() -> None:
+    data_skill = _load_json(FIXTURE_DIR / "valid/data_skill.json")
+    evidence = _load_json(FIXTURE_DIR / "valid/data_evidence_rows.json")
+    catalog_entry = next(
+        item
+        for item in evidence["catalog_snapshot"]["skills"]
+        if item["skill_id"] == data_skill["skill_id"]
+        and item["version"] == data_skill["version"]
+    )
+
+    assert catalog_entry["digest"] == data_skill["integrity"]["digest"]

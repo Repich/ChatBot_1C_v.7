@@ -163,6 +163,7 @@
         "capability_ids": {
           "type": "array",
           "minItems": 1,
+          "maxItems": 100,
           "uniqueItems": true,
           "items": {
             "type": "string",
@@ -172,6 +173,7 @@
         "fact_types": {
           "type": "array",
           "minItems": 1,
+          "maxItems": 100,
           "uniqueItems": true,
           "items": {
             "$ref": "#/$defs/semanticType"
@@ -227,6 +229,7 @@
         "compatibility_modes": {
           "type": "array",
           "minItems": 1,
+          "maxItems": 10,
           "uniqueItems": true,
           "items": {
             "type": "string",
@@ -283,6 +286,7 @@
         "intent_kinds": {
           "type": "array",
           "minItems": 1,
+          "maxItems": 3,
           "uniqueItems": true,
           "items": {
             "enum": [
@@ -373,6 +377,7 @@
         "allowed_sources": {
           "type": "array",
           "minItems": 1,
+          "maxItems": 4,
           "uniqueItems": true,
           "items": {
             "enum": [
@@ -389,6 +394,7 @@
         "entity_types": {
           "type": "array",
           "minItems": 1,
+          "maxItems": 20,
           "uniqueItems": true,
           "items": {
             "$ref": "#/$defs/semanticType"
@@ -397,6 +403,7 @@
         "allowed_values": {
           "type": "array",
           "minItems": 1,
+          "maxItems": 100,
           "uniqueItems": true,
           "items": {
             "type": "string",
@@ -511,6 +518,8 @@
             "template_id",
             "language",
             "text",
+            "execution",
+            "invariant_constants",
             "include_schema",
             "mcp_limit"
           ],
@@ -526,6 +535,17 @@
               "type": "string",
               "minLength": 10,
               "maxLength": 50000
+            },
+            "execution": {
+              "$ref": "#/$defs/queryExecution"
+            },
+            "invariant_constants": {
+              "type": "array",
+              "maxItems": 64,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/invariantConstant"
+              }
             },
             "include_schema": {
               "const": true
@@ -614,6 +634,7 @@
               "accepted_mcp_types": {
                 "type": "array",
                 "minItems": 1,
+                "maxItems": 20,
                 "uniqueItems": true,
                 "items": {
                   "type": "string",
@@ -652,6 +673,397 @@
         }
       }
     },
+    "queryExecution": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/singleSelectExecution"
+        },
+        {
+          "$ref": "#/$defs/linkedTempBatchExecution"
+        }
+      ]
+    },
+    "singleSelectExecution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "statement_count",
+        "final_statement"
+      ],
+      "properties": {
+        "kind": {
+          "const": "single_select"
+        },
+        "statement_count": {
+          "const": 1
+        },
+        "final_statement": {
+          "const": 1
+        }
+      }
+    },
+    "linkedTempBatchExecution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "statement_count",
+        "final_statement",
+        "temporary_tables"
+      ],
+      "properties": {
+        "kind": {
+          "const": "linked_temp_batch"
+        },
+        "statement_count": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 16
+        },
+        "final_statement": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 16
+        },
+        "temporary_tables": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 15,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/temporaryTableContract"
+          }
+        }
+      }
+    },
+    "temporaryTableContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "producer_statement",
+        "consumer_statements"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-zА-Яа-яЁё_][A-Za-zА-Яа-яЁё0-9_]{0,127}$"
+        },
+        "producer_statement": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 15
+        },
+        "consumer_statements": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 15,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 16
+          }
+        }
+      }
+    },
+    "invariantConstant": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/zeroBoundaryInvariant"
+        },
+        {
+          "$ref": "#/$defs/booleanInvariant"
+        },
+        {
+          "$ref": "#/$defs/nullInvariant"
+        },
+        {
+          "$ref": "#/$defs/emptyInvariant"
+        },
+        {
+          "$ref": "#/$defs/metadataConstantInvariant"
+        },
+        {
+          "$ref": "#/$defs/structuralIntegerInvariant"
+        },
+        {
+          "$ref": "#/$defs/unitScaleInvariant"
+        }
+      ]
+    },
+    "zeroBoundaryInvariant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "statement",
+        "value",
+        "role",
+        "occurrences"
+      ],
+      "properties": {
+        "kind": {
+          "const": "zero_boundary"
+        },
+        "statement": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16
+        },
+        "value": {
+          "const": 0
+        },
+        "role": {
+          "enum": [
+            "zero_equality",
+            "sign_boundary",
+            "null_substitution",
+            "arithmetic_identity"
+          ]
+        },
+        "occurrences": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        }
+      }
+    },
+    "booleanInvariant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "statement",
+        "value",
+        "role",
+        "occurrences"
+      ],
+      "properties": {
+        "kind": {
+          "const": "boolean_literal"
+        },
+        "statement": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16
+        },
+        "value": {
+          "type": "boolean"
+        },
+        "role": {
+          "enum": [
+            "state_filter",
+            "computed_flag",
+            "null_substitution"
+          ]
+        },
+        "occurrences": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        }
+      }
+    },
+    "nullInvariant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "statement",
+        "value",
+        "role",
+        "occurrences"
+      ],
+      "properties": {
+        "kind": {
+          "const": "null_literal"
+        },
+        "statement": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16
+        },
+        "value": {
+          "enum": [
+            "NULL",
+            "НЕОПРЕДЕЛЕНО"
+          ]
+        },
+        "role": {
+          "enum": [
+            "absence_filter",
+            "null_substitution",
+            "computed_value"
+          ]
+        },
+        "occurrences": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        }
+      }
+    },
+    "emptyInvariant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "statement",
+        "value",
+        "role",
+        "occurrences"
+      ],
+      "properties": {
+        "kind": {
+          "const": "empty_literal"
+        },
+        "statement": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16
+        },
+        "value": {
+          "const": ""
+        },
+        "role": {
+          "enum": [
+            "absence_filter",
+            "null_substitution",
+            "computed_value"
+          ]
+        },
+        "occurrences": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        }
+      }
+    },
+    "metadataConstantInvariant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "statement",
+        "constant_kind",
+        "symbol",
+        "role",
+        "occurrences"
+      ],
+      "properties": {
+        "kind": {
+          "const": "metadata_constant"
+        },
+        "statement": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16
+        },
+        "constant_kind": {
+          "enum": [
+            "enum_member",
+            "predefined_reference",
+            "empty_reference"
+          ]
+        },
+        "symbol": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 300,
+          "pattern": "^[A-Za-zА-Яа-яЁё_][A-Za-zА-Яа-яЁё0-9_]*(?:\\.[A-Za-zА-Яа-яЁё_][A-Za-zА-Яа-яЁё0-9_]*)+$"
+        },
+        "role": {
+          "enum": [
+            "state_filter",
+            "type_discriminator",
+            "absence_sentinel",
+            "computed_value"
+          ]
+        },
+        "occurrences": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        }
+      }
+    },
+    "structuralIntegerInvariant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "statement",
+        "value",
+        "role",
+        "occurrences"
+      ],
+      "properties": {
+        "kind": {
+          "const": "structural_integer"
+        },
+        "statement": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16
+        },
+        "value": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "role": {
+          "enum": [
+            "top_limit",
+            "rank_limit",
+            "query_language_arity"
+          ]
+        },
+        "occurrences": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        }
+      }
+    },
+    "unitScaleInvariant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "statement",
+        "value",
+        "role",
+        "occurrences"
+      ],
+      "properties": {
+        "kind": {
+          "const": "unit_scale"
+        },
+        "statement": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16
+        },
+        "value": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000000000
+        },
+        "role": {
+          "enum": [
+            "percentage_scale",
+            "unit_conversion"
+          ]
+        },
+        "occurrences": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        }
+      }
+    },
     "noPagination": {
       "type": "object",
       "additionalProperties": false,
@@ -679,6 +1091,7 @@
         "stable_order_fact_ids": {
           "type": "array",
           "minItems": 1,
+          "maxItems": 10,
           "uniqueItems": true,
           "items": {
             "$ref": "#/$defs/factId"
@@ -832,6 +1245,7 @@
             },
             "metadata_kinds": {
               "type": "array",
+              "maxItems": 9,
               "uniqueItems": true,
               "items": {
                 "enum": [
@@ -849,6 +1263,7 @@
             },
             "path_prefixes": {
               "type": "array",
+              "maxItems": 100,
               "uniqueItems": true,
               "items": {
                 "type": "string",
@@ -861,6 +1276,7 @@
         "chunk_roles": {
           "type": "array",
           "minItems": 1,
+          "maxItems": 8,
           "uniqueItems": true,
           "items": {
             "enum": [
@@ -878,6 +1294,7 @@
         "output_bindings": {
           "type": "array",
           "minItems": 2,
+          "maxItems": 5,
           "uniqueItems": true,
           "items": {
             "type": "object",
@@ -1078,9 +1495,11 @@
         "required_fact_sets": {
           "type": "array",
           "minItems": 1,
+          "maxItems": 20,
           "items": {
             "type": "array",
             "minItems": 1,
+            "maxItems": 100,
             "uniqueItems": true,
             "items": {
               "$ref": "#/$defs/factId"
@@ -1097,6 +1516,7 @@
         },
         "zero_fact_ids": {
           "type": "array",
+          "maxItems": 100,
           "uniqueItems": true,
           "items": {
             "$ref": "#/$defs/factId"
@@ -1133,6 +1553,7 @@
         "primary_fact_ids": {
           "type": "array",
           "minItems": 1,
+          "maxItems": 100,
           "uniqueItems": true,
           "items": {
             "$ref": "#/$defs/factId"
@@ -1140,6 +1561,7 @@
         },
         "column_fact_ids": {
           "type": "array",
+          "maxItems": 100,
           "uniqueItems": true,
           "items": {
             "$ref": "#/$defs/factId"
@@ -1158,6 +1580,7 @@
         "runtime_contracts": {
           "type": "array",
           "minItems": 1,
+          "maxItems": 3,
           "uniqueItems": true,
           "items": {
             "type": "object",
@@ -1203,6 +1626,7 @@
               },
               "required_fact_types": {
                 "type": "array",
+                "maxItems": 100,
                 "uniqueItems": true,
                 "items": {
                   "$ref": "#/$defs/semanticType"
@@ -1312,6 +1736,7 @@
             },
             "required_fact_ids": {
               "type": "array",
+              "maxItems": 100,
               "uniqueItems": true,
               "items": {
                 "$ref": "#/$defs/factId"
@@ -1348,6 +1773,7 @@
             },
             "data": {
               "type": "array",
+              "maxItems": 1000,
               "items": {
                 "type": "object"
               }
@@ -1360,7 +1786,8 @@
               "minimum": 0
             },
             "error": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 5000
             }
           }
         }
@@ -1379,6 +1806,7 @@
         },
         "chunks": {
           "type": "array",
+          "maxItems": 100,
           "items": {
             "type": "object",
             "additionalProperties": false,
@@ -1397,20 +1825,25 @@
                 "maxLength": 160
               },
               "title": {
-                "type": "string"
+                "type": "string",
+                "maxLength": 500
               },
               "heading": {
-                "type": "string"
+                "type": "string",
+                "maxLength": 1000
               },
               "text": {
-                "type": "string"
+                "type": "string",
+                "maxLength": 50000
               },
               "source_uri": {
                 "type": "string",
-                "pattern": "^ut-help://"
+                "pattern": "^ut-help://",
+                "maxLength": 500
               },
               "role": {
-                "type": "string"
+                "type": "string",
+                "maxLength": 64
               }
             }
           }

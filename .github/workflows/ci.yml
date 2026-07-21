@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Python 3.12 / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --locked --all-groups
+      - run: uv run --locked pytest
+      - run: uv run --locked ruff check src tests
+      - run: uv run --locked mypy src
+
+  windows-ready:
+    name: Python 3.12 / windows-latest (prepared)
+    if: ${{ vars.ENABLE_WINDOWS_CI == 'true' }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --locked --all-groups
+      - run: uv run --locked pytest
+      - run: uv run --locked ruff check src tests
+      - run: uv run --locked mypy src

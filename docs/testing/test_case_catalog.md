@@ -22,11 +22,23 @@
 | TC-SCH-002 | Schema | Relative ref package -> skill работает через registry | FR-038..041 |
 | TC-SCH-003 | Schema | Valid data/doc/plan/evidence fixtures приняты | AC-002, AC-014 |
 | TC-SCH-004 | Schema | Extra fields и decision/result mismatch отклонены | ADR-0001 |
+| TC-SCH-005 | Schema | Каждый data query содержит `execution`/`invariant_constants`; nested skill, lock, package и catalog digest согласованы по RFC8785 | ADR-0003 |
 | TC-SEM-001 | Semantic | Required output fact без exact binding отклонен | FR-022, AC-019 |
 | TC-SEM-002 | Semantic | Placeholder и hardcoded concrete query value отклонены | FR-036, AC-005 |
 | TC-SEM-003 | Semantic | Forged/wrong entity ref отклонен | FR-008, FR-023 |
 | TC-SEM-004 | Semantic | sufficient=true несовместим с missing requirement | FR-022, AC-020 |
 | TC-SEM-005 | Semantic | One-row zero не классифицируется как empty | FR-021, AC-018 |
+| TC-ADR-001 | Semantic | `single_select` принимает полный набор допустимых typed constants | ADR-0003 |
+| TC-ADR-002 | Semantic | Sequential и branching `linked_temp_batch` имеют один final result и замкнутый backward graph | ADR-0003 |
+| TC-ADR-003 | Semantic | Independent/orphan/forward/self/duplicate temp и final `ПОМЕСТИТЬ` отклонены | ADR-0003 |
+| TC-ADR-004 | Semantic | DML/DDL/internal empty statement отклонены; misleading tokens в comments/strings не меняют lexer classification | ADR-0003 |
+| TC-ADR-005 | Semantic | Undeclared/mismatched/business literals и numeric `IN/BETWEEN/CASE` bypass отклонены | ADR-0003 |
+| TC-ADR-006 | Semantic | Parameters валидируются по всем statements, column bindings только по final projection | ADR-0003 |
+| TC-SEM-006 | Semantic | Unmet FactRequirement, unknown final fact и semantic/cardinality/unit/time mismatch различимы | ADR-0003 P1 |
+| TC-SEM-007 | Semantic | `provides.fact_types` точно равно output semantic types | ADR-0003 P1 |
+| TC-SEM-008 | Semantic | Package lock точный и замкнутый; same id/version с другим available digest конфликтует | ADR-0003 P1 |
+| TC-SEM-009 | Semantic | Disagreement отклоняет duplicate citation, unknown fact и subject mismatch | ADR-0003 P2 |
+| TC-LIM-001 | Semantic loader | Bytes/depth/node/array и embedded-skill ceilings дают отдельные error codes | ADR-0003 P2 |
 | TC-MCP-001 | MCP contract | Port публикует только execute_query/get_metadata | FR-011, FR-012 |
 | TC-MCP-002 | MCP contract | structuredContent и single text JSON приняты | lessons 3.1 |
 | TC-MCP-003 | MCP contract | malformed, nested и ambiguous wrappers отклонены | AC-018, AC-046 |
@@ -37,6 +49,7 @@
 | TC-DS-003 | DeepSeek contract | query/code/MCP injection запрещены schema | ADR-0001 |
 | TC-INT-001 | Live UT | Каждый fixed template проходит metadata/schema/semantic proof | AC-001..004 |
 | TC-INT-002 | Live UT | До/после suite нет изменений данных | FR-012 |
+| TC-INT-003 | Live UT | Profile подтверждает `supports_linked_temp_batch=true`; producer/final выполняются одним call, envelope содержит только final projection | ADR-0003 |
 | TC-COR-001 | Corpus | Q001-Q090 first-attempt >=81 | AC-015 |
 | TC-COR-002 | Corpus | Follow-up >=10/11 и exact entity retention | AC-016 |
 | TC-COR-003 | Corpus | Negative Q098-Q106 9/9 | AC-017 |

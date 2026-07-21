@@ -6,7 +6,6 @@ from pathlib import Path
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[2]
 CORPUS_PATH = ROOT / "tests/corpus/user_questions.yaml"
 CATALOG_PATH = ROOT / "docs/requirements/skill_catalog.md"
@@ -100,4 +99,3 @@ def test_acceptance_special_scenario_sets_are_stable() -> None:
     ]
     assert by_type["negative"] == [f"Q{number:03d}" for number in range(98, 107)]
     assert by_type["interaction"] == ["Q107"]
-

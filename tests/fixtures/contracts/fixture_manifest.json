@@ -1,16 +1,65 @@
 {
   "valid": [
-    {"file": "valid/data_skill.json", "schema": "skill.schema.json"},
-    {"file": "valid/documentation_skill.json", "schema": "skill.schema.json"},
-    {"file": "valid/skill_package.json", "schema": "skill-package.schema.json"},
-    {"file": "valid/planner_execute.json", "schema": "planner-output.schema.json"},
-    {"file": "valid/planner_clarify.json", "schema": "planner-output.schema.json"},
-    {"file": "valid/planner_refuse.json", "schema": "planner-output.schema.json"},
-    {"file": "valid/planner_capability_gap.json", "schema": "planner-output.schema.json"},
-    {"file": "valid/data_evidence_rows.json", "schema": "evidence.schema.json"},
-    {"file": "valid/data_evidence_empty.json", "schema": "evidence.schema.json"},
-    {"file": "valid/data_evidence_zero_aggregate.json", "schema": "evidence.schema.json"},
-    {"file": "valid/documentation_evidence_disagreement.json", "schema": "evidence.schema.json"}
+    {
+      "file": "valid/data_skill.json",
+      "schema": "skill.schema.json"
+    },
+    {
+      "file": "valid/documentation_skill.json",
+      "schema": "skill.schema.json"
+    },
+    {
+      "file": "valid/skill_package.json",
+      "schema": "skill-package.schema.json"
+    },
+    {
+      "file": "valid/planner_execute.json",
+      "schema": "planner-output.schema.json"
+    },
+    {
+      "file": "valid/planner_clarify.json",
+      "schema": "planner-output.schema.json"
+    },
+    {
+      "file": "valid/planner_refuse.json",
+      "schema": "planner-output.schema.json"
+    },
+    {
+      "file": "valid/planner_capability_gap.json",
+      "schema": "planner-output.schema.json"
+    },
+    {
+      "file": "valid/data_evidence_rows.json",
+      "schema": "evidence.schema.json"
+    },
+    {
+      "file": "valid/data_evidence_empty.json",
+      "schema": "evidence.schema.json"
+    },
+    {
+      "file": "valid/data_evidence_zero_aggregate.json",
+      "schema": "evidence.schema.json"
+    },
+    {
+      "file": "valid/documentation_evidence_disagreement.json",
+      "schema": "evidence.schema.json"
+    },
+    {
+      "file": "valid/data_skill_single_select_typed_constants.json",
+      "schema": "skill.schema.json"
+    },
+    {
+      "file": "valid/data_skill_linked_temp_batch_sequential.json",
+      "schema": "skill.schema.json"
+    },
+    {
+      "file": "valid/data_skill_linked_temp_batch_branching.json",
+      "schema": "skill.schema.json"
+    },
+    {
+      "file": "valid/data_skill_single_select_misleading_comment.json",
+      "schema": "skill.schema.json"
+    }
   ],
   "invalid": [
     {
@@ -87,6 +136,141 @@
       "file": "invalid/prohibited_concrete_value.json",
       "schema": "skill.schema.json",
       "expected_semantic_error": "CONCRETE_VALUE_IN_QUERY_TEMPLATE"
+    },
+    {
+      "file": "invalid/data_skill_linked_independent_select.json",
+      "schema": "skill.schema.json",
+      "expected_semantic_error": "QUERY_INDEPENDENT_SELECT"
+    },
+    {
+      "file": "invalid/data_skill_linked_orphan_temp.json",
+      "schema": "skill.schema.json",
+      "expected_semantic_error": "QUERY_TEMP_ORPHAN"
+    },
+    {
+      "file": "invalid/data_skill_linked_forward_temp_ref.json",
+      "schema": "skill.schema.json",
+      "expected_semantic_error": "QUERY_TEMP_FORWARD_REFERENCE"
+    },
+    {
+      "file": "invalid/data_skill_linked_self_temp_ref.json",
+      "schema": "skill.schema.json",
+      "expected_semantic_error": "QUERY_TEMP_SELF_REFERENCE"
+    },
+    {
+      "file": "invalid/data_skill_linked_duplicate_temp.json",
+      "schema": "skill.schema.json",
+      "expected_semantic_error": "QUERY_TEMP_DUPLICATE_PRODUCER"
+    },
+    {
+      "file": "invalid/data_skill_linked_final_put.json",
+      "schema": "skill.schema.json",
+      "expected_semantic_error": "QUERY_FINAL_PUT"
+    },
+    {
+      "file": "invalid/data_skill_query_dml.json",
+      "schema": "skill.schema.json",
+      "expected_semantic_error": "QUERY_DML_FORBIDDEN"
+    },
+    {
+      "file": "invalid/data_skill_query_ddl.json",
+      "schema": "skill.schema.json",
+      "expected_semantic_error": "QUERY_DDL_FORBIDDEN"
+    },
+    {
+      "file": "invalid/data_skill_query_misleading_string.json",
+      "schema": "skill.schema.json",
+      "expected_semantic_error": "INVARIANT_BUSINESS_TEXT_FORBIDDEN"
+    },
+    {
+      "file": "invalid/data_skill_query_bad_semicolon.json",
+      "schema": "skill.schema.json",
+      "expected_semantic_error": "QUERY_BAD_SEMICOLON"
+    },
+    {
+      "file": "invalid/data_skill_query_undeclared_literal.json",
+      "schema": "skill.schema.json",
+      "expected_semantic_error": "INVARIANT_LITERAL_UNDECLARED"
+    },
+    {
+      "file": "invalid/data_skill_query_forbidden_article.json",
+      "schema": "skill.schema.json",
+      "expected_semantic_error": "INVARIANT_BUSINESS_ARTICLE_FORBIDDEN"
+    },
+    {
+      "file": "invalid/data_skill_query_forbidden_guid.json",
+      "schema": "skill.schema.json",
+      "expected_semantic_error": "INVARIANT_BUSINESS_GUID_FORBIDDEN"
+    },
+    {
+      "file": "invalid/data_skill_query_forbidden_document_number.json",
+      "schema": "skill.schema.json",
+      "expected_semantic_error": "INVARIANT_BUSINESS_DOCUMENT_NUMBER_FORBIDDEN"
+    },
+    {
+      "file": "invalid/data_skill_query_forbidden_date.json",
+      "schema": "skill.schema.json",
+      "expected_semantic_error": "INVARIANT_BUSINESS_DATE_FORBIDDEN"
+    },
+    {
+      "file": "invalid/data_skill_query_numeric_in_bypass.json",
+      "schema": "skill.schema.json",
+      "expected_semantic_error": "INVARIANT_NUMERIC_BYPASS_IN"
+    },
+    {
+      "file": "invalid/data_skill_query_numeric_between_bypass.json",
+      "schema": "skill.schema.json",
+      "expected_semantic_error": "INVARIANT_NUMERIC_BYPASS_BETWEEN"
+    },
+    {
+      "file": "invalid/data_skill_query_numeric_case_bypass.json",
+      "schema": "skill.schema.json",
+      "expected_semantic_error": "INVARIANT_NUMERIC_BYPASS_CASE"
+    },
+    {
+      "file": "invalid/data_skill_query_literal_declaration_mismatch.json",
+      "schema": "skill.schema.json",
+      "expected_semantic_error": "INVARIANT_DECLARATION_MISMATCH"
+    },
+    {
+      "file": "invalid/data_skill_query_undeclared_parameter_later_statement.json",
+      "schema": "skill.schema.json",
+      "expected_semantic_error": "QUERY_PARAMETER_UNDECLARED"
+    },
+    {
+      "file": "invalid/data_skill_query_final_projection_binding_mismatch.json",
+      "schema": "skill.schema.json",
+      "expected_semantic_error": "QUERY_FINAL_PROJECTION_BINDING_MISMATCH"
+    },
+    {
+      "file": "invalid/skill_extra_provides_type.json",
+      "schema": "skill.schema.json",
+      "expected_semantic_error": "PROVIDES_FACT_TYPE_ORPHAN"
+    },
+    {
+      "file": "invalid/package_orphan_lock_entry.json",
+      "schema": "skill-package.schema.json",
+      "expected_semantic_error": "PACKAGE_LOCK_ORPHAN"
+    },
+    {
+      "file": "invalid/package_missing_lock_entry.json",
+      "schema": "skill-package.schema.json",
+      "expected_semantic_error": "PACKAGE_LOCK_MISSING"
+    },
+    {
+      "file": "invalid/disagreement_duplicate_citation.json",
+      "schema": "evidence.schema.json",
+      "expected_semantic_error": "DISAGREEMENT_CITATIONS_NOT_DISTINCT"
+    },
+    {
+      "file": "invalid/disagreement_wrong_fact.json",
+      "schema": "evidence.schema.json",
+      "expected_semantic_error": "DISAGREEMENT_FACT_UNKNOWN"
+    },
+    {
+      "file": "invalid/disagreement_subject_mismatch.json",
+      "schema": "evidence.schema.json",
+      "expected_semantic_error": "DISAGREEMENT_SUBJECT_MISMATCH"
     }
   ]
 }

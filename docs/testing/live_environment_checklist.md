@@ -19,7 +19,12 @@
 - [ ] Дополнительные server tools не опубликованы через application port.
 - [ ] Локальный forbidden-tool test останавливает write/BSL call до сети.
 - [ ] `get_metadata` подтверждает configuration/profile целевой базы.
+- [ ] Adapter profile явно подтверждает `supports_linked_temp_batch=true`.
 - [ ] `execute_query` smoke использует `include_schema=true` и limit `1..1000`.
+- [ ] Linked smoke выполняет producer и final consumer одним `execute_query` call.
+- [ ] Linked smoke envelope содержит только aliases финальной проекции.
+- [ ] Профиль без linked capability отклоняет import/activation compatibility
+  error и не разбивает batch на несколько calls.
 - [ ] Live negative query возвращает `success=false`, а не `success_empty`.
 - [ ] Read-only audit не обнаруживает изменений данных до/после suite.
 
@@ -46,6 +51,8 @@
 ## 5. Live skill и corpus checks
 
 - [ ] Каждый data skill прошел positive, empty/error и metadata/schema checks.
+- [ ] `single_select` и разрешенные typed invariant constants проверены live.
+- [ ] Sequential и branching `linked_temp_batch` прошли одним MCP request.
 - [ ] Даты, `ПОДОБНО`, virtual tables, refs и tabular sections проверены live.
 - [ ] Required output facts имеют exact column bindings и MCP types.
 - [ ] `success_empty`, `zero_aggregate`, `query_error` и `partial` различимы.

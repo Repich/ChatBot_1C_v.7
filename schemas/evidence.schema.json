@@ -181,6 +181,7 @@
         },
         "skills": {
           "type": "array",
+          "maxItems": 500,
           "uniqueItems": true,
           "items": {
             "type": "object",
@@ -341,6 +342,7 @@
         },
         "produced_fact_instance_ids": {
           "type": "array",
+          "maxItems": 100000,
           "uniqueItems": true,
           "items": {
             "$ref": "#/$defs/uuid"
@@ -348,6 +350,7 @@
         },
         "error_ids": {
           "type": "array",
+          "maxItems": 100,
           "uniqueItems": true,
           "items": {
             "$ref": "#/$defs/uuid"
@@ -737,6 +740,7 @@
               "fact_instance_ids": {
                 "type": "array",
                 "minItems": 1,
+                "maxItems": 1000,
                 "uniqueItems": true,
                 "items": {
                   "$ref": "#/$defs/uuid"
@@ -745,6 +749,7 @@
               "citation_ids": {
                 "type": "array",
                 "minItems": 1,
+                "maxItems": 100,
                 "uniqueItems": true,
                 "items": {
                   "$ref": "#/$defs/uuid"
@@ -768,6 +773,7 @@
         },
         "requirements": {
           "type": "array",
+          "maxItems": 40,
           "items": {
             "type": "object",
             "additionalProperties": false,
@@ -797,6 +803,7 @@
               },
               "fact_instance_ids": {
                 "type": "array",
+                "maxItems": 100000,
                 "uniqueItems": true,
                 "items": {
                   "$ref": "#/$defs/uuid"

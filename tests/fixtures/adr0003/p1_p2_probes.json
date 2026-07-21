@@ -1,0 +1,168 @@
+{
+  "fact_requirement_cases": [
+    {
+      "id": "unmet_fact_requirement",
+      "requirement": {
+        "requirement_id": "synthetic-r1",
+        "semantic_type": "measure.stock_balance",
+        "value_type": "quantity",
+        "cardinality": "many",
+        "unit_dimension": "quantity_unit",
+        "time_semantics": "moment"
+      },
+      "candidate_producers": [],
+      "final_outputs": [],
+      "expected_error": "PLAN_FACT_REQUIREMENT_UNMET"
+    },
+    {
+      "id": "unknown_final_fact",
+      "requirement": {
+        "requirement_id": "synthetic-r1",
+        "semantic_type": "measure.stock_balance",
+        "value_type": "quantity",
+        "cardinality": "many",
+        "unit_dimension": "quantity_unit",
+        "time_semantics": "moment"
+      },
+      "candidate_producers": [
+        {
+          "step_id": "synthetic-step-1",
+          "fact_id": "stock.balance_quantity",
+          "semantic_type": "measure.stock_balance",
+          "value_type": "quantity",
+          "cardinality": "many",
+          "unit_dimension": "quantity_unit",
+          "time_semantics": "moment"
+        }
+      ],
+      "final_outputs": [
+        {"step_id": "synthetic-step-1", "fact_id": "stock.unknown_final"}
+      ],
+      "expected_error": "PLAN_FINAL_FACT_UNKNOWN"
+    },
+    {
+      "id": "semantic_type_mismatch",
+      "requirement": {
+        "requirement_id": "synthetic-r1",
+        "semantic_type": "measure.stock_balance",
+        "value_type": "quantity",
+        "cardinality": "many",
+        "unit_dimension": "quantity_unit",
+        "time_semantics": "moment"
+      },
+      "candidate_producers": [
+        {
+          "step_id": "synthetic-step-1",
+          "fact_id": "stock.balance_quantity",
+          "semantic_type": "measure.stock_available",
+          "value_type": "quantity",
+          "cardinality": "many",
+          "unit_dimension": "quantity_unit",
+          "time_semantics": "moment"
+        }
+      ],
+      "final_outputs": [
+        {"step_id": "synthetic-step-1", "fact_id": "stock.balance_quantity"}
+      ],
+      "expected_error": "PLAN_FACT_SEMANTIC_TYPE_MISMATCH"
+    },
+    {
+      "id": "cardinality_mismatch",
+      "requirement": {
+        "requirement_id": "synthetic-r1",
+        "semantic_type": "measure.stock_balance",
+        "value_type": "quantity",
+        "cardinality": "many",
+        "unit_dimension": "quantity_unit",
+        "time_semantics": "moment"
+      },
+      "candidate_producers": [
+        {
+          "step_id": "synthetic-step-1",
+          "fact_id": "stock.balance_quantity",
+          "semantic_type": "measure.stock_balance",
+          "value_type": "quantity",
+          "cardinality": "one",
+          "unit_dimension": "quantity_unit",
+          "time_semantics": "moment"
+        }
+      ],
+      "final_outputs": [
+        {"step_id": "synthetic-step-1", "fact_id": "stock.balance_quantity"}
+      ],
+      "expected_error": "PLAN_FACT_CARDINALITY_MISMATCH"
+    },
+    {
+      "id": "unit_dimension_mismatch",
+      "requirement": {
+        "requirement_id": "synthetic-r1",
+        "semantic_type": "measure.stock_balance",
+        "value_type": "quantity",
+        "cardinality": "many",
+        "unit_dimension": "quantity_unit",
+        "time_semantics": "moment"
+      },
+      "candidate_producers": [
+        {
+          "step_id": "synthetic-step-1",
+          "fact_id": "stock.balance_quantity",
+          "semantic_type": "measure.stock_balance",
+          "value_type": "quantity",
+          "cardinality": "many",
+          "unit_dimension": "currency",
+          "time_semantics": "moment"
+        }
+      ],
+      "final_outputs": [
+        {"step_id": "synthetic-step-1", "fact_id": "stock.balance_quantity"}
+      ],
+      "expected_error": "PLAN_FACT_UNIT_MISMATCH"
+    },
+    {
+      "id": "time_semantics_mismatch",
+      "requirement": {
+        "requirement_id": "synthetic-r1",
+        "semantic_type": "measure.stock_balance",
+        "value_type": "quantity",
+        "cardinality": "many",
+        "unit_dimension": "quantity_unit",
+        "time_semantics": "moment"
+      },
+      "candidate_producers": [
+        {
+          "step_id": "synthetic-step-1",
+          "fact_id": "stock.balance_quantity",
+          "semantic_type": "measure.stock_balance",
+          "value_type": "quantity",
+          "cardinality": "many",
+          "unit_dimension": "quantity_unit",
+          "time_semantics": "period"
+        }
+      ],
+      "final_outputs": [
+        {"step_id": "synthetic-step-1", "fact_id": "stock.balance_quantity"}
+      ],
+      "expected_error": "PLAN_FACT_TIME_MISMATCH"
+    }
+  ],
+  "available_catalog_cases": [
+    {
+      "id": "same_id_version_different_digest",
+      "incoming_skills": [
+        {
+          "skill_id": "ut.synthetic.catalog-conflict",
+          "version": "1.0.0",
+          "digest": "1111111111111111111111111111111111111111111111111111111111111111"
+        }
+      ],
+      "available_catalog": [
+        {
+          "skill_id": "ut.synthetic.catalog-conflict",
+          "version": "1.0.0",
+          "digest": "2222222222222222222222222222222222222222222222222222222222222222"
+        }
+      ],
+      "expected_error": "SKILL_DIGEST_CONFLICT"
+    }
+  ]
+}

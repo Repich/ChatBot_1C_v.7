@@ -14,7 +14,7 @@
       {
         "skill_id": "ut.synthetic.stock-balance",
         "version": "1.0.0",
-        "digest": "59579c5802bef9b1632dff906272f3134b752aecf818e225a01f0499bfc3679a"
+        "digest": "6e7b32c7513140e5a7674d81541b9a6787191be09b8b4505e1a17457edf057d3"
       }
     ]
   },
@@ -69,8 +69,13 @@
       },
       "confirmation": "confirmed",
       "step_id": "s1",
-      "source_locator": {"kind": "query_column_binding", "reference": "Номенклатура"},
-      "unit": {"mode": "not_applicable"}
+      "source_locator": {
+        "kind": "query_column_binding",
+        "reference": "Номенклатура"
+      },
+      "unit": {
+        "mode": "not_applicable"
+      }
     },
     {
       "fact_instance_id": "00000000-0000-4000-8000-000000002102",
@@ -81,8 +86,15 @@
       "value": 7.5,
       "confirmation": "confirmed",
       "step_id": "s1",
-      "source_locator": {"kind": "query_column_binding", "reference": "Количество"},
-      "unit": {"mode": "resolved", "code": "SYNTHETIC_UNIT", "label_ru": "синтетическая единица"},
+      "source_locator": {
+        "kind": "query_column_binding",
+        "reference": "Количество"
+      },
+      "unit": {
+        "mode": "resolved",
+        "code": "SYNTHETIC_UNIT",
+        "label_ru": "синтетическая единица"
+      },
       "moment": "2030-01-01T00:00:00+03:00"
     },
     {
@@ -94,8 +106,13 @@
       "value": "2030-01-01T00:00:00+03:00",
       "confirmation": "confirmed",
       "step_id": "s1",
-      "source_locator": {"kind": "query_column_binding", "reference": "Момент"},
-      "unit": {"mode": "not_applicable"},
+      "source_locator": {
+        "kind": "query_column_binding",
+        "reference": "Момент"
+      },
+      "unit": {
+        "mode": "not_applicable"
+      },
       "moment": "2030-01-01T00:00:00+03:00"
     }
   ],
@@ -108,7 +125,9 @@
         "requirement_id": "r1",
         "semantic_type": "measure.stock_balance",
         "status": "covered",
-        "fact_instance_ids": ["00000000-0000-4000-8000-000000002102"]
+        "fact_instance_ids": [
+          "00000000-0000-4000-8000-000000002102"
+        ]
       }
     ]
   },

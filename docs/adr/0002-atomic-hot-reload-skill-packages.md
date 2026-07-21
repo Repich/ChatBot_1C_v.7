@@ -35,13 +35,13 @@ CLI без restart приложения. Поврежденный/несовме
 
 ## Validation до commit
 
-- JSON limits/parse и Draft 2020-12 schemas;
+- byte/depth/node/array JSON limits, parse и Draft 2020-12 schemas;
 - hard-reject внешнего documentation `source_kind` в schema v1;
 - embedded и package checksums;
 - semantic mappings, uniqueness и portable-value lint;
-- query read-only/static checks;
+- query lexer/shallow parser, execution graph и invariant checks по ADR-0003;
 - current database compatibility/metadata assertions;
-- dependency DAG и version conflicts;
+- exact closed dependency lock, DAG и version/digest conflicts;
 - positive/negative portable fixtures;
 - replacement preconditions.
 

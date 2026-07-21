@@ -91,6 +91,7 @@
     },
     "dependency_lock": {
       "type": "array",
+      "maxItems": 1000,
       "uniqueItems": true,
       "items": {
         "type": "object",

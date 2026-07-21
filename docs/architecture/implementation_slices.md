@@ -11,14 +11,24 @@
 Реализовать:
 
 - Python project/lock, configuration loader и composition root;
+- bounded JSON loader с byte/depth/node/array limits для всех четырех contracts;
 - Pydantic models для plan/evidence/skill, Draft 2020-12 validation;
 - RFC 8785/SHA-256 utility;
 - domain outcomes, facts/entity refs/periods и coverage validator;
+- lexer/shallow parser query package: `single_select`, связанный
+  `linked_temp_batch`, producer/consumer graph и typed invariant constants;
+- semantic checks exact `provides/output`, final fact coverage по
+  type/cardinality/unit/time, closed package lock/digest conflict и evidence
+  disagreement;
 - unit tests всех схемных примеров и отрицательных fixtures;
 - CI на macOS/Linux runner, подготовить Windows job.
 
-Готово, когда поврежденный skill/package/plan/evidence стабильно отклоняется с
-JSON pointer и ни одна model DTO не допускает extra fields.
+Готово, когда поврежденный/oversized skill/package/plan/evidence стабильно
+отклоняется с JSON pointer и ни одна model DTO не допускает extra fields.
+Положительные tests обязаны принять один SELECT и связанный temp-table batch;
+отрицательные - orphan/independent/write statements, mismatch execution graph,
+undeclared/business literals, orphan `provides`, uncovered final fact, лишний
+lock entry/digest conflict и молчаливый выбор disagreement position.
 
 ## 1. Минимальный вертикальный срез
 
@@ -58,7 +68,8 @@ JSON pointer и ни одна model DTO не допускает extra fields.
 
 - schema/semantic/import tests зеленые;
 - Q001, Q011, Q036-Q037 и Q102 на fixtures;
-- live MCP smoke и два read-only queries после запуска сервера;
+- live MCP smoke, single SELECT и один linked temp-table read-only package после
+  запуска сервера;
 - DeepSeek structured output smoke;
 - no secret canary в log/bundle;
 - базовый turn укладывается в 30 секунд в контрольной среде.
@@ -178,10 +189,13 @@ scan и independent `acceptance_observable_state` marker/baseline tooling.
 
 - schemas, digest и semantic lint пройдены;
 - нет secrets/local paths/session IDs/concrete demo values в identity/template;
+- execution graph и все query literals точно соответствуют ADR-0003;
 - compatibility и metadata assertions проверены;
 - positive/negative fixtures и live test пройдены;
-- required facts имеют exact bindings, units/time/cardinality;
-- dependency DAG замкнут и без cycles;
+- `provides.fact_types` точно равно
+  `output_contract.facts[*].semantic_type` как множество;
+- required/final facts имеют exact bindings, semantic types, units/time/cardinality;
+- dependency lock точно равен замыканию DAG, digests совпадают, cycles отсутствуют;
 - web/CLI import/export дают одинаковые digests;
 - package доступен следующему turn без restart;
 - trace позволяет offline replay normalizer/coverage/renderer.

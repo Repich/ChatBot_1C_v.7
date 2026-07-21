@@ -94,6 +94,12 @@
       "template_id": "ut.synthetic.stock-balance.v1",
       "language": "1c-query",
       "text": "ВЫБРАТЬ Данные.Номенклатура КАК Номенклатура, Данные.Количество КАК Количество, &Момент КАК Момент ИЗ РегистрНакопления.СинтетическиеОстатки КАК Данные ГДЕ Данные.Номенклатура = &Номенклатура",
+      "execution": {
+        "kind": "single_select",
+        "statement_count": 1,
+        "final_statement": 1
+      },
+      "invariant_constants": [],
       "include_schema": true,
       "mcp_limit": {
         "default": 21,
@@ -350,6 +356,6 @@
     "algorithm": "sha256",
     "canonicalization": "RFC8785",
     "scope": "document_without_integrity",
-    "digest": "0000000000000000000000000000000000000000000000000000000000000000"
+    "digest": "54e2b2e93fcae6d537dcb8e3cccbd1e311671c965156a6b653c1d17446e24e3d"
   }
 }

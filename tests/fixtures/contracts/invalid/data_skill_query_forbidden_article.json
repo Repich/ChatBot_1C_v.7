@@ -1,0 +1,361 @@
+{
+  "schema_version": "1.0.0",
+  "document_type": "skill",
+  "skill_id": "ut.synthetic.adr0003.forbidden-article",
+  "version": "1.0.0",
+  "display": {
+    "name_ru": "Синтетическая ADR-0003 фикстура forbidden-article",
+    "purpose_ru": "Проверяет один изолированный контракт ADR-0003 на явно синтетических данных.",
+    "limitations_ru": [
+      "Предназначен только для контрактных испытаний."
+    ]
+  },
+  "provides": {
+    "capability_ids": [
+      "CAP-STOCK-BALANCE"
+    ],
+    "fact_types": [
+      "catalog.item",
+      "measure.stock_balance",
+      "time.moment"
+    ]
+  },
+  "compatibility": {
+    "configuration_id": "УправлениеТорговлейБазовая",
+    "configuration_name": "1С:Управление торговлей (базовая), редакция 11",
+    "release_range": {
+      "minimum": "11.5.27.56",
+      "maximum": "11.5.27.56",
+      "include_minimum": true,
+      "include_maximum": true
+    },
+    "compatibility_modes": [
+      "8.3.27"
+    ],
+    "required_metadata": [
+      {
+        "object_name": "РегистрНакопления.СинтетическиеОстатки",
+        "attributes": [
+          "Номенклатура",
+          "Количество"
+        ]
+      }
+    ],
+    "metadata_snapshot_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "selection": {
+    "intent_kinds": [
+      "data"
+    ],
+    "aliases_ru": [
+      "синтетический остаток товара"
+    ],
+    "anti_examples_ru": [
+      "изменить синтетический остаток"
+    ],
+    "required_context_fact_types": []
+  },
+  "parameters": [
+    {
+      "name": "item",
+      "title_ru": "Синтетический товар",
+      "description_ru": "Подтвержденная ссылка на синтетический товар.",
+      "value_type": "entity_ref",
+      "required": true,
+      "allowed_sources": [
+        "user_slot",
+        "session_context",
+        "previous_step"
+      ],
+      "semantic_type": "catalog.item",
+      "entity_types": [
+        "catalog.item"
+      ],
+      "normalization": "object_ref"
+    },
+    {
+      "name": "moment",
+      "title_ru": "Момент остатка",
+      "description_ru": "Синтетический момент, на который получен остаток.",
+      "value_type": "datetime",
+      "required": true,
+      "allowed_sources": [
+        "user_slot",
+        "system"
+      ],
+      "normalization": "none"
+    }
+  ],
+  "operation": {
+    "kind": "data_query",
+    "tool": "execute_query",
+    "read_only": true,
+    "query_template": {
+      "template_id": "ut.synthetic.adr0003.forbidden-article.v1",
+      "language": "1c-query",
+      "text": "ВЫБРАТЬ Данные.Номенклатура КАК Номенклатура, Данные.Количество КАК Количество, &Момент КАК Момент ИЗ РегистрНакопления.СинтетическиеОстатки КАК Данные ГДЕ Данные.Номенклатура = &Номенклатура И Данные.Артикул = \"SYNTHETIC-ARTICLE-001\"",
+      "execution": {
+        "kind": "single_select",
+        "statement_count": 1,
+        "final_statement": 1
+      },
+      "invariant_constants": [],
+      "include_schema": true,
+      "mcp_limit": {
+        "default": 21,
+        "maximum": 1000
+      }
+    },
+    "parameter_bindings": [
+      {
+        "parameter": "item",
+        "query_parameter": "Номенклатура",
+        "encoding": "object_ref"
+      },
+      {
+        "parameter": "moment",
+        "query_parameter": "Момент",
+        "encoding": "datetime"
+      }
+    ],
+    "column_bindings": [
+      {
+        "column": "Номенклатура",
+        "fact_id": "item.ref",
+        "accepted_mcp_types": [
+          "СправочникСсылка.Номенклатура"
+        ],
+        "converter": "object_ref"
+      },
+      {
+        "column": "Количество",
+        "fact_id": "stock.balance_quantity",
+        "accepted_mcp_types": [
+          "Число"
+        ],
+        "converter": "decimal"
+      },
+      {
+        "column": "Момент",
+        "fact_id": "time.moment",
+        "accepted_mcp_types": [
+          "Дата"
+        ],
+        "converter": "datetime"
+      }
+    ],
+    "pagination": {
+      "strategy": "none"
+    }
+  },
+  "output_contract": {
+    "contract_id": "ut.synthetic.adr0003.forbidden-article.v1",
+    "contract_version": "1.0.0",
+    "cardinality": "many",
+    "row_identity_fact_ids": [
+      "item.ref"
+    ],
+    "facts": [
+      {
+        "fact_id": "item.ref",
+        "semantic_type": "catalog.item",
+        "value_type": "entity_ref",
+        "role": "entity",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Синтетический товар",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "stock.balance_quantity",
+        "semantic_type": "measure.stock_balance",
+        "value_type": "quantity",
+        "role": "measure",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Синтетический остаток",
+        "unit_contract": {
+          "mode": "fixed",
+          "code": "SYNTHETIC_UNIT"
+        }
+      },
+      {
+        "fact_id": "time.moment",
+        "semantic_type": "time.moment",
+        "value_type": "datetime",
+        "role": "time",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Момент остатка",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      }
+    ],
+    "sufficiency": {
+      "required_fact_sets": [
+        [
+          "item.ref",
+          "stock.balance_quantity",
+          "time.moment"
+        ]
+      ],
+      "empty_semantics": "confirmed_no_rows",
+      "zero_fact_ids": [
+        "stock.balance_quantity"
+      ],
+      "truncation_policy": "page_is_complete"
+    },
+    "renderer": {
+      "kind": "table",
+      "primary_fact_ids": [
+        "stock.balance_quantity"
+      ],
+      "column_fact_ids": [
+        "item.ref",
+        "stock.balance_quantity",
+        "time.moment"
+      ]
+    }
+  },
+  "dependencies": {
+    "runtime_contracts": [
+      {
+        "contract": "skill-runtime",
+        "version_range": "^1.0.0"
+      },
+      {
+        "contract": "mcp.execute_query",
+        "version_range": "^1.0.0"
+      }
+    ],
+    "skills": []
+  },
+  "examples": [
+    {
+      "question_ru": "Покажи остаток явно синтетического товара SYNTHETIC-ITEM-001.",
+      "applicability": "applicable",
+      "reason_ru": "Синтетический пример запрашивает фактический остаток."
+    },
+    {
+      "question_ru": "Измени остаток явно синтетического товара SYNTHETIC-ITEM-001.",
+      "applicability": "not_applicable",
+      "reason_ru": "Операции изменения запрещены контрактом только для чтения."
+    }
+  ],
+  "tests": [
+    {
+      "test_id": "synthetic.stock.positive",
+      "case_kind": "positive",
+      "bindings": [
+        {
+          "parameter": "item",
+          "value": {
+            "_objectRef": true,
+            "УникальныйИдентификатор": "00000000-0000-4000-8000-000000000101",
+            "ТипОбъекта": "СправочникСсылка.Номенклатура",
+            "Представление": "Явно синтетический товар SYNTHETIC-ITEM-001"
+          }
+        },
+        {
+          "parameter": "moment",
+          "value": "2030-01-01T00:00:00+03:00"
+        }
+      ],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": true,
+          "data": [
+            {
+              "Номенклатура": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000000101",
+                "ТипОбъекта": "СправочникСсылка.Номенклатура",
+                "Представление": "Явно синтетический товар SYNTHETIC-ITEM-001"
+              },
+              "Количество": 7.5,
+              "Момент": "2030-01-01T00:00:00+03:00"
+            }
+          ],
+          "schema": {
+            "columns": [
+              {
+                "name": "Номенклатура",
+                "types": [
+                  "СправочникСсылка.Номенклатура"
+                ]
+              },
+              {
+                "name": "Количество",
+                "types": [
+                  "Число"
+                ]
+              },
+              {
+                "name": "Момент",
+                "types": [
+                  "Дата"
+                ]
+              }
+            ]
+          },
+          "count": 1
+        }
+      },
+      "expected": {
+        "status": "success_with_rows",
+        "required_fact_ids": [
+          "item.ref",
+          "stock.balance_quantity",
+          "time.moment"
+        ]
+      }
+    },
+    {
+      "test_id": "synthetic.stock.negative-empty",
+      "case_kind": "negative",
+      "bindings": [],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": true,
+          "data": [],
+          "schema": {
+            "columns": []
+          },
+          "count": 0
+        }
+      },
+      "expected": {
+        "status": "success_empty",
+        "required_fact_ids": []
+      }
+    }
+  ],
+  "provenance": {
+    "author": "Synthetic Contract Fixture",
+    "created_at": "2030-01-01T00:00:00Z",
+    "source_configuration": {
+      "configuration_id": "УправлениеТорговлейБазовая",
+      "release": "11.5.27.56",
+      "compatibility_mode": "8.3.27",
+      "metadata_snapshot_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    "source_references": [
+      {
+        "kind": "test_evidence",
+        "uri": "test-evidence://synthetic/adr0003/forbidden-article"
+      }
+    ],
+    "change_note_ru": "Явно синтетическая фикстура для проверки data-query контракта."
+  },
+  "integrity": {
+    "algorithm": "sha256",
+    "canonicalization": "RFC8785",
+    "scope": "document_without_integrity",
+    "digest": "e3aee58054025277a6376dc273fa996a0615cc8b404a8c0747aaa52dba046b7f"
+  }
+}

@@ -11,6 +11,18 @@
 - Один общий request deadline - 90 секунд; stage не начинает retry, если
   оставшегося бюджета недостаточно.
 
+Все JSON ingress используют один bounded loader до DTO/schema validation.
+Пределы считаются по UTF-8 document bytes: `skill` 1 MiB, `skill_package`
+32 MiB, `planner_output` 256 KiB, `evidence_bundle` 64 MiB. Для каждого документа
+дополнительно действуют maximum depth 32, maximum 500 000 JSON nodes и общий
+array ceiling 100 000; более строгие contextual `maxItems` заданы schemas.
+Multipart/CLI не обходят эти ограничения, compressed JSON не принимается.
+Provider bodies также bounded до parse: DeepSeek HTTP response 1 MiB, JSON
+content planner/answer 256 KiB; MCP/get_metadata JSON envelope 16 MiB, depth 32,
+100 000 nodes, `data` не более 1000 rows. Oversize дает
+`DEEPSEEK_OUTPUT_LIMIT` или `MCP_ENVELOPE_LIMIT`, не transport retry; raw
+diagnostic storage не сохраняет неограниченный payload.
+
 ## 2. MCP 1C
 
 ### 2.1. Транспорт и allowlist
@@ -55,9 +67,40 @@ Startup health требует наличие `execute_query` и `get_metadata`, 
 - runtime query synthesis, concatenation и arbitrary MCP arguments запрещены.
 
 Read-only обеспечивается одновременно четырьмя границами: tool allowlist,
-отсутствием BSL port, immutable reviewed templates и static query lint. Запросы с
-неразрешенными placeholders/несколькими независимыми statements отклоняются при
-импорте. Фактический query language template проверяется live contract test.
+отсутствием BSL port, immutable reviewed templates и lexer/shallow parser по
+ADR-0003. Query package обязан точно соответствовать закрытому
+`operation.query_template.execution`:
+
+- `single_select` содержит один результирующий `ВЫБРАТЬ` без `ПОМЕСТИТЬ`;
+- `linked_temp_batch` содержит 2..16 `ВЫБРАТЬ` в одном request: каждый
+  промежуточный statement создает ровно одну объявленную temporary table, а
+  последний является единственным result statement;
+- parser доказывает create-before-read, unique producer, declared consumers,
+  отсутствие cycles/orphans и транзитивный путь каждой temporary table к final;
+- несколько независимых SELECT, несколько result sets, empty internal statement,
+  любой write/DDL/administrative/BSL token и несовпадение manifest отклоняются;
+- один trailing `;` допустим; разделители в строках/comments не делят statements.
+
+Весь linked batch выполняется одним `execute_query` вызовом и одним менеджером
+временных таблиц. `params` связываются для package целиком, schema/column mapping
+проверяются только по финальной проекции. Фактический query language package
+дополнительно проходит live contract test на совместимой УТ.
+
+Activation skills с `linked_temp_batch` требует успешного live compatibility
+probe, сохраненного в database profile и доступного в diagnostics: smoke
+выполняет producer и final consumer в одном request и подтверждает, что envelope
+содержит только финальную проекцию. При неподдерживаемом профиле
+import/activation дает compatibility error; fallback с разбиением на несколько
+MCP-вызовов запрещен.
+
+Static validator также разбирает все literals. Каждый business-instance value
+(ref/UUID, товар, склад, код, имя, номер документа, дата, произвольный threshold
+или доменный текст) обязан поступать через declared typed parameter. Литерал
+может остаться в template только при точном совпадении с закрытой декларацией
+`operation.query_template.invariant_constants`: zero boundary, boolean,
+null/undefined, empty literal,
+metadata constant, structural integer или unit scale. Statement, role, value и
+число occurrences должны совпасть; произвольного domain/string escape hatch нет.
 
 ### 2.3. execute_query response normalization
 
@@ -163,6 +206,12 @@ Draft 2020-12 validation и domain validation. `choices[0].message.content` -
 не может добавить skill вне исходного shortlist. Вторая ошибка -
 `DEEPSEEK_STRUCTURED_OUTPUT_INVALID`.
 
+После schema parse PlanValidator до любого MCP-вызова доказывает покрытие всех
+requirements и отдельно final fact. Совпадение требует semantic type,
+cardinality, unit, time semantics и identity/dimensions; одно имя fact type или
+наличие intermediate fact недостаточно. Exact `(skill_id, version, digest)`
+берется только из pinned catalog snapshot.
+
 ### 3.3. Answer call
 
 Answer writer получает только validated evidence manifest, public labels и doc
@@ -237,10 +286,13 @@ chunk. Data facts и documentation claims хранятся в разных sourc
 
 Для проверки согласованности answer adapter может вернуть только группы
 позиций, ссылающиеся на уже созданные fragment fact IDs и citation IDs. Core
-отклоняет forged/missing refs и группы менее чем с двумя разными citations.
+отклоняет forged/missing refs, повтор одной ссылки под разными позициями, группы
+менее чем с двумя разными citations и позицию без собственного provenance.
+Противоречащие positions сохраняются раздельно; они не агрегируются в один факт.
 Валидная группа записывается в `documentation_disagreements`; deterministic
 renderer выводит нейтральное сообщение о расхождении и все позиции с отдельными
-ссылками. BM25 rank не используется для молчаливого разрешения расхождения.
+ссылками. BM25 rank, порядок MCP/docs response и LLM confidence не используются
+для молчаливого разрешения расхождения.
 
 ## 5. Web/API boundary
 
@@ -278,6 +330,12 @@ Enter отправляет, Shift+Enter вставляет перевод стр
 Import response: `accepted`, new revision, IDs/versions/digests. Reject response:
 HTTP 422/409/503 с массивом `{code, json_pointer, message_ru}` и неизменной
 revision. UI не содержит JSON editor.
+
+Перед import use case bounded loader применяет limits раздела 1, затем проверяет
+точный замкнутый `dependency_lock`: все embedded skills и их транзитивные
+dependencies присутствуют ровно один раз, лишних entries нет. Digest embedded
+entry совпадает с document integrity; external entry - с pinned active catalog.
+Та же `(skill_id, version)` с иным digest возвращает conflict до transaction.
 
 ### 5.3. Health и diagnostics
 

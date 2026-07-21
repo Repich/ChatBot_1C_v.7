@@ -5,7 +5,6 @@ from pathlib import Path
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[2]
 REQUIREMENTS = ROOT / "docs/requirements/product_requirements.md"
 ACCEPTANCE = ROOT / "docs/requirements/acceptance_criteria.md"

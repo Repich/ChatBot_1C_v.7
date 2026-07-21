@@ -1,0 +1,52 @@
+{
+  "limits": {
+    "document_bytes": {
+      "skill": 1048576,
+      "skill_package": 33554432,
+      "planner_output": 262144,
+      "evidence_bundle": 67108864
+    },
+    "depth": 32,
+    "nodes": 500000,
+    "array_items": 100000,
+    "embedded_skill_canonical_bytes": 1048576
+  },
+  "cases": [
+    {
+      "id": "skill_bytes_over_limit",
+      "document_type": "skill",
+      "raw_bytes": 1048577,
+      "shape": {"kind": "empty_object"},
+      "expected_error": "JSON_BYTES_LIMIT"
+    },
+    {
+      "id": "depth_over_limit",
+      "document_type": "planner_output",
+      "raw_bytes": 2,
+      "shape": {"kind": "nested_array", "containers": 33},
+      "expected_error": "JSON_DEPTH_LIMIT"
+    },
+    {
+      "id": "node_count_over_limit_without_wide_array",
+      "document_type": "evidence_bundle",
+      "raw_bytes": 2,
+      "shape": {"kind": "branch_arrays", "branches": 6, "items_per_branch": 83333},
+      "expected_error": "JSON_NODE_LIMIT"
+    },
+    {
+      "id": "array_items_over_limit",
+      "document_type": "evidence_bundle",
+      "raw_bytes": 2,
+      "shape": {"kind": "flat_array", "items": 100001},
+      "expected_error": "JSON_ARRAY_LIMIT"
+    },
+    {
+      "id": "embedded_skill_canonical_bytes_over_limit",
+      "document_type": "skill_package",
+      "raw_bytes": 2,
+      "embedded_skill_canonical_bytes": 1048577,
+      "shape": {"kind": "empty_object"},
+      "expected_error": "JSON_BYTES_LIMIT"
+    }
+  ]
+}

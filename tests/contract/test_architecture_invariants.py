@@ -8,7 +8,6 @@ import pytest
 import yaml
 from jsonschema import Draft202012Validator, FormatChecker
 
-
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMAS = ROOT / "schemas"
 FIXTURES = ROOT / "tests/fixtures"
@@ -208,14 +207,36 @@ def test_semantic_invalid_manifest_labels_every_schema_valid_negative() -> None:
         for item in manifest["invalid"]
         if "expected_semantic_error" in item
     }
-    assert semantic_cases == {
+    assert {
         "UNRESOLVED_QUERY_PLACEHOLDER",
         "REQUIRED_OUTPUT_BINDING_MISSING",
         "ENTITY_REF_SEMANTIC_TYPE_MISMATCH",
         "SUFFICIENT_COVERAGE_HAS_MISSING_REQUIREMENTS",
         "ZERO_AGGREGATE_CLASSIFIED_AS_EMPTY",
         "CONCRETE_VALUE_IN_QUERY_TEMPLATE",
-    }
+    } <= semantic_cases
+    assert {
+        "QUERY_INDEPENDENT_SELECT",
+        "QUERY_TEMP_ORPHAN",
+        "QUERY_TEMP_FORWARD_REFERENCE",
+        "QUERY_TEMP_SELF_REFERENCE",
+        "QUERY_TEMP_DUPLICATE_PRODUCER",
+        "QUERY_FINAL_PUT",
+        "QUERY_DML_FORBIDDEN",
+        "QUERY_DDL_FORBIDDEN",
+        "QUERY_BAD_SEMICOLON",
+        "INVARIANT_LITERAL_UNDECLARED",
+        "INVARIANT_DECLARATION_MISMATCH",
+        "QUERY_PARAMETER_UNDECLARED",
+        "QUERY_FINAL_PROJECTION_BINDING_MISMATCH",
+        "PROVIDES_FACT_TYPE_ORPHAN",
+        "PACKAGE_LOCK_ORPHAN",
+        "PACKAGE_LOCK_MISSING",
+        "DISAGREEMENT_CITATIONS_NOT_DISTINCT",
+        "DISAGREEMENT_FACT_UNKNOWN",
+        "DISAGREEMENT_SUBJECT_MISMATCH",
+    } <= semantic_cases
+    assert all(re.fullmatch(r"[A-Z][A-Z0-9_]+", code) for code in semantic_cases)
 
 
 def test_semantic_invalid_fixtures_exhibit_the_declared_single_boundary() -> None:

@@ -20,13 +20,14 @@ handler или query на каждый вопрос. Новый skill долже
    построения typed plan/clarification и grounded формулировки.
 2. Planner output закрыт `planner-output.schema.json`; в нем нет query text,
    metadata names, MCP args или executable code.
-3. 1C query хранится только как immutable parameterized template data-query
-   skill. Runtime не синтезирует и не интерполирует query text.
+3. 1C query хранится только как immutable parameterized query package
+   data-query skill. Runtime не синтезирует и не интерполирует query text;
+   допустимые формы execution и literals уточнены ADR-0003.
 4. Atomic skills имеют typed inputs, exact physical-to-semantic mappings,
    semantic output contract, compatibility, tests, provenance и checksum.
 5. Composite question исполняется DAG skills и allowlist deterministic operators.
-6. Similarity используется только для shortlist. Core доказывает required-fact
-   coverage/type/cardinality/unit/time до выполнения.
+6. Similarity используется только для shortlist. Core доказывает required и
+   final fact coverage/type/cardinality/identity/unit/time до выполнения.
 7. После выполнения evidence gate повторно проверяет достаточность. Renderer
    показывает authoritative facts; LLM summary ссылается на evidence IDs.
 8. Никакого runtime skill creation, self-learning или candidate/draft lifecycle.
@@ -95,3 +96,5 @@ validated evidence manifest; authoritative values рендерит core.
   end-to-end сценария.
 - External `source_kind` отклоняется schema/retrieval tests; built-in
   disagreement fixture показывает все grounded позиции с citations.
+- ADR-0003 tests принимают связанный read-only temp-table batch и отклоняют
+  independent/write statements и business-instance literals без parameters.

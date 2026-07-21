@@ -110,6 +110,12 @@
           "template_id": "ut.synthetic.stock-balance.v1",
           "language": "1c-query",
           "text": "ВЫБРАТЬ Данные.Номенклатура КАК Номенклатура, Данные.Количество КАК Количество, &Момент КАК Момент ИЗ РегистрНакопления.СинтетическиеОстатки КАК Данные ГДЕ Данные.Номенклатура = &Номенклатура",
+          "execution": {
+            "kind": "single_select",
+            "statement_count": 1,
+            "final_statement": 1
+          },
+          "invariant_constants": [],
           "include_schema": true,
           "mcp_limit": {
             "default": 21,
@@ -366,7 +372,7 @@
         "algorithm": "sha256",
         "canonicalization": "RFC8785",
         "scope": "document_without_integrity",
-        "digest": "59579c5802bef9b1632dff906272f3134b752aecf818e225a01f0499bfc3679a"
+        "digest": "6e7b32c7513140e5a7674d81541b9a6787191be09b8b4505e1a17457edf057d3"
       }
     }
   ],
@@ -374,7 +380,7 @@
     {
       "skill_id": "ut.synthetic.stock-balance",
       "version": "1.0.0",
-      "digest": "59579c5802bef9b1632dff906272f3134b752aecf818e225a01f0499bfc3679a"
+      "digest": "6e7b32c7513140e5a7674d81541b9a6787191be09b8b4505e1a17457edf057d3"
     }
   ],
   "provenance": {
@@ -392,6 +398,6 @@
     "algorithm": "sha256",
     "canonicalization": "RFC8785",
     "scope": "document_without_integrity",
-    "digest": "16b61a367ea86d5ea1f539cbab8a1794d9c0f22596e9f027af63e625e6fd1827"
+    "digest": "e4562cd7c3441bf5777352fd829b4cf3242526cf8053dcb1fb469adfc3fd004f"
   }
 }

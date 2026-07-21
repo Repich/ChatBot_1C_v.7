@@ -10,7 +10,13 @@
   "catalog_snapshot": {
     "snapshot_id": "00000000-0000-4000-8000-000000002304",
     "revision": 7,
-    "skills": [{"skill_id": "ut.synthetic.stock-balance", "version": "1.0.0", "digest": "59579c5802bef9b1632dff906272f3134b752aecf818e225a01f0499bfc3679a"}]
+    "skills": [
+      {
+        "skill_id": "ut.synthetic.stock-balance",
+        "version": "1.0.0",
+        "digest": "6e7b32c7513140e5a7674d81541b9a6787191be09b8b4505e1a17457edf057d3"
+      }
+    ]
   },
   "database_state_marker": {
     "marker_id": "00000000-0000-4000-8000-000000002305",
@@ -40,7 +46,9 @@
       "row_count": 1,
       "truncated": false,
       "has_more": false,
-      "produced_fact_instance_ids": ["00000000-0000-4000-8000-000000002306"],
+      "produced_fact_instance_ids": [
+        "00000000-0000-4000-8000-000000002306"
+      ],
       "error_ids": []
     }
   ],
@@ -54,8 +62,15 @@
       "value": 0,
       "confirmation": "confirmed",
       "step_id": "s1",
-      "source_locator": {"kind": "query_column_binding", "reference": "Количество"},
-      "unit": {"mode": "resolved", "code": "SYNTHETIC_UNIT", "label_ru": "синтетическая единица"},
+      "source_locator": {
+        "kind": "query_column_binding",
+        "reference": "Количество"
+      },
+      "unit": {
+        "mode": "resolved",
+        "code": "SYNTHETIC_UNIT",
+        "label_ru": "синтетическая единица"
+      },
       "moment": "2030-01-01T00:00:00+03:00"
     }
   ],
@@ -64,7 +79,14 @@
   "coverage": {
     "sufficient": true,
     "requirements": [
-      {"requirement_id": "r1", "semantic_type": "measure.stock_balance", "status": "covered", "fact_instance_ids": ["00000000-0000-4000-8000-000000002306"]}
+      {
+        "requirement_id": "r1",
+        "semantic_type": "measure.stock_balance",
+        "status": "covered",
+        "fact_instance_ids": [
+          "00000000-0000-4000-8000-000000002306"
+        ]
+      }
     ]
   },
   "context_exports": [],

@@ -19,9 +19,9 @@
 | FR-009 | Message timestamps + SSE progress | Browser slow-call test |
 | FR-010 | Deterministic product-meta response from active catalog summary | Q107 |
 | FR-011 | `ReadOnly1CPort` only | MCP contract trace |
-| FR-012 | Tool allowlist + no write port/BSL | Q101 and forbidden-tool test |
-| FR-013 | Catalog shortlist + exact version skill calls | Plan trace/coverage proof |
-| FR-014 | Validated DAG and generic operators | Composite corpus scenarios |
+| FR-012 | Tool allowlist + no write port/BSL + ADR-0003 read-only query-package parser | Q101; forbidden-tool/orphan-batch/write-token tests |
+| FR-013 | Catalog shortlist + exact version/digest skill calls + typed fact coverage | Plan trace/coverage proof |
+| FR-014 | Validated DAG, final-fact coverage and generic operators | Composite corpus scenarios |
 | FR-015 | Typed bindings; values absent from skill identity | Q091-Q093 + lint |
 | FR-016 | `normalize_period`, half-open period, turn clock/timezone | Relative/date scenarios |
 | FR-017 | count/aggregate/rank/group operators | Numeric/list scenarios |
@@ -43,12 +43,12 @@
 | FR-033 | Answer claims require evidence/citation IDs | Ungrounded draft rejection |
 | FR-034 | Versioned shipped package and active catalog | Catalog completeness gate |
 | FR-035 | Atomic operation + typed parameters | Skill semantic lint |
-| FR-036 | Portable URI/value lint and secret scan | AC-005 scan |
-| FR-037 | Closed skill schema | Draft 2020-12 + semantic validation |
+| FR-036 | Portable URI/secret lint; business values only in parameters, typed invariant literals | AC-005 parameter/invariant negative matrix |
+| FR-037 | Closed skill/execution/invariant schemas + bounded JSON loader | Draft 2020-12, limit and semantic validation |
 | FR-038 | Single skill export from canonical document | Web/CLI export test |
 | FR-039 | Shared import use case, no app build | Two-data-dir portability |
 | FR-040 | New immutable revision + atomic snapshot swap | Next-turn hot reload test |
-| FR-041 | Schema/digest/compatibility/dependency/conflict pipeline | Import negative suite |
+| FR-041 | Schema/digest/compatibility/exact closed lock/conflict pipeline | Missing/extra lock and digest-conflict suite |
 | FR-042 | Structured validation errors with JSON pointer | API/CLI error golden tests |
 | FR-043 | Public skill card projection | Browser catalog test |
 | FR-044 | Replace/delete with `If-Match`, next revision | Concurrent catalog tests |
@@ -70,10 +70,10 @@
 | --- | --- | --- |
 | NFR-001 | Russian display contracts and UI text | Corpus/browser locale scan |
 | NFR-002 | Central formatter over typed facts/units/time | Golden formatting tests |
-| NFR-003 | Fixed templates, deterministic operators, pinned state | Repeat corpus at same marker |
+| NFR-003 | Fixed query packages, deterministic operators, pinned state | Repeat corpus at same marker |
 | NFR-004 | Per-turn error state and short transactions | Failure injection then next turn |
 | NFR-005 | Ordered trace + raw payload + snapshots | Offline diagnostic replay |
-| NFR-006 | Package schema/semantic/lint/fixture validation | Catalog CI gate |
+| NFR-006 | Bounded JSON, schema, query parser, semantic lint and fixture validation | Catalog CI gate |
 | NFR-007 | Tests embedded per skill + composition suite | Completeness audit |
 | NFR-008 | Cross-platform paths/SQLite/wheel | macOS acceptance + Windows smoke |
 | NFR-009 | Catalog DB revision and atomic reference swap | Hot reload test |
@@ -115,25 +115,25 @@ Product capability ID остается requirement/test label. В колонке
 | --- | --- |
 | AC-001 | Completeness manifest покрывает все 87 IDs или явные exclusions |
 | AC-002 | Public skill card содержит purpose/input/output/compatibility/limits/examples |
-| AC-003 | Semantic lint требует positive и negative test каждого active skill |
+| AC-003 | Semantic lint требует positive/negative tests, включая execution graph и invariant literals data skills |
 | AC-004 | Composition manifest требует test для участвующих capabilities |
-| AC-005 | Secret/local path/session/concrete-value scanner блокирует package |
+| AC-005 | Scanner блокирует secret/local/session/business-instance values, но принимает только declared invariant constants |
 | AC-006 | Explicit replace/delete создает новую revision без app update |
 | AC-007 | Single-skill web и CLI export валидируется `skill.schema.json` |
 | AC-008 | Import в чистый `APP_DATA_DIR` с compatible profile |
 | AC-009 | Следующий turn pin-ит новую revision без restart |
 | AC-010 | До/после переноса сравниваются normalized facts/contracts |
-| AC-011 | Parse/schema/checksum failure оставляет revision неизменной |
+| AC-011 | Byte/depth/node/array, parse/schema/checksum failure оставляет revision неизменной |
 | AC-012 | Compatibility errors имеют codes и JSON pointers |
-| AC-013 | Same ID/version/different digest и implicit upgrade запрещены |
+| AC-013 | Exact closed lock; same ID/version/different digest и implicit upgrade запрещены |
 | AC-014 | Corpus runner сохраняет outcome/evidence по всем 116 IDs |
 | AC-015 | Acceptance calculator требует не менее 81 правильного ответа из Q001-Q090 |
 | AC-016 | Context acceptance требует не менее 10 правильных из 11 follow-up сценариев |
 | AC-017 | Negative outcome assertions покрывают Q098-Q106 |
 | AC-018 | State machine запрещает преобразовать error в `success_empty` |
-| AC-019 | Final coverage запрещает intermediate fact как полный ответ |
-| AC-020 | Missing requirement блокирует factual renderer/LLM claim |
-| AC-021 | Fact requirements проверяют metric/object/time/unit |
+| AC-019 | Final coverage по type/cardinality/unit/time запрещает intermediate fact как полный ответ |
+| AC-020 | Missing/ambiguous/disagreed requirement блокирует единичный factual renderer/LLM claim |
+| AC-021 | Fact requirements проверяют semantic type, cardinality, identity, unit и time |
 | AC-022 | Decimal money сравнивается по currency minor unit, не float |
 | AC-023 | Integer/decimal quantity и distinct document counts сравниваются точно |
 | AC-024 | Canonical row sets и rank order/direction/measure сравниваются отдельно |
@@ -143,7 +143,7 @@ Product capability ID остается requirement/test label. В колонке
 | AC-028 | Каждый documentation evidence bundle содержит citation |
 | AC-029 | Schema v1 hard-filters built-in help 11.5.27.56 |
 | AC-030 | Invalid skill/evidence и direct retrieval с внешним `source_kind` отклоняются до чтения index |
-| AC-031 | Fixture с двумя расходящимися built-in chunks создает typed disagreement; UI показывает обе позиции и citations |
+| AC-031 | Fixture с двумя расходящимися built-in chunks создает typed disagreement; core запрещает shared/forged refs и UI показывает обе позиции/citations |
 | AC-032 | Ungrounded procedure/claim rejected, renderer использует cited chunks |
 | AC-033 | Responsive Playwright test: composer доступен при длинной истории |
 | AC-034 | Playwright test Enter/Shift+Enter и send button |
