@@ -1,0 +1,35 @@
+{
+  "base_fixture": "tests/fixtures/contracts/valid/skill_package.json",
+  "cases": [
+    {
+      "id": "digest_mismatch",
+      "mutation": {
+        "json_pointer": "/integrity/digest",
+        "value": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      },
+      "recompute_package_digest": false,
+      "expected_http_status": 422,
+      "expected_error": "DIGEST_MISMATCH"
+    },
+    {
+      "id": "schema_invalid",
+      "mutation": {
+        "json_pointer": "/slice1_unknown_field",
+        "value": true
+      },
+      "recompute_package_digest": false,
+      "expected_http_status": 422,
+      "expected_error": "JSON_SCHEMA_VALIDATION_ERROR"
+    },
+    {
+      "id": "compatibility_mismatch",
+      "mutation": {
+        "json_pointer": "/target/release",
+        "value": "99.99.99.99"
+      },
+      "recompute_package_digest": true,
+      "expected_http_status": 422,
+      "expected_error": "TARGET_COMPATIBILITY_MISMATCH"
+    }
+  ]
+}

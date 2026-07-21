@@ -1,0 +1,98 @@
+{
+  "contract_version": "slice1-black-box-v1",
+  "api_prefix": "/api/v1",
+  "session_create": {
+    "method": "POST",
+    "path": "/sessions",
+    "status": 201,
+    "request_body": {},
+    "required_fields": ["session_id", "context_version"]
+  },
+  "message_create": {
+    "method": "POST",
+    "path": "/sessions/{session_id}/messages",
+    "status": 202,
+    "request_fields": ["text"],
+    "required_fields": ["turn_id", "trace_id", "status"],
+    "accepted_status": "accepted"
+  },
+  "turn": {
+    "method": "GET",
+    "path": "/turns/{turn_id}",
+    "required_fields": [
+      "turn_id",
+      "trace_id",
+      "status",
+      "outcome",
+      "assistant_message",
+      "pinned"
+    ],
+    "terminal_statuses": ["completed", "failed", "interrupted"],
+    "assistant_fields": ["text", "citations"],
+    "pinned_fields": ["catalog_revision", "catalog_snapshot_id"],
+    "failure_fields": ["code", "message"],
+    "clarification_outcome": "clarification_required"
+  },
+  "session": {
+    "method": "GET",
+    "path": "/sessions/{session_id}",
+    "required_fields": ["session_id", "context_version", "messages"],
+    "message_fields": ["role", "text", "created_at", "turn_id"]
+  },
+  "sse": {
+    "method": "GET",
+    "path": "/turns/{turn_id}/events",
+    "content_type": "text/event-stream",
+    "event_fields": ["turn_id", "sequence", "stage", "status", "occurred_at"],
+    "terminal_stages": ["request.completed", "request.failed"]
+  },
+  "skills_list": {
+    "method": "GET",
+    "path": "/skills",
+    "required_fields": ["catalog_revision", "skills"]
+  },
+  "package_import": {
+    "create": {"method": "POST", "path": "/skill-packages/import?mode=create"},
+    "replace": {"method": "PUT", "path": "/skill-packages/import?mode=replace"},
+    "accepted_status": 200,
+    "accepted_fields": ["status", "catalog_revision", "skills"],
+    "skill_fields": ["skill_id", "version", "digest"],
+    "rejected_statuses": [409, 422, 503],
+    "error_fields": ["code", "json_pointer", "message_ru"]
+  },
+  "diagnostic_zip": {
+    "method": "GET",
+    "path": "/traces/{trace_id}/export",
+    "content_type": "application/zip",
+    "required_files": [
+      "manifest.json",
+      "request.json",
+      "context.json",
+      "catalog-snapshot.json",
+      "planner/request.json",
+      "planner/response.json",
+      "plan.json",
+      "coverage-pre.json",
+      "steps/s01/request.json",
+      "steps/s01/response.json",
+      "steps/s01/evidence.json",
+      "evidence.json",
+      "answer/request.json",
+      "answer/response.json",
+      "events.jsonl",
+      "errors.json",
+      "environment-summary.json",
+      "checksums.sha256"
+    ]
+  },
+  "cli": {
+    "commands": [
+      "skills validate",
+      "skills import",
+      "skills export",
+      "skills delete",
+      "diagnostics export"
+    ],
+    "stdout": "single_json_object"
+  }
+}

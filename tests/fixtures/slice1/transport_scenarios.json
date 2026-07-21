@@ -1,0 +1,246 @@
+{
+  "fixture_version": "slice1-transport-v1",
+  "synthetic": true,
+  "object_refs": {
+    "item": {
+      "_objectRef": true,
+      "УникальныйИдентификатор": "00000000-0000-4000-8000-000000001101",
+      "ТипОбъекта": "СправочникСсылка.Номенклатура",
+      "Представление": "Явно синтетическая позиция SYNTHETIC-ITEM-SLICE1"
+    },
+    "sales_order": {
+      "_objectRef": true,
+      "УникальныйИдентификатор": "00000000-0000-4000-8000-000000001136",
+      "ТипОбъекта": "ДокументСсылка.ЗаказКлиента",
+      "Представление": "Явно синтетический заказ SYNTHETIC-ORDER-SLICE1"
+    },
+    "other_sales_order": {
+      "_objectRef": true,
+      "УникальныйИдентификатор": "00000000-0000-4000-8000-000000001137",
+      "ТипОбъекта": "ДокументСсылка.ЗаказКлиента",
+      "Представление": "Явно синтетический другой заказ SYNTHETIC-ORDER-OTHER"
+    }
+  },
+  "documentation_chunks": {
+    "q001": {
+      "chunk_id": "SYNTHETIC-HELP-CHUNK-Q001",
+      "source_kind": "builtin_help",
+      "subject": "document.sales_order",
+      "text": "Явно синтетическое определение назначения заказа клиента.",
+      "citation": "ut-help://synthetic-slice1/document.sales_order/q001"
+    }
+  },
+  "mcp_envelopes": {
+    "q011": {
+      "success": true,
+      "data": [
+        {
+          "Номенклатура": {
+            "_objectRef": true,
+            "УникальныйИдентификатор": "00000000-0000-4000-8000-000000001101",
+            "ТипОбъекта": "СправочникСсылка.Номенклатура",
+            "Представление": "Явно синтетическая позиция SYNTHETIC-ITEM-SLICE1"
+          },
+          "Артикул": "SYNTHETIC-ARTICLE-SLICE1",
+          "Наименование": "Явно синтетическая позиция"
+        }
+      ],
+      "schema": {
+        "columns": [
+          {"name": "Номенклатура", "types": ["СправочникСсылка.Номенклатура"]},
+          {"name": "Артикул", "types": ["Строка"]},
+          {"name": "Наименование", "types": ["Строка"]}
+        ]
+      },
+      "count": 1,
+      "truncated": false,
+      "has_more": false
+    },
+    "q011_real_mcp_minimal": {
+      "success": true,
+      "data": [
+        {
+          "Номенклатура": {
+            "_objectRef": true,
+            "УникальныйИдентификатор": "00000000-0000-4000-8000-000000001101",
+            "ТипОбъекта": "СправочникСсылка.Номенклатура",
+            "Представление": "Явно синтетическая позиция SYNTHETIC-ITEM-SLICE1"
+          },
+          "Артикул": "SYNTHETIC-ARTICLE-SLICE1",
+          "Наименование": "Явно синтетическая позиция"
+        }
+      ],
+      "schema": {
+        "columns": [
+          {"name": "Номенклатура", "types": ["СправочникСсылка.Номенклатура"]},
+          {"name": "Артикул", "types": ["Строка"]},
+          {"name": "Наименование", "types": ["Строка"]}
+        ]
+      }
+    },
+    "q036": {
+      "success": true,
+      "data": [
+        {
+          "Заказ": {
+            "_objectRef": true,
+            "УникальныйИдентификатор": "00000000-0000-4000-8000-000000001136",
+            "ТипОбъекта": "ДокументСсылка.ЗаказКлиента",
+            "Представление": "Явно синтетический заказ SYNTHETIC-ORDER-SLICE1"
+          },
+          "Статус": "Явно синтетический статус"
+        }
+      ],
+      "schema": {
+        "columns": [
+          {"name": "Заказ", "types": ["ДокументСсылка.ЗаказКлиента"]},
+          {"name": "Статус", "types": ["Строка"]}
+        ]
+      },
+      "count": 1,
+      "truncated": false,
+      "has_more": false
+    },
+    "q037": {
+      "success": true,
+      "data": [
+        {
+          "Заказ": {
+            "_objectRef": true,
+            "УникальныйИдентификатор": "00000000-0000-4000-8000-000000001136",
+            "ТипОбъекта": "ДокументСсылка.ЗаказКлиента",
+            "Представление": "Явно синтетический заказ SYNTHETIC-ORDER-SLICE1"
+          },
+          "Номенклатура": {
+            "_objectRef": true,
+            "УникальныйИдентификатор": "00000000-0000-4000-8000-000000001101",
+            "ТипОбъекта": "СправочникСсылка.Номенклатура",
+            "Представление": "Явно синтетическая позиция SYNTHETIC-ITEM-SLICE1"
+          },
+          "Количество": 3,
+          "Единица": "SYNTHETIC_UNIT"
+        }
+      ],
+      "schema": {
+        "columns": [
+          {"name": "Заказ", "types": ["ДокументСсылка.ЗаказКлиента"]},
+          {"name": "Номенклатура", "types": ["СправочникСсылка.Номенклатура"]},
+          {"name": "Количество", "types": ["Число"]},
+          {"name": "Единица", "types": ["Строка"]}
+        ]
+      },
+      "count": 1,
+      "truncated": false,
+      "has_more": false
+    },
+    "q036_ambiguous": {
+      "success": true,
+      "data": [
+        {
+          "Заказ": {
+            "_objectRef": true,
+            "УникальныйИдентификатор": "00000000-0000-4000-8000-000000001136",
+            "ТипОбъекта": "ДокументСсылка.ЗаказКлиента",
+            "Представление": "Явно синтетический заказ SYNTHETIC-ORDER-SLICE1"
+          },
+          "Статус": "Явно синтетический статус A"
+        },
+        {
+          "Заказ": {
+            "_objectRef": true,
+            "УникальныйИдентификатор": "00000000-0000-4000-8000-000000001137",
+            "ТипОбъекта": "ДокументСсылка.ЗаказКлиента",
+            "Представление": "Явно синтетический другой заказ SYNTHETIC-ORDER-OTHER"
+          },
+          "Статус": "Явно синтетический статус B"
+        }
+      ],
+      "schema": {
+        "columns": [
+          {"name": "Заказ", "types": ["ДокументСсылка.ЗаказКлиента"]},
+          {"name": "Статус", "types": ["Строка"]}
+        ]
+      },
+      "count": 2,
+      "truncated": false,
+      "has_more": false
+    },
+    "q037_ref_mismatch": {
+      "success": true,
+      "data": [
+        {
+          "Заказ": {
+            "_objectRef": true,
+            "УникальныйИдентификатор": "00000000-0000-4000-8000-000000001137",
+            "ТипОбъекта": "ДокументСсылка.ЗаказКлиента",
+            "Представление": "Явно синтетический другой заказ SYNTHETIC-ORDER-OTHER"
+          },
+          "Номенклатура": {
+            "_objectRef": true,
+            "УникальныйИдентификатор": "00000000-0000-4000-8000-000000001101",
+            "ТипОбъекта": "СправочникСсылка.Номенклатура",
+            "Представление": "Явно синтетическая позиция SYNTHETIC-ITEM-SLICE1"
+          },
+          "Количество": 3,
+          "Единица": "SYNTHETIC_UNIT"
+        }
+      ],
+      "schema": {
+        "columns": [
+          {"name": "Заказ", "types": ["ДокументСсылка.ЗаказКлиента"]},
+          {"name": "Номенклатура", "types": ["СправочникСсылка.Номенклатура"]},
+          {"name": "Количество", "types": ["Число"]},
+          {"name": "Единица", "types": ["Строка"]}
+        ]
+      },
+      "count": 1,
+      "truncated": false,
+      "has_more": false
+    },
+    "q102": {
+      "success": true,
+      "data": [],
+      "schema": {"columns": []},
+      "count": 0,
+      "truncated": false,
+      "has_more": false
+    },
+    "mcp_query_error": {
+      "success": false,
+      "error": "Явно синтетическая ошибка fixture query",
+      "data": [],
+      "count": 0
+    },
+    "mcp_real_error_only": {
+      "success": false,
+      "error": "Явно синтетическая ошибка реального MCP envelope"
+    }
+  },
+  "metadata_envelope": {
+    "success": true,
+    "data": {
+      "configuration_id": "УправлениеТорговлейБазовая",
+      "configuration_name": "1С:Управление торговлей (базовая), редакция 11",
+      "release": "11.5.27.56",
+      "compatibility_mode": "8.3.27",
+      "supports_linked_temp_batch": true
+    }
+  },
+  "scenario_modes": {
+    "q001": {"deepseek": "valid", "mcp": "q011", "delay_ms": 0},
+    "q011": {"deepseek": "valid", "mcp": "q011", "delay_ms": 0},
+    "q011_real_mcp_minimal": {"deepseek": "valid", "mcp": "q011_real_mcp_minimal", "delay_ms": 0},
+    "q036": {"deepseek": "valid", "mcp": "q036", "delay_ms": 0},
+    "q036_ambiguous": {"deepseek": "valid", "mcp": "q036_ambiguous", "delay_ms": 0},
+    "q037": {"deepseek": "context_execute", "mcp": "q037", "delay_ms": 0},
+    "q037_missing_context": {"deepseek": "missing_context", "mcp": "q037", "delay_ms": 0},
+    "q037_ref_mismatch": {"deepseek": "context_execute", "mcp": "q037_ref_mismatch", "delay_ms": 0},
+    "q102": {"deepseek": "valid", "mcp": "q102", "delay_ms": 0},
+    "mcp_query_error": {"deepseek": "valid", "mcp": "mcp_query_error", "delay_ms": 0},
+    "mcp_real_error_only": {"deepseek": "valid", "mcp": "mcp_real_error_only", "delay_ms": 0},
+    "mcp_malformed": {"deepseek": "valid", "mcp": "malformed", "delay_ms": 0},
+    "deepseek_malformed": {"deepseek": "malformed", "mcp": "q011", "delay_ms": 0},
+    "deepseek_schema_invalid": {"deepseek": "schema_invalid", "mcp": "q011", "delay_ms": 0},
+    "slow_q011": {"deepseek": "valid", "mcp": "q011", "delay_ms": 350}
+  }
+}

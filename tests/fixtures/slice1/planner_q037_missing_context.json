@@ -1,0 +1,37 @@
+{
+  "schema_version": "1.0.0",
+  "document_type": "planner_output",
+  "request_id": "00000000-0000-4000-8000-000000001374",
+  "session_context_version": 1,
+  "catalog_snapshot_id": "00000000-0000-4000-8000-000000001375",
+  "catalog_revision": 7,
+  "decision": "clarify",
+  "interpretation": {
+    "intent_kind": "data",
+    "goal_ru": "Уточнить заказ для получения его строк.",
+    "required_facts": [
+      {
+        "requirement_id": "r1",
+        "semantic_type": "document.sales_order",
+        "value_type": "entity_ref",
+        "cardinality": "one",
+        "required": true
+      }
+    ],
+    "slots": [
+      {
+        "slot_id": "selected_sales_order",
+        "semantic_type": "document.sales_order",
+        "value_type": "entity_ref",
+        "status": "missing",
+        "mentions": ["этот заказ"]
+      }
+    ]
+  },
+  "result": {
+    "kind": "clarify",
+    "question_ru": "Какой именно явно синтетический заказ требуется использовать?",
+    "missing_requirement_ids": ["r1"],
+    "choices": []
+  }
+}

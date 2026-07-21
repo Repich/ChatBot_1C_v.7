@@ -1,0 +1,79 @@
+{
+  "oracle_version": "slice1-fixture-v1",
+  "status": "blocked_implementation",
+  "fixture_values": "explicitly_synthetic",
+  "slo_seconds": 30,
+  "scenarios": {
+    "Q001": {
+      "source_boundary": "documentation",
+      "expected_outcome": "documentation_found",
+      "oracles": ["semantic", "citation"],
+      "citation_scheme": "ut-help://",
+      "required_capability_ids": ["CAP-DOC-TERM", "CAP-DOC-SOURCE"]
+    },
+    "Q011": {
+      "source_boundary": "data",
+      "expected_outcome": "success_with_rows",
+      "oracles": ["exact_set", "semantic", "external_call"],
+      "required_capability_ids": ["CAP-REF-ITEM-FIND"]
+    },
+    "Q036": {
+      "source_boundary": "data",
+      "expected_outcome": "success_with_rows",
+      "oracles": ["exact_scalar", "semantic", "entity_identity"],
+      "required_skill": "sales_order_header_status_by_number",
+      "required_capability_ids": ["CAP-COMMON-ENTITY", "CAP-SALES-ORDER-STATUS"]
+    },
+    "Q037": {
+      "source_boundary": "data",
+      "expected_outcome": "success_with_rows",
+      "oracles": ["exact_set", "semantic", "entity_identity"],
+      "previous_scenario": "Q036",
+      "binding": "opaque_context_handle_to_exact_object_ref",
+      "number_lookup_calls_after_q036": 0,
+      "required_capability_ids": ["CAP-CHAT-CONTEXT", "CAP-SALES-ORDER-LINES"]
+    },
+    "Q102": {
+      "source_boundary": "data",
+      "expected_outcome": "success_empty",
+      "oracles": ["exact_set", "semantic"],
+      "required_capability_ids": ["CAP-REF-ITEM-FIND", "CAP-CHAT-NOT-FOUND"]
+    }
+  },
+  "sales_order_context_cases": {
+    "q036_ambiguous": {
+      "expected_outcome": "clarification_required",
+      "context_exports": 0,
+      "must_not_select_first_row": true
+    },
+    "q037_missing_context": {
+      "expected_outcome": "clarification_required",
+      "mcp_execute_query_calls": 0
+    },
+    "q037_ref_mismatch": {
+      "expected_outcome": "contract_error",
+      "must_not_render_factual_rows": true
+    }
+  },
+  "cross_boundary": {
+    "llm_query_visibility": "forbidden",
+    "object_ref_retention": "exact_json_value",
+    "empty_and_query_error_must_differ": true,
+    "hot_reload_requires_restart": false,
+    "turn_snapshot": "pinned_until_terminal",
+    "diagnostic_secret_canary_occurrences": 0,
+    "real_mcp_missing_count": "derive_from_data_length"
+  },
+  "negative_transport_cases": {
+    "deepseek_malformed": "DEEPSEEK_STRUCTURED_OUTPUT_INVALID",
+    "deepseek_schema_invalid": "DEEPSEEK_STRUCTURED_OUTPUT_INVALID",
+    "mcp_malformed": "MCP_ENVELOPE_INVALID",
+    "mcp_query_error": "query_error",
+    "mcp_real_error_only": "query_error"
+  },
+  "negative_package_cases": {
+    "digest_mismatch": "DIGEST_MISMATCH",
+    "schema_invalid": "JSON_SCHEMA_VALIDATION_ERROR",
+    "compatibility_mismatch": "TARGET_COMPATIBILITY_MISMATCH"
+  }
+}

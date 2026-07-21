@@ -1,0 +1,63 @@
+{
+  "schema_version": "1.0.0",
+  "document_type": "planner_output",
+  "request_id": "00000000-0000-4000-8000-000000001371",
+  "session_context_version": 2,
+  "catalog_snapshot_id": "00000000-0000-4000-8000-000000001372",
+  "catalog_revision": 7,
+  "decision": "execute",
+  "interpretation": {
+    "intent_kind": "data",
+    "goal_ru": "Получить строки явно синтетического выбранного заказа.",
+    "required_facts": [
+      {
+        "requirement_id": "r1",
+        "semantic_type": "sales.order_line_item",
+        "value_type": "entity_ref",
+        "cardinality": "many",
+        "required": true
+      }
+    ],
+    "slots": [
+      {
+        "slot_id": "selected_sales_order",
+        "semantic_type": "document.sales_order",
+        "value_type": "entity_ref",
+        "status": "resolved_context",
+        "mentions": ["этот заказ"],
+        "binding": {
+          "source": "context",
+          "context_handle": "ctx_SYNTHETICORDER0001",
+          "expected_semantic_type": "document.sales_order"
+        }
+      }
+    ]
+  },
+  "result": {
+    "kind": "execute",
+    "plan_id": "00000000-0000-4000-8000-000000001373",
+    "steps": [
+      {
+        "step_id": "s1",
+        "kind": "skill_call",
+        "skill_id": "ut.slice1-sales-order-lines",
+        "skill_version": "1.0.0",
+        "arguments": [
+          {
+            "parameter": "selected_sales_order",
+            "binding": {
+              "source": "context",
+              "context_handle": "ctx_SYNTHETICORDER0001",
+              "expected_semantic_type": "document.sales_order"
+            }
+          }
+        ],
+        "required_output_fact_ids": ["sales.order_ref", "sales.order_line_item"],
+        "on_empty": "stop_not_found"
+      }
+    ],
+    "final_outputs": [
+      {"step_id": "s1", "fact_id": "sales.order_line_item"}
+    ]
+  }
+}
