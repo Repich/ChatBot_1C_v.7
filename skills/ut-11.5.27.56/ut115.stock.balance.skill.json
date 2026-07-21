@@ -1,0 +1,568 @@
+{
+  "schema_version": "1.0.0",
+  "document_type": "skill",
+  "skill_id": "ut115.stock.balance",
+  "version": "1.0.0",
+  "display": {
+    "name_ru": "Фактический остаток подтвержденной номенклатуры",
+    "purpose_ru": "Возвращает физический ВНаличииОстаток регистра ТоварыНаСкладах по exact номенклатуре и моменту.",
+    "limitations_ru": [
+      "Показывает физическое наличие, а не доступность с учетом резервов."
+    ]
+  },
+  "provides": {
+    "capability_ids": [
+      "CAP-STOCK-BALANCE",
+      "CAP-STOCK-BY-WAREHOUSE",
+      "CAP-STOCK-BY-ITEM"
+    ],
+    "fact_types": [
+      "catalog.item",
+      "catalog.warehouse",
+      "catalog.storage_bin",
+      "catalog.item.characteristic",
+      "analytics.assignment",
+      "catalog.item.unit",
+      "measure.stock_balance",
+      "time.moment"
+    ]
+  },
+  "compatibility": {
+    "configuration_id": "УправлениеТорговлейБазовая",
+    "configuration_name": "1С:Управление торговлей (базовая), редакция 11",
+    "release_range": {
+      "minimum": "11.5.27.56",
+      "maximum": "11.5.27.56",
+      "include_minimum": true,
+      "include_maximum": true
+    },
+    "compatibility_modes": [
+      "8.3.27"
+    ],
+    "required_metadata": [
+      {
+        "object_name": "РегистрНакопления.ТоварыНаСкладах",
+        "attributes": [
+          "Номенклатура",
+          "Склад",
+          "Помещение",
+          "Характеристика",
+          "Назначение",
+          "ВНаличии"
+        ]
+      }
+    ],
+    "metadata_snapshot_sha256": "40dd46f5fd7be824dbb68c317c961973c92a06c534943419e552f0ba8d8f3113"
+  },
+  "selection": {
+    "intent_kinds": [
+      "data"
+    ],
+    "aliases_ru": [
+      "фактический остаток товара",
+      "сколько товара в наличии на складе"
+    ],
+    "anti_examples_ru": [
+      "сколько товара доступно с учетом резервов"
+    ],
+    "required_context_fact_types": [
+      "catalog.item"
+    ]
+  },
+  "parameters": [
+    {
+      "name": "item",
+      "title_ru": "Номенклатура",
+      "description_ru": "Подтвержденная exact ссылка номенклатуры.",
+      "value_type": "entity_ref",
+      "required": true,
+      "allowed_sources": [
+        "session_context",
+        "previous_step"
+      ],
+      "normalization": "object_ref",
+      "semantic_type": "catalog.item",
+      "entity_types": [
+        "catalog.item"
+      ]
+    },
+    {
+      "name": "moment",
+      "title_ru": "Момент",
+      "description_ru": "Момент расчета остатка с часовым поясом.",
+      "value_type": "datetime",
+      "required": true,
+      "allowed_sources": [
+        "user_slot",
+        "system"
+      ],
+      "normalization": "none"
+    }
+  ],
+  "operation": {
+    "kind": "data_query",
+    "tool": "execute_query",
+    "read_only": true,
+    "query_template": {
+      "template_id": "ut115.stock.balance.v1",
+      "language": "1c-query",
+      "text": "ВЫБРАТЬ\n  Остатки.Номенклатура КАК Номенклатура,\n  Остатки.Склад КАК Склад,\n  Остатки.Помещение КАК Помещение,\n  Остатки.Характеристика КАК Характеристика,\n  Остатки.Назначение КАК Назначение,\n  Остатки.Номенклатура.ЕдиницаИзмерения.Наименование КАК Единица,\n  Остатки.ВНаличииОстаток КАК ВНаличииОстаток,\n  &Момент КАК Момент\nИЗ РегистрНакопления.ТоварыНаСкладах.Остатки(&Момент, Номенклатура = &Номенклатура) КАК Остатки\nУПОРЯДОЧИТЬ ПО Остатки.Склад, Остатки.Помещение",
+      "execution": {
+        "kind": "single_select",
+        "statement_count": 1,
+        "final_statement": 1
+      },
+      "invariant_constants": [],
+      "include_schema": true,
+      "mcp_limit": {
+        "default": 20,
+        "maximum": 1000
+      }
+    },
+    "parameter_bindings": [
+      {
+        "parameter": "item",
+        "query_parameter": "Номенклатура",
+        "encoding": "object_ref"
+      },
+      {
+        "parameter": "moment",
+        "query_parameter": "Момент",
+        "encoding": "datetime"
+      }
+    ],
+    "column_bindings": [
+      {
+        "column": "Номенклатура",
+        "fact_id": "item.ref",
+        "accepted_mcp_types": [
+          "СправочникСсылка.Номенклатура"
+        ],
+        "converter": "object_ref"
+      },
+      {
+        "column": "Склад",
+        "fact_id": "warehouse.ref",
+        "accepted_mcp_types": [
+          "СправочникСсылка.Склады"
+        ],
+        "converter": "object_ref"
+      },
+      {
+        "column": "Помещение",
+        "fact_id": "storage_bin.ref",
+        "accepted_mcp_types": [
+          "СправочникСсылка.СкладскиеПомещения"
+        ],
+        "converter": "object_ref"
+      },
+      {
+        "column": "Характеристика",
+        "fact_id": "characteristic.ref",
+        "accepted_mcp_types": [
+          "СправочникСсылка.ХарактеристикиНоменклатуры"
+        ],
+        "converter": "object_ref"
+      },
+      {
+        "column": "Назначение",
+        "fact_id": "assignment.ref",
+        "accepted_mcp_types": [
+          "СправочникСсылка.Назначения"
+        ],
+        "converter": "object_ref"
+      },
+      {
+        "column": "Единица",
+        "fact_id": "item.unit",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "ВНаличииОстаток",
+        "fact_id": "stock.balance",
+        "accepted_mcp_types": [
+          "Число"
+        ],
+        "converter": "decimal"
+      },
+      {
+        "column": "Момент",
+        "fact_id": "stock.moment",
+        "accepted_mcp_types": [
+          "Дата"
+        ],
+        "converter": "datetime"
+      }
+    ],
+    "pagination": {
+      "strategy": "prefix",
+      "stable_order_fact_ids": [
+        "warehouse.ref",
+        "storage_bin.ref",
+        "item.ref"
+      ],
+      "maximum_total": 1000
+    }
+  },
+  "output_contract": {
+    "contract_id": "ut115.stock.balance.v1",
+    "contract_version": "1.0.0",
+    "cardinality": "many",
+    "facts": [
+      {
+        "fact_id": "item.ref",
+        "semantic_type": "catalog.item",
+        "value_type": "entity_ref",
+        "role": "entity",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Номенклатура",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "warehouse.ref",
+        "semantic_type": "catalog.warehouse",
+        "value_type": "entity_ref",
+        "role": "dimension",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Склад",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "storage_bin.ref",
+        "semantic_type": "catalog.storage_bin",
+        "value_type": "entity_ref",
+        "role": "dimension",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Помещение",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "characteristic.ref",
+        "semantic_type": "catalog.item.characteristic",
+        "value_type": "entity_ref",
+        "role": "dimension",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Характеристика",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "assignment.ref",
+        "semantic_type": "analytics.assignment",
+        "value_type": "entity_ref",
+        "role": "dimension",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Назначение",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "item.unit",
+        "semantic_type": "catalog.item.unit",
+        "value_type": "string",
+        "role": "dimension",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Единица хранения",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "stock.balance",
+        "semantic_type": "measure.stock_balance",
+        "value_type": "quantity",
+        "role": "measure",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Фактический остаток",
+        "unit_contract": {
+          "mode": "from_fact",
+          "fact_id": "item.unit"
+        }
+      },
+      {
+        "fact_id": "stock.moment",
+        "semantic_type": "time.moment",
+        "value_type": "datetime",
+        "role": "time",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Момент остатка",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      }
+    ],
+    "sufficiency": {
+      "required_fact_sets": [
+        [
+          "item.ref",
+          "warehouse.ref",
+          "storage_bin.ref",
+          "characteristic.ref",
+          "assignment.ref",
+          "item.unit",
+          "stock.balance",
+          "stock.moment"
+        ]
+      ],
+      "empty_semantics": "confirmed_no_rows",
+      "zero_fact_ids": [
+        "stock.balance"
+      ],
+      "truncation_policy": "page_is_complete"
+    },
+    "renderer": {
+      "kind": "table",
+      "primary_fact_ids": [
+        "stock.moment"
+      ],
+      "column_fact_ids": [
+        "item.ref",
+        "warehouse.ref",
+        "storage_bin.ref",
+        "characteristic.ref",
+        "assignment.ref",
+        "item.unit",
+        "stock.balance",
+        "stock.moment"
+      ]
+    },
+    "row_identity_fact_ids": [
+      "item.ref",
+      "warehouse.ref",
+      "storage_bin.ref",
+      "characteristic.ref",
+      "assignment.ref"
+    ]
+  },
+  "result_constraints": [
+    {
+      "kind": "fact_equals_parameter",
+      "fact_id": "item.ref",
+      "parameter": "item"
+    }
+  ],
+  "dependencies": {
+    "runtime_contracts": [
+      {
+        "contract": "skill-runtime",
+        "version_range": "^1.0.0"
+      },
+      {
+        "contract": "mcp.execute_query",
+        "version_range": "^1.0.0"
+      }
+    ],
+    "skills": []
+  },
+  "examples": [
+    {
+      "question_ru": "фактический остаток товара?",
+      "applicability": "applicable",
+      "reason_ru": "Вопрос соответствует назначению и typed outputs навыка."
+    },
+    {
+      "question_ru": "сколько товара доступно с учетом резервов?",
+      "applicability": "not_applicable",
+      "reason_ru": "Вопрос находится за явно объявленной границей навыка."
+    }
+  ],
+  "tests": [
+    {
+      "test_id": "ut.stock.positive",
+      "case_kind": "positive",
+      "bindings": [
+        {
+          "parameter": "item",
+          "value": {
+            "_objectRef": true,
+            "УникальныйИдентификатор": "00000000-0000-4000-8000-000000000101",
+            "ТипОбъекта": "СправочникСсылка.Номенклатура",
+            "Представление": "Куртка демисезонная"
+          }
+        },
+        {
+          "parameter": "moment",
+          "value": "2026-07-21T12:00:00+03:00"
+        }
+      ],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": true,
+          "data": [
+            {
+              "Номенклатура": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000000101",
+                "ТипОбъекта": "СправочникСсылка.Номенклатура",
+                "Представление": "Куртка демисезонная"
+              },
+              "Склад": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000000201",
+                "ТипОбъекта": "СправочникСсылка.Склады",
+                "Представление": "Основной склад"
+              },
+              "Помещение": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000000202",
+                "ТипОбъекта": "СправочникСсылка.СкладскиеПомещения",
+                "Представление": "Основное помещение"
+              },
+              "Характеристика": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000000203",
+                "ТипОбъекта": "СправочникСсылка.ХарактеристикиНоменклатуры",
+                "Представление": "Без характеристики"
+              },
+              "Назначение": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000000204",
+                "ТипОбъекта": "СправочникСсылка.Назначения",
+                "Представление": "Без назначения"
+              },
+              "Единица": "шт",
+              "ВНаличииОстаток": 7.0,
+              "Момент": "2026-07-21T12:00:00+03:00"
+            }
+          ],
+          "schema": {
+            "columns": [
+              {
+                "name": "Номенклатура",
+                "types": [
+                  "СправочникСсылка.Номенклатура"
+                ]
+              },
+              {
+                "name": "Склад",
+                "types": [
+                  "СправочникСсылка.Склады"
+                ]
+              },
+              {
+                "name": "Помещение",
+                "types": [
+                  "СправочникСсылка.СкладскиеПомещения"
+                ]
+              },
+              {
+                "name": "Характеристика",
+                "types": [
+                  "СправочникСсылка.ХарактеристикиНоменклатуры"
+                ]
+              },
+              {
+                "name": "Назначение",
+                "types": [
+                  "СправочникСсылка.Назначения"
+                ]
+              },
+              {
+                "name": "Единица",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "ВНаличииОстаток",
+                "types": [
+                  "Число"
+                ]
+              },
+              {
+                "name": "Момент",
+                "types": [
+                  "Дата"
+                ]
+              }
+            ]
+          },
+          "count": 1
+        }
+      },
+      "expected": {
+        "status": "success_with_rows",
+        "required_fact_ids": [
+          "item.ref",
+          "warehouse.ref",
+          "storage_bin.ref",
+          "characteristic.ref",
+          "assignment.ref",
+          "item.unit",
+          "stock.balance",
+          "stock.moment"
+        ]
+      }
+    },
+    {
+      "test_id": "ut.stock.empty",
+      "case_kind": "negative",
+      "bindings": [],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": true,
+          "data": [],
+          "schema": {
+            "columns": []
+          },
+          "count": 0
+        }
+      },
+      "expected": {
+        "status": "success_empty",
+        "required_fact_ids": []
+      }
+    }
+  ],
+  "provenance": {
+    "author": "ChatBot 1C slice 1",
+    "created_at": "2026-07-21T00:00:00Z",
+    "reviewed_by": "Architecture and PM source proof",
+    "reviewed_at": "2026-07-21T00:00:00Z",
+    "source_configuration": {
+      "configuration_id": "УправлениеТорговлейБазовая",
+      "release": "11.5.27.56",
+      "compatibility_mode": "8.3.27",
+      "metadata_snapshot_sha256": "40dd46f5fd7be824dbb68c317c961973c92a06c534943419e552f0ba8d8f3113"
+    },
+    "source_references": [
+      {
+        "kind": "configuration_metadata",
+        "uri": "ut-config://11.5.27.56/AccumulationRegisters/ТоварыНаСкладах.xml",
+        "sha256": "40dd46f5fd7be824dbb68c317c961973c92a06c534943419e552f0ba8d8f3113"
+      },
+      {
+        "kind": "configuration_source",
+        "uri": "ut-config://11.5.27.56/Reports/СправочноеРазмещениеНоменклатуры/Templates/ОсновнаяСхемаКомпоновкиДанных/Ext/Template.xml"
+      }
+    ],
+    "change_note_ru": "Навык построен по проверенным metadata/help исходникам УТ 11.5.27.56."
+  },
+  "integrity": {
+    "algorithm": "sha256",
+    "canonicalization": "RFC8785",
+    "scope": "document_without_integrity",
+    "digest": "d83818552ec0f5e9cf7aade3bf3ef38dde1d96211b14081fd524be01ddede48d"
+  }
+}

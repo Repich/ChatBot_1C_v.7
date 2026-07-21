@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ChatBot 1C</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <div class="workspace">
+    <aside class="sidebar" aria-label="Диалоги">
+      <div class="brand">ChatBot 1C</div>
+      <button id="new-session" class="secondary" type="button">Новый диалог</button>
+      <nav id="sessions" class="session-list">
+        {% for session in sessions %}
+        <button class="session-link" type="button" data-session-id="{{ session.session_id }}">
+          <span>{{ session.title }}</span>
+          <time>{{ session.updated_at.astimezone().strftime('%d.%m %H:%M') }}</time>
+        </button>
+        {% endfor %}
+      </nav>
+    </aside>
+    <main class="chat">
+      <header class="chat-header">
+        <div>
+          <h1 id="chat-title">Новый диалог</h1>
+          <span id="context-version" class="status">Контекст 1</span>
+        </div>
+        <span id="progress" class="progress" aria-live="polite"></span>
+      </header>
+      <section id="messages" class="messages" aria-live="polite"></section>
+      <form id="composer" class="composer">
+        <label class="sr-only" for="message">Сообщение</label>
+        <textarea id="message" rows="2" maxlength="8000" placeholder="Введите вопрос по данным или справке УТ" required></textarea>
+        <button type="submit">Отправить</button>
+      </form>
+    </main>
+  </div>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

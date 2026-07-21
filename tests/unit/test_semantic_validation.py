@@ -123,7 +123,7 @@ def test_package_rejects_missing_dependency() -> None:
 
     issues = SemanticValidator().issues(SkillPackage.model_validate(raw))
 
-    assert "DEPENDENCY_MISSING" in {issue.code for issue in issues}
+    assert "SKILL_DEPENDENCY_MISSING" in {issue.code for issue in issues}
     assert any(issue.json_pointer.endswith("/skill_id") for issue in issues)
 
 

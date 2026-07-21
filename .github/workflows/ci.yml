@@ -23,8 +23,8 @@ jobs:
           enable-cache: true
       - run: uv sync --locked --all-groups
       - run: uv run --locked pytest
-      - run: uv run --locked ruff check src tests
-      - run: uv run --locked mypy src
+      - run: uv run --locked ruff check .
+      - run: uv run --locked mypy --strict src
 
   windows-ready:
     name: Python 3.12 / windows-latest (prepared)
@@ -38,5 +38,5 @@ jobs:
           enable-cache: true
       - run: uv sync --locked --all-groups
       - run: uv run --locked pytest
-      - run: uv run --locked ruff check src tests
-      - run: uv run --locked mypy src
+      - run: uv run --locked ruff check .
+      - run: uv run --locked mypy --strict src

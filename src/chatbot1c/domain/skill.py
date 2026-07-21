@@ -561,6 +561,12 @@ class OutputContract(ClosedModel):
     renderer: Renderer
 
 
+class FactEqualsParameterConstraint(ClosedModel):
+    kind: Literal["fact_equals_parameter"]
+    fact_id: FactId
+    parameter: Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")]
+
+
 class RuntimeContract(ClosedModel):
     contract: Literal["skill-runtime", "mcp.execute_query", "help-index"]
     version_range: Annotated[
@@ -694,6 +700,9 @@ class Skill(ClosedModel):
     parameters: Annotated[tuple[Parameter, ...], Field(max_length=40)]
     operation: SkillOperation
     output_contract: OutputContract
+    result_constraints: Annotated[
+        tuple[FactEqualsParameterConstraint, ...], Field(max_length=40)
+    ] = ()
     dependencies: Dependencies
     examples: Annotated[tuple[Example, ...], Field(min_length=2, max_length=20)]
     tests: Annotated[tuple[SkillTestCase, ...], Field(min_length=2, max_length=50)]

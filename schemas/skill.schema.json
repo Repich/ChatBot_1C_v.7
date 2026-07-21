@@ -67,6 +67,14 @@
     "output_contract": {
       "$ref": "#/$defs/outputContract"
     },
+    "result_constraints": {
+      "type": "array",
+      "maxItems": 40,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/factEqualsParameterConstraint"
+      }
+    },
     "dependencies": {
       "$ref": "#/$defs/dependencies"
     },
@@ -1369,6 +1377,27 @@
         },
         "renderer": {
           "$ref": "#/$defs/renderer"
+        }
+      }
+    },
+    "factEqualsParameterConstraint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "fact_id",
+        "parameter"
+      ],
+      "properties": {
+        "kind": {
+          "const": "fact_equals_parameter"
+        },
+        "fact_id": {
+          "$ref": "#/$defs/factId"
+        },
+        "parameter": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,63}$"
         }
       }
     },

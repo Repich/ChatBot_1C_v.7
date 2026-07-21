@@ -79,7 +79,6 @@
           "value_type": "entity_ref",
           "required": true,
           "allowed_sources": [
-            "user_slot",
             "session_context",
             "previous_step"
           ],
@@ -372,7 +371,7 @@
         "algorithm": "sha256",
         "canonicalization": "RFC8785",
         "scope": "document_without_integrity",
-        "digest": "6e7b32c7513140e5a7674d81541b9a6787191be09b8b4505e1a17457edf057d3"
+        "digest": "da8dec31a814c4eaa0841f45edb2051f3f502aa53eb41ddb421393d00c722122"
       }
     }
   ],
@@ -380,7 +379,7 @@
     {
       "skill_id": "ut.synthetic.stock-balance",
       "version": "1.0.0",
-      "digest": "6e7b32c7513140e5a7674d81541b9a6787191be09b8b4505e1a17457edf057d3"
+      "digest": "da8dec31a814c4eaa0841f45edb2051f3f502aa53eb41ddb421393d00c722122"
     }
   ],
   "provenance": {
@@ -398,6 +397,6 @@
     "algorithm": "sha256",
     "canonicalization": "RFC8785",
     "scope": "document_without_integrity",
-    "digest": "e4562cd7c3441bf5777352fd829b4cf3242526cf8053dcb1fb469adfc3fd004f"
+    "digest": "d254e649621feed98c8791ad533f52677bbfac652ff9175c59ada4b3ac21e85f"
   }
 }

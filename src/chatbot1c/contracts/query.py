@@ -285,6 +285,43 @@ def parse_query(text: str) -> ParsedQuery:
     return ParsedQuery(statements=statements, trailing_semicolon=trailing_semicolon)
 
 
+def escaped_like_parameters(
+    parsed: ParsedQuery, *, escape_symbol: str = "~"
+) -> frozenset[str]:
+    """Return direct LIKE parameters coupled to an explicit escape marker."""
+
+    result: set[str] = set()
+    for statement in parsed.statements:
+        tokens = statement.tokens
+        for index, token in enumerate(tokens):
+            if token.kind != "word" or token.upper not in {"LIKE", "ПОДОБНО"}:
+                continue
+            cursor = index + 1
+            opening = 0
+            while cursor < len(tokens) and tokens[cursor].value == "(":
+                opening += 1
+                cursor += 1
+            if cursor >= len(tokens) or tokens[cursor].kind != "parameter":
+                continue
+            parameter = tokens[cursor].value
+            cursor += 1
+            while opening and cursor < len(tokens) and tokens[cursor].value == ")":
+                opening -= 1
+                cursor += 1
+            if opening or cursor + 1 >= len(tokens):
+                continue
+            marker = tokens[cursor]
+            value = tokens[cursor + 1]
+            if (
+                marker.kind == "word"
+                and marker.upper in {"ESCAPE", "СПЕЦСИМВОЛ"}
+                and value.kind == "string"
+                and value.value == escape_symbol
+            ):
+                result.add(parameter.casefold())
+    return frozenset(result)
+
+
 def _tokenize(text: str) -> tuple[QueryToken, ...]:
     tokens: list[QueryToken] = []
     index = 0
@@ -864,7 +901,7 @@ def _statement_literals(
     for index, token in enumerate(tokens):
         if index in metadata_token_indexes:
             continue
-        if token.kind == "string":
+        if token.kind == "string" and not _is_like_escape_marker(tokens, index):
             literals.append(_string_literal(statement, token, tokens, index))
         elif token.kind == "number":
             literals.append(_number_literal(statement, token, tokens, index))
@@ -879,6 +916,13 @@ def _statement_literals(
         }:
             literals.append(_word_literal(statement, token, tokens, index))
     return literals
+
+
+def _is_like_escape_marker(tokens: Sequence[QueryToken], index: int) -> bool:
+    if index == 0 or tokens[index].value != "~":
+        return False
+    previous = tokens[index - 1]
+    return previous.kind == "word" and previous.upper in {"ESCAPE", "СПЕЦСИМВОЛ"}
 
 
 def _metadata_literal(

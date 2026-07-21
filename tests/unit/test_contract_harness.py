@@ -31,8 +31,12 @@ def test_production_harness_accepts_every_valid_fixture(
     data_skill_catalog: tuple[Skill, ...],
     case: dict[str, str],
 ) -> None:
+    fixture = json.loads((FIXTURES / case["file"]).read_text(encoding="utf-8"))
     available_skills = (
-        data_skill_catalog if case["file"] == "valid/planner_execute.json" else ()
+        data_skill_catalog
+        if case["file"] == "valid/planner_execute.json"
+        or fixture.get("document_type") == "evidence_bundle"
+        else ()
     )
     document = harness.validate_path(
         FIXTURES / case["file"], available_skills=available_skills
@@ -42,10 +46,20 @@ def test_production_harness_accepts_every_valid_fixture(
 
 @pytest.mark.parametrize("case", MANIFEST["invalid"], ids=lambda case: case["file"])
 def test_production_harness_rejects_every_invalid_fixture_with_pointer(
-    harness: ContractHarness, case: dict[str, str]
+    harness: ContractHarness,
+    data_skill_catalog: tuple[Skill, ...],
+    case: dict[str, str],
 ) -> None:
+    fixture = json.loads((FIXTURES / case["file"]).read_text(encoding="utf-8"))
+    available_skills = (
+        data_skill_catalog
+        if fixture.get("document_type") == "evidence_bundle"
+        else ()
+    )
     with pytest.raises(ContractValidationError) as caught:
-        harness.validate_path(FIXTURES / case["file"])
+        harness.validate_path(
+            FIXTURES / case["file"], available_skills=available_skills
+        )
 
     issues = caught.value.issues
     assert issues

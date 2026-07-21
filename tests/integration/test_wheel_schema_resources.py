@@ -13,6 +13,16 @@ SCHEMA_NAMES = {
     "skill-package.schema.json",
     "skill.schema.json",
 }
+APPLICATION_RESOURCES = {
+    "chatbot1c/static/app.css",
+    "chatbot1c/static/app.js",
+    "chatbot1c/templates/chat.html",
+    "chatbot1c/resources/ut-11.5.27.56-profile.json",
+    (
+        "chatbot1c/builtin_skills/ut-11.5.27.56/"
+        "ut.starter.slice-one.package.json"
+    ),
+}
 
 
 def _run(command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -42,7 +52,9 @@ def test_built_wheel_loads_canonical_schemas_outside_checkout(
     expected_resources = {f"chatbot1c/schemas/{name}" for name in SCHEMA_NAMES}
 
     with zipfile.ZipFile(wheel) as archive:
-        assert expected_resources <= set(archive.namelist())
+        wheel_members = set(archive.namelist())
+        assert expected_resources <= wheel_members
+        assert APPLICATION_RESOURCES <= wheel_members
         for name in SCHEMA_NAMES:
             assert archive.read(f"chatbot1c/schemas/{name}") == (
                 ROOT / "schemas" / name
@@ -58,6 +70,14 @@ def test_built_wheel_loads_canonical_schemas_outside_checkout(
             extracted = archive.extractfile(member)
             assert extracted is not None
             assert extracted.read() == (ROOT / "schemas" / name).read_bytes()
+        assert any(path.endswith("/src/chatbot1c/templates/chat.html") for path in members)
+        assert any(path.endswith("/src/chatbot1c/static/app.css") for path in members)
+        assert any(
+            path.endswith(
+                "/skills/ut-11.5.27.56/ut.starter.slice-one.package.json"
+            )
+            for path in members
+        )
 
     clean_cwd = tmp_path / "clean-cwd"
     clean_cwd.mkdir()
@@ -68,8 +88,14 @@ def test_built_wheel_loads_canonical_schemas_outside_checkout(
 
     probe = """
 from importlib.resources import files
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
+from fastapi.testclient import TestClient
+
+from chatbot1c.config import Settings
 from chatbot1c.contracts import SchemaRepository
+from chatbot1c.web import create_app
 
 expected = {
     "evidence.schema.json",
@@ -84,6 +110,16 @@ assert set(repository.names) == expected
 for name in expected:
     schema = repository.schema(name)
     assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
+with TemporaryDirectory() as data_dir:
+    settings = Settings(
+        app_data_dir=Path(data_dir),
+        auto_import_builtin_skills=True,
+    )
+    with TestClient(create_app(settings=settings)) as client:
+        assert client.get("/").status_code == 200
+        assert client.get("/static/app.css").status_code == 200
+        catalog = client.get("/api/v1/skills").json()
+        assert len(catalog["skills"]) == 8
 print(",".join(repository.names))
 """
     result = _run([str(python), "-I", "-c", probe], clean_cwd)

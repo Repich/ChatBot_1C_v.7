@@ -1,16 +1,62 @@
 # ChatBot 1C v7
 
-Новый прототип ассистента для типовой конфигурации
-`1С:Управление торговлей`.
+Contract-first ассистент для `1С:Управление торговлей 11.5.27.56`. Текущая
+версия реализует slice 1: локальный русскоязычный web-чат, DeepSeek planner,
+read-only MCP execution, встроенную справку УТ, SQLite persistence и переносимый
+каталог навыков.
 
-Проект начинается с чистого репозитория. Код и архитектура предыдущих версий
-бота не переносятся. Продуктовый опыт, реальные вопросы пользователей,
-документация, файловая выгрузка типовой УТ и доступный MCP используются только
-как источники требований и тестовых данных.
+## Запуск
 
-Текущий этап: требования, архитектура, независимый тестовый контракт и
-исполняемый contract harness приняты. Начинается реализация минимального
-end-to-end среза: web, DeepSeek, MCP, справка УТ и горячая загрузка навыков.
+Требуются Python 3.12 и [uv](https://docs.astral.sh/uv/).
+
+```bash
+uv sync --locked --all-groups
+cp .env.example .env.local
+uv run --locked chatbot1c start
+```
+
+По умолчанию сервер доступен на `http://127.0.0.1:8000`. В `.env.local` нужно
+указать `DEEPSEEK_API_KEY`, URL read-only MCP и путь к файловой выгрузке УТ.
+Сервис не имеет аутентификации и предназначен для локального запуска.
+
+SQLite создается в `APP_DATA_DIR`, включается в WAL mode и обновляется только
+versioned Alembic migrations. Встроенный starter catalog можно загрузить при
+старте через `AUTO_IMPORT_BUILTIN_SKILLS=true`.
+
+## CLI
+
+```bash
+# Построить индекс Ext/Help/ru.html из файловой выгрузки конфигурации
+uv run --locked chatbot1c docs build-index --config-dir /path/to/config
+
+# Проверить и атомарно импортировать skill или package
+uv run --locked chatbot1c skills validate skill-or-package.json
+uv run --locked chatbot1c skills import skill-or-package.json --mode create
+
+# Экспортировать bare skill или self-contained dependency closure
+uv run --locked chatbot1c skills export SKILL_ID --output skill.json
+uv run --locked chatbot1c skills export SKILL_ID --with-dependencies --output package.json
+
+# Экспортировать весь активный catalog
+uv run --locked chatbot1c skills export --all --output catalog.package.json
+```
+
+## Проверки
+
+```bash
+uv lock --check
+uv run --locked pytest
+uv run --locked ruff check .
+uv run --locked mypy --strict src
+uv build
+```
+
+Детерминированный black-box E2E запускает два экземпляра приложения и fixture
+DeepSeek/MCP transport без внешних секретов:
+
+```bash
+uv run --locked python scripts/run_slice1_e2e.py
+```
 
 Документы проекта:
 

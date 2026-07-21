@@ -1,0 +1,1008 @@
+{
+  "q001": {
+    "schema_version": "1.0.0",
+    "document_type": "planner_output",
+    "request_id": "00000000-0000-4000-8000-000000009001",
+    "session_context_version": 1,
+    "catalog_snapshot_id": "00000000-0000-4000-8000-000000009002",
+    "catalog_revision": 2,
+    "decision": "execute",
+    "interpretation": {
+      "intent_kind": "documentation",
+      "goal_ru": "Найти определение термина во встроенной справке УТ.",
+      "required_facts": [
+        {
+          "requirement_id": "r1",
+          "semantic_type": "documentation.fragment",
+          "value_type": "document_fragment",
+          "cardinality": "many",
+          "required": true
+        }
+      ],
+      "slots": [
+        {
+          "slot_id": "search_text",
+          "semantic_type": "documentation.search_text",
+          "value_type": "string",
+          "status": "resolved_literal",
+          "mentions": [
+            "Что такое заказ клиента в УТ?"
+          ],
+          "binding": {
+            "source": "literal",
+            "value_type": "string",
+            "value": "Что такое заказ клиента в УТ?"
+          }
+        }
+      ]
+    },
+    "result": {
+      "kind": "execute",
+      "plan_id": "00000000-0000-4000-8000-000000009101",
+      "steps": [
+        {
+          "step_id": "s1",
+          "kind": "skill_call",
+          "skill_id": "ut115.doc.term",
+          "skill_version": "1.0.0",
+          "arguments": [
+            {
+              "parameter": "search_text",
+              "binding": {
+                "source": "slot",
+                "slot_id": "search_text"
+              }
+            }
+          ],
+          "required_output_fact_ids": [
+            "documentation.fragment",
+            "documentation.citation"
+          ],
+          "on_empty": "stop_not_found"
+        }
+      ],
+      "final_outputs": [
+        {
+          "step_id": "s1",
+          "fact_id": "documentation.fragment"
+        }
+      ]
+    }
+  },
+  "q011": {
+    "schema_version": "1.0.0",
+    "document_type": "planner_output",
+    "request_id": "00000000-0000-4000-8000-000000009001",
+    "session_context_version": 1,
+    "catalog_snapshot_id": "00000000-0000-4000-8000-000000009002",
+    "catalog_revision": 2,
+    "decision": "execute",
+    "interpretation": {
+      "intent_kind": "data",
+      "goal_ru": "Найти номенклатуру по точному артикулу.",
+      "required_facts": [
+        {
+          "requirement_id": "r1",
+          "semantic_type": "catalog.item",
+          "value_type": "entity_ref",
+          "cardinality": "many",
+          "required": true
+        }
+      ],
+      "slots": [
+        {
+          "slot_id": "article",
+          "semantic_type": "catalog.item.article",
+          "value_type": "string",
+          "status": "resolved_literal",
+          "mentions": [
+            "V100123588"
+          ],
+          "binding": {
+            "source": "literal",
+            "value_type": "string",
+            "value": "V100123588"
+          }
+        }
+      ]
+    },
+    "result": {
+      "kind": "execute",
+      "plan_id": "00000000-0000-4000-8000-000000009111",
+      "steps": [
+        {
+          "step_id": "s1",
+          "kind": "skill_call",
+          "skill_id": "ut115.ref.item.resolve-article-exact",
+          "skill_version": "1.0.0",
+          "arguments": [
+            {
+              "parameter": "article",
+              "binding": {
+                "source": "slot",
+                "slot_id": "article"
+              }
+            }
+          ],
+          "required_output_fact_ids": [
+            "item.ref",
+            "item.article",
+            "item.name"
+          ],
+          "on_empty": "stop_not_found"
+        }
+      ],
+      "final_outputs": [
+        {
+          "step_id": "s1",
+          "fact_id": "item.ref"
+        },
+        {
+          "step_id": "s1",
+          "fact_id": "item.article"
+        },
+        {
+          "step_id": "s1",
+          "fact_id": "item.name"
+        }
+      ]
+    }
+  },
+  "q036": {
+    "schema_version": "1.0.0",
+    "document_type": "planner_output",
+    "request_id": "00000000-0000-4000-8000-000000009001",
+    "session_context_version": 1,
+    "catalog_snapshot_id": "00000000-0000-4000-8000-000000009002",
+    "catalog_revision": 2,
+    "decision": "execute",
+    "interpretation": {
+      "intent_kind": "data",
+      "goal_ru": "Найти заказ по точному номеру и показать его статус.",
+      "required_facts": [
+        {
+          "requirement_id": "r1",
+          "semantic_type": "document.sales_order",
+          "value_type": "entity_ref",
+          "cardinality": "zero_or_one",
+          "required": true
+        },
+        {
+          "requirement_id": "r2",
+          "semantic_type": "document.sales_order.status",
+          "value_type": "string",
+          "cardinality": "zero_or_one",
+          "required": true
+        }
+      ],
+      "slots": [
+        {
+          "slot_id": "document_number",
+          "semantic_type": "document.number",
+          "value_type": "string",
+          "status": "resolved_literal",
+          "mentions": [
+            "0000-000005"
+          ],
+          "binding": {
+            "source": "literal",
+            "value_type": "string",
+            "value": "0000-000005"
+          }
+        }
+      ]
+    },
+    "result": {
+      "kind": "execute",
+      "plan_id": "00000000-0000-4000-8000-000000009136",
+      "steps": [
+        {
+          "step_id": "s1",
+          "kind": "skill_call",
+          "skill_id": "ut115.sales.order-header-status-by-number",
+          "skill_version": "1.0.0",
+          "arguments": [
+            {
+              "parameter": "document_number",
+              "binding": {
+                "source": "slot",
+                "slot_id": "document_number"
+              }
+            }
+          ],
+          "required_output_fact_ids": [
+            "order.ref",
+            "order.status"
+          ],
+          "on_empty": "stop_not_found"
+        }
+      ],
+      "final_outputs": [
+        {
+          "step_id": "s1",
+          "fact_id": "order.ref"
+        },
+        {
+          "step_id": "s1",
+          "fact_id": "order.status"
+        }
+      ]
+    }
+  },
+  "q036_ambiguous": {
+    "schema_version": "1.0.0",
+    "document_type": "planner_output",
+    "request_id": "00000000-0000-4000-8000-000000009001",
+    "session_context_version": 1,
+    "catalog_snapshot_id": "00000000-0000-4000-8000-000000009002",
+    "catalog_revision": 2,
+    "decision": "execute",
+    "interpretation": {
+      "intent_kind": "data",
+      "goal_ru": "Найти заказ по точному номеру и показать его статус.",
+      "required_facts": [
+        {
+          "requirement_id": "r1",
+          "semantic_type": "document.sales_order",
+          "value_type": "entity_ref",
+          "cardinality": "zero_or_one",
+          "required": true
+        },
+        {
+          "requirement_id": "r2",
+          "semantic_type": "document.sales_order.status",
+          "value_type": "string",
+          "cardinality": "zero_or_one",
+          "required": true
+        }
+      ],
+      "slots": [
+        {
+          "slot_id": "document_number",
+          "semantic_type": "document.number",
+          "value_type": "string",
+          "status": "resolved_literal",
+          "mentions": [
+            "0000-000005"
+          ],
+          "binding": {
+            "source": "literal",
+            "value_type": "string",
+            "value": "0000-000005"
+          }
+        }
+      ]
+    },
+    "result": {
+      "kind": "execute",
+      "plan_id": "00000000-0000-4000-8000-000000009136",
+      "steps": [
+        {
+          "step_id": "s1",
+          "kind": "skill_call",
+          "skill_id": "ut115.sales.order-header-status-by-number",
+          "skill_version": "1.0.0",
+          "arguments": [
+            {
+              "parameter": "document_number",
+              "binding": {
+                "source": "slot",
+                "slot_id": "document_number"
+              }
+            }
+          ],
+          "required_output_fact_ids": [
+            "order.ref",
+            "order.status"
+          ],
+          "on_empty": "stop_not_found"
+        }
+      ],
+      "final_outputs": [
+        {
+          "step_id": "s1",
+          "fact_id": "order.ref"
+        },
+        {
+          "step_id": "s1",
+          "fact_id": "order.status"
+        }
+      ]
+    }
+  },
+  "q037": {
+    "schema_version": "1.0.0",
+    "document_type": "planner_output",
+    "request_id": "00000000-0000-4000-8000-000000009001",
+    "session_context_version": 1,
+    "catalog_snapshot_id": "00000000-0000-4000-8000-000000009002",
+    "catalog_revision": 2,
+    "decision": "execute",
+    "interpretation": {
+      "intent_kind": "data",
+      "goal_ru": "Показать строки выбранного заказа без повторного поиска.",
+      "required_facts": [
+        {
+          "requirement_id": "r1",
+          "semantic_type": "catalog.item",
+          "value_type": "entity_ref",
+          "cardinality": "many",
+          "required": true
+        },
+        {
+          "requirement_id": "r2",
+          "semantic_type": "measure.ordered_quantity",
+          "value_type": "quantity",
+          "cardinality": "many",
+          "required": true,
+          "unit_dimension": "quantity_unit"
+        }
+      ],
+      "slots": [
+        {
+          "slot_id": "order",
+          "semantic_type": "document.sales_order",
+          "value_type": "entity_ref",
+          "status": "resolved_context",
+          "mentions": [
+            "этот заказ"
+          ],
+          "binding": {
+            "source": "context",
+            "context_handle": "ctx_DYNAMICORDER0000000001",
+            "expected_semantic_type": "document.sales_order"
+          }
+        }
+      ]
+    },
+    "result": {
+      "kind": "execute",
+      "plan_id": "00000000-0000-4000-8000-000000009137",
+      "steps": [
+        {
+          "step_id": "s1",
+          "kind": "skill_call",
+          "skill_id": "ut115.sales.order-lines",
+          "skill_version": "1.0.0",
+          "arguments": [
+            {
+              "parameter": "order",
+              "binding": {
+                "source": "context",
+                "context_handle": "ctx_DYNAMICORDER0000000001",
+                "expected_semantic_type": "document.sales_order"
+              }
+            }
+          ],
+          "required_output_fact_ids": [
+            "order.ref",
+            "order.line_number",
+            "line.item",
+            "line.unit",
+            "line.quantity"
+          ],
+          "on_empty": "stop_not_found"
+        }
+      ],
+      "final_outputs": [
+        {
+          "step_id": "s1",
+          "fact_id": "line.item"
+        },
+        {
+          "step_id": "s1",
+          "fact_id": "line.unit"
+        },
+        {
+          "step_id": "s1",
+          "fact_id": "line.quantity"
+        }
+      ]
+    }
+  },
+  "q037_ref_mismatch": {
+    "schema_version": "1.0.0",
+    "document_type": "planner_output",
+    "request_id": "00000000-0000-4000-8000-000000009001",
+    "session_context_version": 1,
+    "catalog_snapshot_id": "00000000-0000-4000-8000-000000009002",
+    "catalog_revision": 2,
+    "decision": "execute",
+    "interpretation": {
+      "intent_kind": "data",
+      "goal_ru": "Показать строки выбранного заказа без повторного поиска.",
+      "required_facts": [
+        {
+          "requirement_id": "r1",
+          "semantic_type": "catalog.item",
+          "value_type": "entity_ref",
+          "cardinality": "many",
+          "required": true
+        },
+        {
+          "requirement_id": "r2",
+          "semantic_type": "measure.ordered_quantity",
+          "value_type": "quantity",
+          "cardinality": "many",
+          "required": true,
+          "unit_dimension": "quantity_unit"
+        }
+      ],
+      "slots": [
+        {
+          "slot_id": "order",
+          "semantic_type": "document.sales_order",
+          "value_type": "entity_ref",
+          "status": "resolved_context",
+          "mentions": [
+            "этот заказ"
+          ],
+          "binding": {
+            "source": "context",
+            "context_handle": "ctx_DYNAMICORDER0000000001",
+            "expected_semantic_type": "document.sales_order"
+          }
+        }
+      ]
+    },
+    "result": {
+      "kind": "execute",
+      "plan_id": "00000000-0000-4000-8000-000000009137",
+      "steps": [
+        {
+          "step_id": "s1",
+          "kind": "skill_call",
+          "skill_id": "ut115.sales.order-lines",
+          "skill_version": "1.0.0",
+          "arguments": [
+            {
+              "parameter": "order",
+              "binding": {
+                "source": "context",
+                "context_handle": "ctx_DYNAMICORDER0000000001",
+                "expected_semantic_type": "document.sales_order"
+              }
+            }
+          ],
+          "required_output_fact_ids": [
+            "order.ref",
+            "order.line_number",
+            "line.item",
+            "line.unit",
+            "line.quantity"
+          ],
+          "on_empty": "stop_not_found"
+        }
+      ],
+      "final_outputs": [
+        {
+          "step_id": "s1",
+          "fact_id": "line.item"
+        },
+        {
+          "step_id": "s1",
+          "fact_id": "line.unit"
+        },
+        {
+          "step_id": "s1",
+          "fact_id": "line.quantity"
+        }
+      ]
+    }
+  },
+  "q037_missing_context": {
+    "schema_version": "1.0.0",
+    "document_type": "planner_output",
+    "request_id": "00000000-0000-4000-8000-000000009001",
+    "session_context_version": 1,
+    "catalog_snapshot_id": "00000000-0000-4000-8000-000000009002",
+    "catalog_revision": 2,
+    "decision": "clarify",
+    "interpretation": {
+      "intent_kind": "data",
+      "goal_ru": "Уточнить заказ для просмотра его строк.",
+      "required_facts": [
+        {
+          "requirement_id": "r1",
+          "semantic_type": "document.sales_order",
+          "value_type": "entity_ref",
+          "cardinality": "one",
+          "required": true
+        }
+      ],
+      "slots": [
+        {
+          "slot_id": "order",
+          "semantic_type": "document.sales_order",
+          "value_type": "entity_ref",
+          "status": "missing",
+          "mentions": [
+            "этот заказ"
+          ]
+        }
+      ]
+    },
+    "result": {
+      "kind": "clarify",
+      "question_ru": "Какой именно заказ требуется использовать?",
+      "missing_requirement_ids": [
+        "r1"
+      ],
+      "choices": []
+    }
+  },
+  "q102": {
+    "schema_version": "1.0.0",
+    "document_type": "planner_output",
+    "request_id": "00000000-0000-4000-8000-000000009001",
+    "session_context_version": 1,
+    "catalog_snapshot_id": "00000000-0000-4000-8000-000000009002",
+    "catalog_revision": 2,
+    "decision": "execute",
+    "interpretation": {
+      "intent_kind": "data",
+      "goal_ru": "Найти номенклатуру по точному артикулу.",
+      "required_facts": [
+        {
+          "requirement_id": "r1",
+          "semantic_type": "catalog.item",
+          "value_type": "entity_ref",
+          "cardinality": "many",
+          "required": true
+        }
+      ],
+      "slots": [
+        {
+          "slot_id": "article",
+          "semantic_type": "catalog.item.article",
+          "value_type": "string",
+          "status": "resolved_literal",
+          "mentions": [
+            "TEST-NOT-EXISTS-999999"
+          ],
+          "binding": {
+            "source": "literal",
+            "value_type": "string",
+            "value": "TEST-NOT-EXISTS-999999"
+          }
+        }
+      ]
+    },
+    "result": {
+      "kind": "execute",
+      "plan_id": "00000000-0000-4000-8000-000000009102",
+      "steps": [
+        {
+          "step_id": "s1",
+          "kind": "skill_call",
+          "skill_id": "ut115.ref.item.resolve-article-exact",
+          "skill_version": "1.0.0",
+          "arguments": [
+            {
+              "parameter": "article",
+              "binding": {
+                "source": "slot",
+                "slot_id": "article"
+              }
+            }
+          ],
+          "required_output_fact_ids": [
+            "item.ref",
+            "item.article",
+            "item.name"
+          ],
+          "on_empty": "stop_not_found"
+        }
+      ],
+      "final_outputs": [
+        {
+          "step_id": "s1",
+          "fact_id": "item.ref"
+        },
+        {
+          "step_id": "s1",
+          "fact_id": "item.article"
+        },
+        {
+          "step_id": "s1",
+          "fact_id": "item.name"
+        }
+      ]
+    }
+  },
+  "q011_real_mcp_minimal": {
+    "schema_version": "1.0.0",
+    "document_type": "planner_output",
+    "request_id": "00000000-0000-4000-8000-000000009001",
+    "session_context_version": 1,
+    "catalog_snapshot_id": "00000000-0000-4000-8000-000000009002",
+    "catalog_revision": 2,
+    "decision": "execute",
+    "interpretation": {
+      "intent_kind": "data",
+      "goal_ru": "Найти номенклатуру по точному артикулу.",
+      "required_facts": [
+        {
+          "requirement_id": "r1",
+          "semantic_type": "catalog.item",
+          "value_type": "entity_ref",
+          "cardinality": "many",
+          "required": true
+        }
+      ],
+      "slots": [
+        {
+          "slot_id": "article",
+          "semantic_type": "catalog.item.article",
+          "value_type": "string",
+          "status": "resolved_literal",
+          "mentions": [
+            "V100123588"
+          ],
+          "binding": {
+            "source": "literal",
+            "value_type": "string",
+            "value": "V100123588"
+          }
+        }
+      ]
+    },
+    "result": {
+      "kind": "execute",
+      "plan_id": "00000000-0000-4000-8000-000000009111",
+      "steps": [
+        {
+          "step_id": "s1",
+          "kind": "skill_call",
+          "skill_id": "ut115.ref.item.resolve-article-exact",
+          "skill_version": "1.0.0",
+          "arguments": [
+            {
+              "parameter": "article",
+              "binding": {
+                "source": "slot",
+                "slot_id": "article"
+              }
+            }
+          ],
+          "required_output_fact_ids": [
+            "item.ref",
+            "item.article",
+            "item.name"
+          ],
+          "on_empty": "stop_not_found"
+        }
+      ],
+      "final_outputs": [
+        {
+          "step_id": "s1",
+          "fact_id": "item.ref"
+        },
+        {
+          "step_id": "s1",
+          "fact_id": "item.article"
+        },
+        {
+          "step_id": "s1",
+          "fact_id": "item.name"
+        }
+      ]
+    }
+  },
+  "mcp_query_error": {
+    "schema_version": "1.0.0",
+    "document_type": "planner_output",
+    "request_id": "00000000-0000-4000-8000-000000009001",
+    "session_context_version": 1,
+    "catalog_snapshot_id": "00000000-0000-4000-8000-000000009002",
+    "catalog_revision": 2,
+    "decision": "execute",
+    "interpretation": {
+      "intent_kind": "data",
+      "goal_ru": "Найти номенклатуру по точному артикулу.",
+      "required_facts": [
+        {
+          "requirement_id": "r1",
+          "semantic_type": "catalog.item",
+          "value_type": "entity_ref",
+          "cardinality": "many",
+          "required": true
+        }
+      ],
+      "slots": [
+        {
+          "slot_id": "article",
+          "semantic_type": "catalog.item.article",
+          "value_type": "string",
+          "status": "resolved_literal",
+          "mentions": [
+            "V100123588"
+          ],
+          "binding": {
+            "source": "literal",
+            "value_type": "string",
+            "value": "V100123588"
+          }
+        }
+      ]
+    },
+    "result": {
+      "kind": "execute",
+      "plan_id": "00000000-0000-4000-8000-000000009111",
+      "steps": [
+        {
+          "step_id": "s1",
+          "kind": "skill_call",
+          "skill_id": "ut115.ref.item.resolve-article-exact",
+          "skill_version": "1.0.0",
+          "arguments": [
+            {
+              "parameter": "article",
+              "binding": {
+                "source": "slot",
+                "slot_id": "article"
+              }
+            }
+          ],
+          "required_output_fact_ids": [
+            "item.ref",
+            "item.article",
+            "item.name"
+          ],
+          "on_empty": "stop_not_found"
+        }
+      ],
+      "final_outputs": [
+        {
+          "step_id": "s1",
+          "fact_id": "item.ref"
+        },
+        {
+          "step_id": "s1",
+          "fact_id": "item.article"
+        },
+        {
+          "step_id": "s1",
+          "fact_id": "item.name"
+        }
+      ]
+    }
+  },
+  "mcp_real_error_only": {
+    "schema_version": "1.0.0",
+    "document_type": "planner_output",
+    "request_id": "00000000-0000-4000-8000-000000009001",
+    "session_context_version": 1,
+    "catalog_snapshot_id": "00000000-0000-4000-8000-000000009002",
+    "catalog_revision": 2,
+    "decision": "execute",
+    "interpretation": {
+      "intent_kind": "data",
+      "goal_ru": "Найти номенклатуру по точному артикулу.",
+      "required_facts": [
+        {
+          "requirement_id": "r1",
+          "semantic_type": "catalog.item",
+          "value_type": "entity_ref",
+          "cardinality": "many",
+          "required": true
+        }
+      ],
+      "slots": [
+        {
+          "slot_id": "article",
+          "semantic_type": "catalog.item.article",
+          "value_type": "string",
+          "status": "resolved_literal",
+          "mentions": [
+            "V100123588"
+          ],
+          "binding": {
+            "source": "literal",
+            "value_type": "string",
+            "value": "V100123588"
+          }
+        }
+      ]
+    },
+    "result": {
+      "kind": "execute",
+      "plan_id": "00000000-0000-4000-8000-000000009111",
+      "steps": [
+        {
+          "step_id": "s1",
+          "kind": "skill_call",
+          "skill_id": "ut115.ref.item.resolve-article-exact",
+          "skill_version": "1.0.0",
+          "arguments": [
+            {
+              "parameter": "article",
+              "binding": {
+                "source": "slot",
+                "slot_id": "article"
+              }
+            }
+          ],
+          "required_output_fact_ids": [
+            "item.ref",
+            "item.article",
+            "item.name"
+          ],
+          "on_empty": "stop_not_found"
+        }
+      ],
+      "final_outputs": [
+        {
+          "step_id": "s1",
+          "fact_id": "item.ref"
+        },
+        {
+          "step_id": "s1",
+          "fact_id": "item.article"
+        },
+        {
+          "step_id": "s1",
+          "fact_id": "item.name"
+        }
+      ]
+    }
+  },
+  "mcp_malformed": {
+    "schema_version": "1.0.0",
+    "document_type": "planner_output",
+    "request_id": "00000000-0000-4000-8000-000000009001",
+    "session_context_version": 1,
+    "catalog_snapshot_id": "00000000-0000-4000-8000-000000009002",
+    "catalog_revision": 2,
+    "decision": "execute",
+    "interpretation": {
+      "intent_kind": "data",
+      "goal_ru": "Найти номенклатуру по точному артикулу.",
+      "required_facts": [
+        {
+          "requirement_id": "r1",
+          "semantic_type": "catalog.item",
+          "value_type": "entity_ref",
+          "cardinality": "many",
+          "required": true
+        }
+      ],
+      "slots": [
+        {
+          "slot_id": "article",
+          "semantic_type": "catalog.item.article",
+          "value_type": "string",
+          "status": "resolved_literal",
+          "mentions": [
+            "V100123588"
+          ],
+          "binding": {
+            "source": "literal",
+            "value_type": "string",
+            "value": "V100123588"
+          }
+        }
+      ]
+    },
+    "result": {
+      "kind": "execute",
+      "plan_id": "00000000-0000-4000-8000-000000009111",
+      "steps": [
+        {
+          "step_id": "s1",
+          "kind": "skill_call",
+          "skill_id": "ut115.ref.item.resolve-article-exact",
+          "skill_version": "1.0.0",
+          "arguments": [
+            {
+              "parameter": "article",
+              "binding": {
+                "source": "slot",
+                "slot_id": "article"
+              }
+            }
+          ],
+          "required_output_fact_ids": [
+            "item.ref",
+            "item.article",
+            "item.name"
+          ],
+          "on_empty": "stop_not_found"
+        }
+      ],
+      "final_outputs": [
+        {
+          "step_id": "s1",
+          "fact_id": "item.ref"
+        },
+        {
+          "step_id": "s1",
+          "fact_id": "item.article"
+        },
+        {
+          "step_id": "s1",
+          "fact_id": "item.name"
+        }
+      ]
+    }
+  },
+  "slow_q011": {
+    "schema_version": "1.0.0",
+    "document_type": "planner_output",
+    "request_id": "00000000-0000-4000-8000-000000009001",
+    "session_context_version": 1,
+    "catalog_snapshot_id": "00000000-0000-4000-8000-000000009002",
+    "catalog_revision": 2,
+    "decision": "execute",
+    "interpretation": {
+      "intent_kind": "data",
+      "goal_ru": "Найти номенклатуру по точному артикулу.",
+      "required_facts": [
+        {
+          "requirement_id": "r1",
+          "semantic_type": "catalog.item",
+          "value_type": "entity_ref",
+          "cardinality": "many",
+          "required": true
+        }
+      ],
+      "slots": [
+        {
+          "slot_id": "article",
+          "semantic_type": "catalog.item.article",
+          "value_type": "string",
+          "status": "resolved_literal",
+          "mentions": [
+            "V100123588"
+          ],
+          "binding": {
+            "source": "literal",
+            "value_type": "string",
+            "value": "V100123588"
+          }
+        }
+      ]
+    },
+    "result": {
+      "kind": "execute",
+      "plan_id": "00000000-0000-4000-8000-000000009111",
+      "steps": [
+        {
+          "step_id": "s1",
+          "kind": "skill_call",
+          "skill_id": "ut115.ref.item.resolve-article-exact",
+          "skill_version": "1.0.0",
+          "arguments": [
+            {
+              "parameter": "article",
+              "binding": {
+                "source": "slot",
+                "slot_id": "article"
+              }
+            }
+          ],
+          "required_output_fact_ids": [
+            "item.ref",
+            "item.article",
+            "item.name"
+          ],
+          "on_empty": "stop_not_found"
+        }
+      ],
+      "final_outputs": [
+        {
+          "step_id": "s1",
+          "fact_id": "item.ref"
+        },
+        {
+          "step_id": "s1",
+          "fact_id": "item.article"
+        },
+        {
+          "step_id": "s1",
+          "fact_id": "item.name"
+        }
+      ]
+    }
+  }
+}

@@ -63,7 +63,6 @@
       "value_type": "entity_ref",
       "required": true,
       "allowed_sources": [
-        "user_slot",
         "session_context",
         "previous_step"
       ],
@@ -356,6 +355,6 @@
     "algorithm": "sha256",
     "canonicalization": "RFC8785",
     "scope": "document_without_integrity",
-    "digest": "6e7b32c7513140e5a7674d81541b9a6787191be09b8b4505e1a17457edf057d3"
+    "digest": "da8dec31a814c4eaa0841f45edb2051f3f502aa53eb41ddb421393d00c722122"
   }
 }

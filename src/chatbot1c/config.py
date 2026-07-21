@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     mcp_url: Annotated[str, Field(pattern=r"^https?://")] = "http://127.0.0.1:6003/mcp"
     mcp_channel: Annotated[str, Field(min_length=1, max_length=160)] = "default"
     ut_config_dir: Path | None = None
+    database_profile_path: Path | None = None
+    starter_package_path: Path | None = None
+    auto_import_builtin_skills: bool = False
+    build_help_index_on_start: bool = False
 
     target_configuration_id: Literal["УправлениеТорговлейБазовая"] = (
         "УправлениеТорговлейБазовая"

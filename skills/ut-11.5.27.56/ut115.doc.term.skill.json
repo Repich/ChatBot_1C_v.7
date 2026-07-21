@@ -1,0 +1,257 @@
+{
+  "schema_version": "1.0.0",
+  "document_type": "skill",
+  "skill_id": "ut115.doc.term",
+  "version": "1.0.0",
+  "display": {
+    "name_ru": "Определение термина из встроенной справки",
+    "purpose_ru": "Находит определения, ограничения и значения терминов только во встроенной справке УТ закрепленного релиза.",
+    "limitations_ru": [
+      "Не переходит по ссылкам ИТС, v8help или внешним HTTP страницам и не дополняет найденный текст внешними знаниями."
+    ]
+  },
+  "provides": {
+    "capability_ids": [
+      "CAP-DOC-TERM",
+      "CAP-DOC-SOURCE"
+    ],
+    "fact_types": [
+      "documentation.fragment",
+      "documentation.citation"
+    ]
+  },
+  "compatibility": {
+    "configuration_id": "УправлениеТорговлейБазовая",
+    "configuration_name": "1С:Управление торговлей (базовая), редакция 11",
+    "release_range": {
+      "minimum": "11.5.27.56",
+      "maximum": "11.5.27.56",
+      "include_minimum": true,
+      "include_maximum": true
+    },
+    "compatibility_modes": [
+      "8.3.27"
+    ],
+    "required_metadata": [],
+    "metadata_snapshot_sha256": "0a5de708506f8fd2d491e71a0ac30e106cb8705f241f883aacfa34b011810902"
+  },
+  "selection": {
+    "intent_kinds": [
+      "documentation"
+    ],
+    "aliases_ru": [
+      "что означает термин в УТ",
+      "что такое заказ клиента"
+    ],
+    "anti_examples_ru": [
+      "каков фактический статус объекта в базе"
+    ],
+    "required_context_fact_types": []
+  },
+  "parameters": [
+    {
+      "name": "search_text",
+      "title_ru": "Текст поиска",
+      "description_ru": "Формулировка вопроса для встроенной справки.",
+      "value_type": "normalized_text",
+      "required": true,
+      "allowed_sources": [
+        "user_slot"
+      ],
+      "normalization": "casefold"
+    }
+  ],
+  "operation": {
+    "kind": "documentation_retrieval",
+    "index": "ut_built_in_help",
+    "query_parameter": "search_text",
+    "retrieval": {
+      "engine": "fts5_bm25_ru_stem_v1",
+      "top_k": 8,
+      "max_chunks_per_source": 3
+    },
+    "filters": {
+      "source_kind": "built_in_help",
+      "language": "ru",
+      "metadata_kinds": [
+        "configuration",
+        "subsystem",
+        "catalog",
+        "document",
+        "report",
+        "data_processor",
+        "form",
+        "common_form",
+        "other"
+      ],
+      "path_prefixes": []
+    },
+    "chunk_roles": [
+      "definition",
+      "procedure",
+      "restriction",
+      "status_meaning"
+    ],
+    "output_bindings": [
+      {
+        "chunk_field": "text",
+        "fact_id": "documentation.fragment"
+      },
+      {
+        "chunk_field": "citation",
+        "fact_id": "documentation.citation"
+      }
+    ]
+  },
+  "output_contract": {
+    "contract_id": "ut115.doc.term.v1",
+    "contract_version": "1.0.0",
+    "cardinality": "many",
+    "facts": [
+      {
+        "fact_id": "documentation.fragment",
+        "semantic_type": "documentation.fragment",
+        "value_type": "document_fragment",
+        "role": "attribute",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Фрагмент справки",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "documentation.citation",
+        "semantic_type": "documentation.citation",
+        "value_type": "source_citation",
+        "role": "provenance",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Источник",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      }
+    ],
+    "sufficiency": {
+      "required_fact_sets": [
+        [
+          "documentation.fragment",
+          "documentation.citation"
+        ]
+      ],
+      "empty_semantics": "confirmed_not_found",
+      "zero_fact_ids": [],
+      "truncation_policy": "page_is_complete"
+    },
+    "renderer": {
+      "kind": "explanation",
+      "primary_fact_ids": [
+        "documentation.citation"
+      ],
+      "column_fact_ids": [
+        "documentation.citation"
+      ]
+    },
+    "row_identity_fact_ids": [
+      "documentation.citation"
+    ]
+  },
+  "result_constraints": [],
+  "dependencies": {
+    "runtime_contracts": [
+      {
+        "contract": "skill-runtime",
+        "version_range": "^1.0.0"
+      },
+      {
+        "contract": "help-index",
+        "version_range": "^1.0.0"
+      }
+    ],
+    "skills": []
+  },
+  "examples": [
+    {
+      "question_ru": "что означает термин в УТ?",
+      "applicability": "applicable",
+      "reason_ru": "Вопрос соответствует назначению и typed outputs навыка."
+    },
+    {
+      "question_ru": "каков фактический статус объекта в базе?",
+      "applicability": "not_applicable",
+      "reason_ru": "Вопрос находится за явно объявленной границей навыка."
+    }
+  ],
+  "tests": [
+    {
+      "test_id": "ut.order-help.positive",
+      "case_kind": "positive",
+      "bindings": [
+        {
+          "parameter": "search_text",
+          "value": "заказ клиента"
+        }
+      ],
+      "fixture": {
+        "kind": "documentation_chunks",
+        "chunks": [
+          {
+            "chunk_id": "order-help-definition",
+            "title": "Заказ клиента",
+            "heading": "Заказ клиента",
+            "text": "Заказ клиента - это запрос клиента на поставку ему товаров или оказание услуг в установленные сроки.",
+            "source_uri": "ut-help://11.5.27.56/Documents/ЗаказКлиента/Ext/Help/ru.html#top",
+            "role": "definition"
+          }
+        ]
+      },
+      "expected": {
+        "status": "documentation_found",
+        "required_fact_ids": [
+          "documentation.fragment",
+          "documentation.citation"
+        ]
+      }
+    },
+    {
+      "test_id": "ut.order-help.empty",
+      "case_kind": "negative",
+      "bindings": [],
+      "fixture": {
+        "kind": "documentation_chunks",
+        "chunks": []
+      },
+      "expected": {
+        "status": "documentation_empty",
+        "required_fact_ids": []
+      }
+    }
+  ],
+  "provenance": {
+    "author": "ChatBot 1C slice 1",
+    "created_at": "2026-07-21T00:00:00Z",
+    "reviewed_by": "Architecture and PM source proof",
+    "reviewed_at": "2026-07-21T00:00:00Z",
+    "source_configuration": {
+      "configuration_id": "УправлениеТорговлейБазовая",
+      "release": "11.5.27.56",
+      "compatibility_mode": "8.3.27",
+      "metadata_snapshot_sha256": "0a5de708506f8fd2d491e71a0ac30e106cb8705f241f883aacfa34b011810902"
+    },
+    "source_references": [
+      {
+        "kind": "built_in_help",
+        "uri": "ut-help://11.5.27.56/Documents/ЗаказКлиента/Ext/Help/ru.html#top",
+        "sha256": "0a5de708506f8fd2d491e71a0ac30e106cb8705f241f883aacfa34b011810902"
+      }
+    ],
+    "change_note_ru": "Навык построен по проверенным metadata/help исходникам УТ 11.5.27.56."
+  },
+  "integrity": {
+    "algorithm": "sha256",
+    "canonicalization": "RFC8785",
+    "scope": "document_without_integrity",
+    "digest": "0f9162d840f5b8287c703a226264ba9902bb15eb8a9cf74c65231e38cf0e3539"
+  }
+}

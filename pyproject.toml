@@ -4,26 +4,40 @@ build-backend = "hatchling.build"
 
 [project]
 name = "chatbot1c"
-version = "0.1.0a1"
+version = "0.1.0a2"
 description = "Contract-first assistant for 1C Trade Management"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+  "alembic>=1.16,<2",
+  "beautifulsoup4>=4.13,<5",
+  "fastapi>=0.116,<1",
+  "httpx>=0.28,<1",
+  "jinja2>=3.1,<4",
   "jsonschema[format]>=4.25,<5",
+  "mcp>=1.12,<2",
   "platformdirs>=4.3,<5",
   "pydantic>=2.11,<3",
   "pydantic-settings>=2.10,<3",
   "python-dotenv>=1.1,<2",
+  "python-multipart>=0.0.20,<1",
   "referencing>=0.36,<1",
   "rfc8785>=0.1.4,<1",
   "semantic-version>=2.10,<3",
+  "sqlalchemy>=2.0,<3",
+  "uvicorn>=0.35,<1",
 ]
+
+[project.scripts]
+chatbot1c = "chatbot1c.cli:main"
 
 [dependency-groups]
 dev = [
   "mypy==1.17.0",
   "pytest>=8.4,<9",
+  "pytest-asyncio>=1.1,<2",
   "pyyaml>=6,<7",
+  "respx>=0.22,<1",
   "ruff==0.15.22",
   "types-jsonschema==4.26.0.20260518",
 ]
@@ -33,6 +47,7 @@ packages = ["src/chatbot1c"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "schemas" = "chatbot1c/schemas"
+"skills" = "chatbot1c/builtin_skills"
 
 [tool.hatch.build.targets.sdist]
 include = [
@@ -40,6 +55,7 @@ include = [
   "/VERSION",
   "/pyproject.toml",
   "/schemas",
+  "/skills",
   "/src",
   "/typings",
 ]

@@ -11,7 +11,7 @@ from typing import TypeVar
 from semantic_version import NpmSpec, SimpleSpec, Version
 
 from chatbot1c.contracts.errors import ContractIssue, raise_for_issues
-from chatbot1c.contracts.query import inspect_query_contract
+from chatbot1c.contracts.query import escaped_like_parameters, inspect_query_contract
 from chatbot1c.domain.evidence import (
     CitationValue,
     DocumentFragment,
@@ -139,6 +139,38 @@ class SemanticValidator:
                 "PARAMETER_DUPLICATE",
             )
         )
+        for index, parameter in enumerate(skill.parameters):
+            is_entity = parameter.value_type in {
+                ParameterValueType.ENTITY_REF,
+                ParameterValueType.ENTITY_REF_LIST,
+            }
+            if is_entity and parameter.semantic_type not in (
+                parameter.entity_types or ()
+            ):
+                issues.append(
+                    _issue(
+                        "PARAMETER_ENTITY_TYPE_NOT_ALLOWED",
+                        f"{prefix}/parameters/{index}/entity_types",
+                        (
+                            "semantic_type entity parameter должен входить в "
+                            "закрытый entity_types allowlist."
+                        ),
+                    )
+                )
+            if is_entity and set(parameter.allowed_sources) - {
+                "session_context",
+                "previous_step",
+            }:
+                issues.append(
+                    _issue(
+                        "ENTITY_REF_SOURCE_UNPROVEN",
+                        f"{prefix}/parameters/{index}/allowed_sources",
+                        (
+                            "Entity parameter разрешает только provenance-bearing "
+                            "session_context/previous_step."
+                        ),
+                    )
+                )
         issues.extend(
             _duplicate_key_issues(
                 skill.output_contract.facts,
@@ -199,6 +231,7 @@ class SemanticValidator:
                 )
 
         issues.extend(self._output_reference_issues(skill, facts, prefix))
+        issues.extend(self._result_constraint_issues(skill, parameters, facts, prefix))
         issues.extend(self._runtime_contract_issues(skill, prefix))
         issues.extend(self._fixture_issues(skill, parameters, facts, prefix))
 
@@ -213,6 +246,91 @@ class SemanticValidator:
                     skill, operation, parameters, facts, prefix
                 )
             )
+        return issues
+
+    def _result_constraint_issues(
+        self,
+        skill: Skill,
+        parameters: dict[str, Parameter],
+        facts: dict[str, FactDefinition],
+        prefix: str,
+    ) -> list[ContractIssue]:
+        issues: list[ContractIssue] = []
+        seen: set[tuple[str, str]] = set()
+        bound_fact_ids = (
+            {binding.fact_id for binding in skill.operation.column_bindings}
+            if isinstance(skill.operation, DataQueryOperation)
+            else set()
+        )
+        for index, constraint in enumerate(skill.result_constraints):
+            pointer = f"{prefix}/result_constraints/{index}"
+            key = (constraint.fact_id, constraint.parameter)
+            if key in seen:
+                issues.append(
+                    _issue(
+                        "RESULT_CONSTRAINT_DUPLICATE",
+                        pointer,
+                        "Ограничение результата объявлено повторно.",
+                    )
+                )
+            seen.add(key)
+            fact = facts.get(constraint.fact_id)
+            parameter = parameters.get(constraint.parameter)
+            if fact is None:
+                issues.append(
+                    _issue(
+                        "RESULT_CONSTRAINT_FACT_MISSING",
+                        pointer + "/fact_id",
+                        "Ограничение ссылается на необъявленный output fact.",
+                    )
+                )
+            if parameter is None:
+                issues.append(
+                    _issue(
+                        "RESULT_CONSTRAINT_PARAMETER_MISSING",
+                        pointer + "/parameter",
+                        "Ограничение ссылается на необъявленный parameter.",
+                    )
+                )
+            if fact is not None and fact.value_type is not FactValueType.ENTITY_REF:
+                issues.append(
+                    _issue(
+                        "RESULT_CONSTRAINT_FACT_TYPE_MISMATCH",
+                        pointer + "/fact_id",
+                        "fact_equals_parameter требует entity_ref output fact.",
+                    )
+                )
+            if (
+                parameter is not None
+                and parameter.value_type is not ParameterValueType.ENTITY_REF
+            ):
+                issues.append(
+                    _issue(
+                        "RESULT_CONSTRAINT_PARAMETER_TYPE_MISMATCH",
+                        pointer + "/parameter",
+                        "fact_equals_parameter требует entity_ref parameter.",
+                    )
+                )
+            if (
+                fact is not None
+                and parameter is not None
+                and fact.semantic_type != parameter.semantic_type
+            ):
+                issues.append(
+                    _issue(
+                        "RESULT_CONSTRAINT_SEMANTIC_TYPE_MISMATCH",
+                        pointer,
+                        "Output fact и parameter должны иметь одинаковый semantic type.",
+                    )
+                )
+            if fact is not None and fact.fact_id not in bound_fact_ids:
+                issues.append(
+                    _issue(
+                        "RESULT_CONSTRAINT_OUTPUT_BINDING_MISSING",
+                        pointer + "/fact_id",
+                        "Ограниченный fact должен иметь exact output binding.",
+                    )
+                )
         return issues
 
     def _output_reference_issues(
@@ -480,6 +598,25 @@ class SemanticValidator:
             used_query_parameters = {
                 name.casefold() for name in query_contract.parsed.parameters
             }
+            escaped_like = escaped_like_parameters(query_contract.parsed)
+            for index, binding in enumerate(operation.parameter_bindings):
+                if (
+                    binding.encoding == "like_contains"
+                    and binding.query_parameter.casefold() not in escaped_like
+                ):
+                    issues.append(
+                        _issue(
+                            "LIKE_CONTAINS_ESCAPE_MISSING",
+                            (
+                                f"{prefix}/operation/parameter_bindings/{index}"
+                                "/encoding"
+                            ),
+                            (
+                                "like_contains требует predicate "
+                                "ПОДОБНО &Параметр СПЕЦСИМВОЛ \"~\"."
+                            ),
+                        )
+                    )
             for name in sorted(used_query_parameters - allowed_query_parameters):
                 issues.append(
                     _issue(
@@ -749,7 +886,7 @@ class SemanticValidator:
                 if not same_id:
                     issues.append(
                         _issue(
-                            "DEPENDENCY_MISSING",
+                            "SKILL_DEPENDENCY_MISSING",
                             dep_pointer + "/skill_id",
                             f"Dependency skill '{dependency.skill_id}' отсутствует.",
                         )
@@ -1075,10 +1212,30 @@ class SemanticValidator:
 
         fact_index: dict[object, tuple[int, Fact]] = {}
         catalog = {(skill.skill_id, skill.version): skill for skill in available_skills}
+        snapshot = {
+            (skill.skill_id, skill.version): skill.digest
+            for skill in evidence.catalog_snapshot.skills
+        }
+        for step_index, step in enumerate(evidence.steps):
+            pair = _skill_operation_pair(step.operation_ref)
+            if pair is None or pair not in catalog:
+                continue
+            if snapshot.get(pair) != catalog[pair].integrity.digest:
+                issues.append(
+                    _issue(
+                        "EVIDENCE_SKILL_DIGEST_MISMATCH",
+                        f"/steps/{step_index}/operation_ref",
+                        (
+                            "Evidence producer не совпадает с exact digest "
+                            "pinned catalog snapshot."
+                        ),
+                    )
+                )
         skill_by_step = {
             step.step_id: catalog[pair]
             for step in evidence.steps
             if (pair := _skill_operation_pair(step.operation_ref)) in catalog
+            and snapshot.get(pair) == catalog[pair].integrity.digest
         }
         for index, fact in enumerate(evidence.facts):
             if fact.fact_instance_id in fact_index:
@@ -1091,20 +1248,46 @@ class SemanticValidator:
                 )
             fact_index[fact.fact_instance_id] = (index, fact)
             issues.extend(_fact_value_issues(fact, index))
+            producer = skill_by_step.get(fact.step_id)
             if fact.value_type is FactValueType.ENTITY_REF and isinstance(
                 fact.value, EntityRef
             ):
-                exact_types = _accepted_entity_types(
-                    skill_by_step.get(fact.step_id), fact
+                if producer is None:
+                    issues.append(
+                        _issue(
+                            "ENTITY_BINDING_PROVENANCE_MISSING",
+                            f"/facts/{index}/step_id",
+                            (
+                                "Entity fact требует доступный exact producer skill "
+                                "из pinned catalog."
+                            ),
+                        )
+                    )
+                    continue
+                definition = next(
+                    (
+                        item
+                        for item in producer.output_contract.facts
+                        if item.fact_id == fact.fact_id
+                    ),
+                    None,
                 )
-                if not _entity_semantics_match(
-                    fact.semantic_type, fact.value.object_type
-                ) or (exact_types and fact.value.object_type not in exact_types):
+                exact_types = _accepted_entity_types(producer, fact)
+                if (
+                    definition is None
+                    or definition.semantic_type != fact.semantic_type
+                    or definition.value_type is not fact.value_type
+                    or not exact_types
+                    or fact.value.object_type not in exact_types
+                ):
                     issues.append(
                         _issue(
                             "ENTITY_REF_SEMANTIC_TYPE_MISMATCH",
                             f"/facts/{index}/value/ТипОбъекта",
-                            "Физический ТипОбъекта несовместим с business semantic_type факта.",
+                            (
+                                "Entity fact не совпадает с exact semantic/physical "
+                                "signature producer column binding."
+                            ),
                         )
                     )
 
@@ -1538,7 +1721,7 @@ def _skill_call_proofs(step: SkillCall, skill: Skill) -> dict[str, _FactProof]:
         and identity_ids <= requested
         and all(
             definitions.get(fact_id) is not None
-            and definitions[fact_id].role in {"entity", "dimension"}
+            and definitions[fact_id].role in {"entity", "dimension", "provenance"}
             for fact_id in identity_ids
         )
     )
@@ -1883,24 +2066,6 @@ def _fact_value_issues(fact: Fact, index: int) -> list[ContractIssue]:
     ]
 
 
-def _entity_semantics_match(semantic_type: str, object_type: str) -> bool:
-    if object_type.startswith("ДокументСсылка."):
-        return semantic_type.startswith("document.")
-    if semantic_type.startswith("document."):
-        return object_type.startswith("ДокументСсылка.")
-    reference_roots = (
-        "catalog.",
-        "party.",
-        "warehouse.",
-        "inventory.",
-        "price.",
-        "finance.",
-    )
-    if semantic_type.startswith(reference_roots):
-        return object_type.startswith(("СправочникСсылка.", "ПеречислениеСсылка."))
-    return True
-
-
 def _skill_operation_pair(operation_ref: str) -> tuple[str, str] | None:
     match = re.fullmatch(r"skill://([^/]+)/([^/]+)", operation_ref)
     return (match.group(1), match.group(2)) if match else None
@@ -1914,6 +2079,7 @@ def _accepted_entity_types(skill: Skill | None, fact: Fact) -> set[str]:
         for binding in skill.operation.column_bindings
         if binding.fact_id == fact.fact_id
         and binding.column == fact.source_locator.reference
+        and binding.converter == "object_ref"
         for accepted_type in binding.accepted_mcp_types
     }
 

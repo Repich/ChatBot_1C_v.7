@@ -1,0 +1,3372 @@
+{
+  "schema_version": "1.0.0",
+  "document_type": "skill_package",
+  "package_id": "ut.starter.slice-one",
+  "version": "1.0.0",
+  "display": {
+    "name_ru": "Стартовые навыки УТ 11.5.27.56",
+    "description_ru": "Замкнутый переносимый пакет документации, номенклатуры, остатков и заказов клиента."
+  },
+  "target": {
+    "configuration_id": "УправлениеТорговлейБазовая",
+    "configuration_name": "1С:Управление торговлей (базовая), редакция 11",
+    "release": "11.5.27.56",
+    "compatibility_mode": "8.3.27"
+  },
+  "skills": [
+    {
+      "schema_version": "1.0.0",
+      "document_type": "skill",
+      "skill_id": "ut115.doc.term",
+      "version": "1.0.0",
+      "display": {
+        "name_ru": "Определение термина из встроенной справки",
+        "purpose_ru": "Находит определения, ограничения и значения терминов только во встроенной справке УТ закрепленного релиза.",
+        "limitations_ru": [
+          "Не переходит по ссылкам ИТС, v8help или внешним HTTP страницам и не дополняет найденный текст внешними знаниями."
+        ]
+      },
+      "provides": {
+        "capability_ids": [
+          "CAP-DOC-TERM",
+          "CAP-DOC-SOURCE"
+        ],
+        "fact_types": [
+          "documentation.fragment",
+          "documentation.citation"
+        ]
+      },
+      "compatibility": {
+        "configuration_id": "УправлениеТорговлейБазовая",
+        "configuration_name": "1С:Управление торговлей (базовая), редакция 11",
+        "release_range": {
+          "minimum": "11.5.27.56",
+          "maximum": "11.5.27.56",
+          "include_minimum": true,
+          "include_maximum": true
+        },
+        "compatibility_modes": [
+          "8.3.27"
+        ],
+        "required_metadata": [],
+        "metadata_snapshot_sha256": "0a5de708506f8fd2d491e71a0ac30e106cb8705f241f883aacfa34b011810902"
+      },
+      "selection": {
+        "intent_kinds": [
+          "documentation"
+        ],
+        "aliases_ru": [
+          "что означает термин в УТ",
+          "что такое заказ клиента"
+        ],
+        "anti_examples_ru": [
+          "каков фактический статус объекта в базе"
+        ],
+        "required_context_fact_types": []
+      },
+      "parameters": [
+        {
+          "name": "search_text",
+          "title_ru": "Текст поиска",
+          "description_ru": "Формулировка вопроса для встроенной справки.",
+          "value_type": "normalized_text",
+          "required": true,
+          "allowed_sources": [
+            "user_slot"
+          ],
+          "normalization": "casefold"
+        }
+      ],
+      "operation": {
+        "kind": "documentation_retrieval",
+        "index": "ut_built_in_help",
+        "query_parameter": "search_text",
+        "retrieval": {
+          "engine": "fts5_bm25_ru_stem_v1",
+          "top_k": 8,
+          "max_chunks_per_source": 3
+        },
+        "filters": {
+          "source_kind": "built_in_help",
+          "language": "ru",
+          "metadata_kinds": [
+            "configuration",
+            "subsystem",
+            "catalog",
+            "document",
+            "report",
+            "data_processor",
+            "form",
+            "common_form",
+            "other"
+          ],
+          "path_prefixes": []
+        },
+        "chunk_roles": [
+          "definition",
+          "procedure",
+          "restriction",
+          "status_meaning"
+        ],
+        "output_bindings": [
+          {
+            "chunk_field": "text",
+            "fact_id": "documentation.fragment"
+          },
+          {
+            "chunk_field": "citation",
+            "fact_id": "documentation.citation"
+          }
+        ]
+      },
+      "output_contract": {
+        "contract_id": "ut115.doc.term.v1",
+        "contract_version": "1.0.0",
+        "cardinality": "many",
+        "facts": [
+          {
+            "fact_id": "documentation.fragment",
+            "semantic_type": "documentation.fragment",
+            "value_type": "document_fragment",
+            "role": "attribute",
+            "required": true,
+            "nullable": false,
+            "title_ru": "Фрагмент справки",
+            "unit_contract": {
+              "mode": "not_applicable"
+            }
+          },
+          {
+            "fact_id": "documentation.citation",
+            "semantic_type": "documentation.citation",
+            "value_type": "source_citation",
+            "role": "provenance",
+            "required": true,
+            "nullable": false,
+            "title_ru": "Источник",
+            "unit_contract": {
+              "mode": "not_applicable"
+            }
+          }
+        ],
+        "sufficiency": {
+          "required_fact_sets": [
+            [
+              "documentation.fragment",
+              "documentation.citation"
+            ]
+          ],
+          "empty_semantics": "confirmed_not_found",
+          "zero_fact_ids": [],
+          "truncation_policy": "page_is_complete"
+        },
+        "renderer": {
+          "kind": "explanation",
+          "primary_fact_ids": [
+            "documentation.citation"
+          ],
+          "column_fact_ids": [
+            "documentation.citation"
+          ]
+        },
+        "row_identity_fact_ids": [
+          "documentation.citation"
+        ]
+      },
+      "result_constraints": [],
+      "dependencies": {
+        "runtime_contracts": [
+          {
+            "contract": "skill-runtime",
+            "version_range": "^1.0.0"
+          },
+          {
+            "contract": "help-index",
+            "version_range": "^1.0.0"
+          }
+        ],
+        "skills": []
+      },
+      "examples": [
+        {
+          "question_ru": "что означает термин в УТ?",
+          "applicability": "applicable",
+          "reason_ru": "Вопрос соответствует назначению и typed outputs навыка."
+        },
+        {
+          "question_ru": "каков фактический статус объекта в базе?",
+          "applicability": "not_applicable",
+          "reason_ru": "Вопрос находится за явно объявленной границей навыка."
+        }
+      ],
+      "tests": [
+        {
+          "test_id": "ut.order-help.positive",
+          "case_kind": "positive",
+          "bindings": [
+            {
+              "parameter": "search_text",
+              "value": "заказ клиента"
+            }
+          ],
+          "fixture": {
+            "kind": "documentation_chunks",
+            "chunks": [
+              {
+                "chunk_id": "order-help-definition",
+                "title": "Заказ клиента",
+                "heading": "Заказ клиента",
+                "text": "Заказ клиента - это запрос клиента на поставку ему товаров или оказание услуг в установленные сроки.",
+                "source_uri": "ut-help://11.5.27.56/Documents/ЗаказКлиента/Ext/Help/ru.html#top",
+                "role": "definition"
+              }
+            ]
+          },
+          "expected": {
+            "status": "documentation_found",
+            "required_fact_ids": [
+              "documentation.fragment",
+              "documentation.citation"
+            ]
+          }
+        },
+        {
+          "test_id": "ut.order-help.empty",
+          "case_kind": "negative",
+          "bindings": [],
+          "fixture": {
+            "kind": "documentation_chunks",
+            "chunks": []
+          },
+          "expected": {
+            "status": "documentation_empty",
+            "required_fact_ids": []
+          }
+        }
+      ],
+      "provenance": {
+        "author": "ChatBot 1C slice 1",
+        "created_at": "2026-07-21T00:00:00Z",
+        "reviewed_by": "Architecture and PM source proof",
+        "reviewed_at": "2026-07-21T00:00:00Z",
+        "source_configuration": {
+          "configuration_id": "УправлениеТорговлейБазовая",
+          "release": "11.5.27.56",
+          "compatibility_mode": "8.3.27",
+          "metadata_snapshot_sha256": "0a5de708506f8fd2d491e71a0ac30e106cb8705f241f883aacfa34b011810902"
+        },
+        "source_references": [
+          {
+            "kind": "built_in_help",
+            "uri": "ut-help://11.5.27.56/Documents/ЗаказКлиента/Ext/Help/ru.html#top",
+            "sha256": "0a5de708506f8fd2d491e71a0ac30e106cb8705f241f883aacfa34b011810902"
+          }
+        ],
+        "change_note_ru": "Навык построен по проверенным metadata/help исходникам УТ 11.5.27.56."
+      },
+      "integrity": {
+        "algorithm": "sha256",
+        "canonicalization": "RFC8785",
+        "scope": "document_without_integrity",
+        "digest": "0f9162d840f5b8287c703a226264ba9902bb15eb8a9cf74c65231e38cf0e3539"
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "document_type": "skill",
+      "skill_id": "ut115.ref.item.resolve-article-exact",
+      "version": "1.0.0",
+      "display": {
+        "name_ru": "Поиск номенклатуры по точному артикулу",
+        "purpose_ru": "Находит номенклатуру только по точному совпадению артикула и возвращает exact ссылки.",
+        "limitations_ru": [
+          "Не выполняет поиск по фрагменту артикула или наименованию."
+        ]
+      },
+      "provides": {
+        "capability_ids": [
+          "CAP-REF-ITEM-FIND"
+        ],
+        "fact_types": [
+          "catalog.item",
+          "catalog.item.code",
+          "catalog.item.article",
+          "catalog.item.name"
+        ]
+      },
+      "compatibility": {
+        "configuration_id": "УправлениеТорговлейБазовая",
+        "configuration_name": "1С:Управление торговлей (базовая), редакция 11",
+        "release_range": {
+          "minimum": "11.5.27.56",
+          "maximum": "11.5.27.56",
+          "include_minimum": true,
+          "include_maximum": true
+        },
+        "compatibility_modes": [
+          "8.3.27"
+        ],
+        "required_metadata": [
+          {
+            "object_name": "Справочник.Номенклатура",
+            "attributes": [
+              "Ссылка",
+              "Код",
+              "Артикул",
+              "Наименование",
+              "ЭтоГруппа"
+            ]
+          }
+        ],
+        "metadata_snapshot_sha256": "5fd976edf70c1dd0c65aeabce8362e6767876bcc9e33985d0aa47bdbbe8a86f4"
+      },
+      "selection": {
+        "intent_kinds": [
+          "data"
+        ],
+        "aliases_ru": [
+          "найти номенклатуру по точному артикулу",
+          "товар с артикулом"
+        ],
+        "anti_examples_ru": [
+          "найти товар по части названия"
+        ],
+        "required_context_fact_types": []
+      },
+      "parameters": [
+        {
+          "name": "article",
+          "title_ru": "Артикул",
+          "description_ru": "Точный артикул номенклатуры из вопроса.",
+          "value_type": "string",
+          "required": true,
+          "allowed_sources": [
+            "user_slot"
+          ],
+          "normalization": "trim"
+        }
+      ],
+      "operation": {
+        "kind": "data_query",
+        "tool": "execute_query",
+        "read_only": true,
+        "query_template": {
+          "template_id": "ut115.ref.item.resolve-article-exact.v1",
+          "language": "1c-query",
+          "text": "ВЫБРАТЬ ПЕРВЫЕ 20\n  Номенклатура.Ссылка КАК Номенклатура,\n  Номенклатура.Код КАК Код,\n  Номенклатура.Артикул КАК Артикул,\n  Номенклатура.Наименование КАК Наименование\nИЗ Справочник.Номенклатура КАК Номенклатура\nГДЕ НЕ Номенклатура.ЭтоГруппа\n  И Номенклатура.Артикул = &Артикул\nУПОРЯДОЧИТЬ ПО Номенклатура.Наименование",
+          "execution": {
+            "kind": "single_select",
+            "statement_count": 1,
+            "final_statement": 1
+          },
+          "invariant_constants": [
+            {
+              "kind": "structural_integer",
+              "statement": 1,
+              "value": 20,
+              "role": "top_limit",
+              "occurrences": 1
+            }
+          ],
+          "include_schema": true,
+          "mcp_limit": {
+            "default": 20,
+            "maximum": 1000
+          }
+        },
+        "parameter_bindings": [
+          {
+            "parameter": "article",
+            "query_parameter": "Артикул",
+            "encoding": "string"
+          }
+        ],
+        "column_bindings": [
+          {
+            "column": "Номенклатура",
+            "fact_id": "item.ref",
+            "accepted_mcp_types": [
+              "СправочникСсылка.Номенклатура"
+            ],
+            "converter": "object_ref"
+          },
+          {
+            "column": "Код",
+            "fact_id": "item.code",
+            "accepted_mcp_types": [
+              "Строка"
+            ],
+            "converter": "string"
+          },
+          {
+            "column": "Артикул",
+            "fact_id": "item.article",
+            "accepted_mcp_types": [
+              "Строка"
+            ],
+            "converter": "string"
+          },
+          {
+            "column": "Наименование",
+            "fact_id": "item.name",
+            "accepted_mcp_types": [
+              "Строка"
+            ],
+            "converter": "string"
+          }
+        ],
+        "pagination": {
+          "strategy": "prefix",
+          "stable_order_fact_ids": [
+            "item.name",
+            "item.ref"
+          ],
+          "maximum_total": 1000
+        }
+      },
+      "output_contract": {
+        "contract_id": "ut115.ref.item.resolve-article-exact.v1",
+        "contract_version": "1.0.0",
+        "cardinality": "many",
+        "facts": [
+          {
+            "fact_id": "item.ref",
+            "semantic_type": "catalog.item",
+            "value_type": "entity_ref",
+            "role": "entity",
+            "required": true,
+            "nullable": false,
+            "title_ru": "Номенклатура",
+            "unit_contract": {
+              "mode": "not_applicable"
+            }
+          },
+          {
+            "fact_id": "item.code",
+            "semantic_type": "catalog.item.code",
+            "value_type": "string",
+            "role": "attribute",
+            "required": true,
+            "nullable": false,
+            "title_ru": "Код",
+            "unit_contract": {
+              "mode": "not_applicable"
+            }
+          },
+          {
+            "fact_id": "item.article",
+            "semantic_type": "catalog.item.article",
+            "value_type": "string",
+            "role": "attribute",
+            "required": false,
+            "nullable": true,
+            "title_ru": "Артикул",
+            "unit_contract": {
+              "mode": "not_applicable"
+            }
+          },
+          {
+            "fact_id": "item.name",
+            "semantic_type": "catalog.item.name",
+            "value_type": "string",
+            "role": "attribute",
+            "required": true,
+            "nullable": false,
+            "title_ru": "Наименование",
+            "unit_contract": {
+              "mode": "not_applicable"
+            }
+          }
+        ],
+        "sufficiency": {
+          "required_fact_sets": [
+            [
+              "item.ref",
+              "item.code",
+              "item.name"
+            ]
+          ],
+          "empty_semantics": "confirmed_no_rows",
+          "zero_fact_ids": [],
+          "truncation_policy": "page_is_complete"
+        },
+        "renderer": {
+          "kind": "table",
+          "primary_fact_ids": [
+            "item.name"
+          ],
+          "column_fact_ids": [
+            "item.ref",
+            "item.code",
+            "item.article",
+            "item.name"
+          ]
+        },
+        "row_identity_fact_ids": [
+          "item.ref"
+        ]
+      },
+      "result_constraints": [],
+      "dependencies": {
+        "runtime_contracts": [
+          {
+            "contract": "skill-runtime",
+            "version_range": "^1.0.0"
+          },
+          {
+            "contract": "mcp.execute_query",
+            "version_range": "^1.0.0"
+          }
+        ],
+        "skills": []
+      },
+      "examples": [
+        {
+          "question_ru": "найти номенклатуру по точному артикулу?",
+          "applicability": "applicable",
+          "reason_ru": "Вопрос соответствует назначению и typed outputs навыка."
+        },
+        {
+          "question_ru": "найти товар по части названия?",
+          "applicability": "not_applicable",
+          "reason_ru": "Вопрос находится за явно объявленной границей навыка."
+        }
+      ],
+      "tests": [
+        {
+          "test_id": "ut.item-by-article.positive",
+          "case_kind": "positive",
+          "bindings": [
+            {
+              "parameter": "article",
+              "value": "КР-01"
+            }
+          ],
+          "fixture": {
+            "kind": "mcp_execute_query",
+            "response": {
+              "success": true,
+              "data": [
+                {
+                  "Номенклатура": {
+                    "_objectRef": true,
+                    "УникальныйИдентификатор": "00000000-0000-4000-8000-000000000101",
+                    "ТипОбъекта": "СправочникСсылка.Номенклатура",
+                    "Представление": "Куртка демисезонная"
+                  },
+                  "Код": "000000001",
+                  "Артикул": "КР-01",
+                  "Наименование": "Куртка демисезонная"
+                }
+              ],
+              "schema": {
+                "columns": [
+                  {
+                    "name": "Номенклатура",
+                    "types": [
+                      "СправочникСсылка.Номенклатура"
+                    ]
+                  },
+                  {
+                    "name": "Код",
+                    "types": [
+                      "Строка"
+                    ]
+                  },
+                  {
+                    "name": "Артикул",
+                    "types": [
+                      "Строка"
+                    ]
+                  },
+                  {
+                    "name": "Наименование",
+                    "types": [
+                      "Строка"
+                    ]
+                  }
+                ]
+              },
+              "count": 1
+            }
+          },
+          "expected": {
+            "status": "success_with_rows",
+            "required_fact_ids": [
+              "item.ref",
+              "item.code",
+              "item.name"
+            ]
+          }
+        },
+        {
+          "test_id": "ut.item-by-article.empty",
+          "case_kind": "negative",
+          "bindings": [],
+          "fixture": {
+            "kind": "mcp_execute_query",
+            "response": {
+              "success": true,
+              "data": [],
+              "schema": {
+                "columns": []
+              },
+              "count": 0
+            }
+          },
+          "expected": {
+            "status": "success_empty",
+            "required_fact_ids": []
+          }
+        }
+      ],
+      "provenance": {
+        "author": "ChatBot 1C slice 1",
+        "created_at": "2026-07-21T00:00:00Z",
+        "reviewed_by": "Architecture and PM source proof",
+        "reviewed_at": "2026-07-21T00:00:00Z",
+        "source_configuration": {
+          "configuration_id": "УправлениеТорговлейБазовая",
+          "release": "11.5.27.56",
+          "compatibility_mode": "8.3.27",
+          "metadata_snapshot_sha256": "5fd976edf70c1dd0c65aeabce8362e6767876bcc9e33985d0aa47bdbbe8a86f4"
+        },
+        "source_references": [
+          {
+            "kind": "configuration_metadata",
+            "uri": "ut-config://11.5.27.56/Catalogs/Номенклатура.xml",
+            "sha256": "5fd976edf70c1dd0c65aeabce8362e6767876bcc9e33985d0aa47bdbbe8a86f4"
+          }
+        ],
+        "change_note_ru": "Навык построен по проверенным metadata/help исходникам УТ 11.5.27.56."
+      },
+      "integrity": {
+        "algorithm": "sha256",
+        "canonicalization": "RFC8785",
+        "scope": "document_without_integrity",
+        "digest": "09b338fa1ea3e6ed8b6348cb8561a98dc6e917440329c6cc13ddc9b474b9815d"
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "document_type": "skill",
+      "skill_id": "ut115.ref.item.resolve-code-exact",
+      "version": "1.0.0",
+      "display": {
+        "name_ru": "Поиск номенклатуры по точному коду",
+        "purpose_ru": "Находит номенклатуру только по точному совпадению кода и возвращает exact ссылки.",
+        "limitations_ru": [
+          "Не выполняет поиск по фрагменту кода, артикула или наименования."
+        ]
+      },
+      "provides": {
+        "capability_ids": [
+          "CAP-REF-ITEM-FIND"
+        ],
+        "fact_types": [
+          "catalog.item",
+          "catalog.item.code",
+          "catalog.item.article",
+          "catalog.item.name"
+        ]
+      },
+      "compatibility": {
+        "configuration_id": "УправлениеТорговлейБазовая",
+        "configuration_name": "1С:Управление торговлей (базовая), редакция 11",
+        "release_range": {
+          "minimum": "11.5.27.56",
+          "maximum": "11.5.27.56",
+          "include_minimum": true,
+          "include_maximum": true
+        },
+        "compatibility_modes": [
+          "8.3.27"
+        ],
+        "required_metadata": [
+          {
+            "object_name": "Справочник.Номенклатура",
+            "attributes": [
+              "Ссылка",
+              "Код",
+              "Артикул",
+              "Наименование",
+              "ЭтоГруппа"
+            ]
+          }
+        ],
+        "metadata_snapshot_sha256": "5fd976edf70c1dd0c65aeabce8362e6767876bcc9e33985d0aa47bdbbe8a86f4"
+      },
+      "selection": {
+        "intent_kinds": [
+          "data"
+        ],
+        "aliases_ru": [
+          "найти номенклатуру по точному коду",
+          "товар с кодом"
+        ],
+        "anti_examples_ru": [
+          "найти товар по артикулу или части названия"
+        ],
+        "required_context_fact_types": []
+      },
+      "parameters": [
+        {
+          "name": "catalog_code",
+          "title_ru": "Код номенклатуры",
+          "description_ru": "Точный код номенклатуры из вопроса.",
+          "value_type": "string",
+          "required": true,
+          "allowed_sources": [
+            "user_slot"
+          ],
+          "normalization": "trim"
+        }
+      ],
+      "operation": {
+        "kind": "data_query",
+        "tool": "execute_query",
+        "read_only": true,
+        "query_template": {
+          "template_id": "ut115.ref.item.resolve-code-exact.v1",
+          "language": "1c-query",
+          "text": "ВЫБРАТЬ ПЕРВЫЕ 20\n  Номенклатура.Ссылка КАК Номенклатура,\n  Номенклатура.Код КАК Код,\n  Номенклатура.Артикул КАК Артикул,\n  Номенклатура.Наименование КАК Наименование\nИЗ Справочник.Номенклатура КАК Номенклатура\nГДЕ НЕ Номенклатура.ЭтоГруппа\n  И Номенклатура.Код = &Код\nУПОРЯДОЧИТЬ ПО Номенклатура.Наименование",
+          "execution": {
+            "kind": "single_select",
+            "statement_count": 1,
+            "final_statement": 1
+          },
+          "invariant_constants": [
+            {
+              "kind": "structural_integer",
+              "statement": 1,
+              "value": 20,
+              "role": "top_limit",
+              "occurrences": 1
+            }
+          ],
+          "include_schema": true,
+          "mcp_limit": {
+            "default": 20,
+            "maximum": 1000
+          }
+        },
+        "parameter_bindings": [
+          {
+            "parameter": "catalog_code",
+            "query_parameter": "Код",
+            "encoding": "string"
+          }
+        ],
+        "column_bindings": [
+          {
+            "column": "Номенклатура",
+            "fact_id": "item.ref",
+            "accepted_mcp_types": [
+              "СправочникСсылка.Номенклатура"
+            ],
+            "converter": "object_ref"
+          },
+          {
+            "column": "Код",
+            "fact_id": "item.code",
+            "accepted_mcp_types": [
+              "Строка"
+            ],
+            "converter": "string"
+          },
+          {
+            "column": "Артикул",
+            "fact_id": "item.article",
+            "accepted_mcp_types": [
+              "Строка"
+            ],
+            "converter": "string"
+          },
+          {
+            "column": "Наименование",
+            "fact_id": "item.name",
+            "accepted_mcp_types": [
+              "Строка"
+            ],
+            "converter": "string"
+          }
+        ],
+        "pagination": {
+          "strategy": "prefix",
+          "stable_order_fact_ids": [
+            "item.name",
+            "item.ref"
+          ],
+          "maximum_total": 1000
+        }
+      },
+      "output_contract": {
+        "contract_id": "ut115.ref.item.resolve-code-exact.v1",
+        "contract_version": "1.0.0",
+        "cardinality": "many",
+        "facts": [
+          {
+            "fact_id": "item.ref",
+            "semantic_type": "catalog.item",
+            "value_type": "entity_ref",
+            "role": "entity",
+            "required": true,
+            "nullable": false,
+            "title_ru": "Номенклатура",
+            "unit_contract": {
+              "mode": "not_applicable"
+            }
+          },
+          {
+            "fact_id": "item.code",
+            "semantic_type": "catalog.item.code",
+            "value_type": "string",
+            "role": "attribute",
+            "required": true,
+            "nullable": false,
+            "title_ru": "Код",
+            "unit_contract": {
+              "mode": "not_applicable"
+            }
+          },
+          {
+            "fact_id": "item.article",
+            "semantic_type": "catalog.item.article",
+            "value_type": "string",
+            "role": "attribute",
+            "required": false,
+            "nullable": true,
+            "title_ru": "Артикул",
+            "unit_contract": {
+              "mode": "not_applicable"
+            }
+          },
+          {
+            "fact_id": "item.name",
+            "semantic_type": "catalog.item.name",
+            "value_type": "string",
+            "role": "attribute",
+            "required": true,
+            "nullable": false,
+            "title_ru": "Наименование",
+            "unit_contract": {
+              "mode": "not_applicable"
+            }
+          }
+        ],
+        "sufficiency": {
+          "required_fact_sets": [
+            [
+              "item.ref",
+              "item.code",
+              "item.name"
+            ]
+          ],
+          "empty_semantics": "confirmed_no_rows",
+          "zero_fact_ids": [],
+          "truncation_policy": "page_is_complete"
+        },
+        "renderer": {
+          "kind": "table",
+          "primary_fact_ids": [
+            "item.name"
+          ],
+          "column_fact_ids": [
+            "item.ref",
+            "item.code",
+            "item.article",
+            "item.name"
+          ]
+        },
+        "row_identity_fact_ids": [
+          "item.ref"
+        ]
+      },
+      "result_constraints": [],
+      "dependencies": {
+        "runtime_contracts": [
+          {
+            "contract": "skill-runtime",
+            "version_range": "^1.0.0"
+          },
+          {
+            "contract": "mcp.execute_query",
+            "version_range": "^1.0.0"
+          }
+        ],
+        "skills": []
+      },
+      "examples": [
+        {
+          "question_ru": "найти номенклатуру по точному коду?",
+          "applicability": "applicable",
+          "reason_ru": "Вопрос соответствует назначению и typed outputs навыка."
+        },
+        {
+          "question_ru": "найти товар по артикулу или части названия?",
+          "applicability": "not_applicable",
+          "reason_ru": "Вопрос находится за явно объявленной границей навыка."
+        }
+      ],
+      "tests": [
+        {
+          "test_id": "ut.item-by-code.positive",
+          "case_kind": "positive",
+          "bindings": [
+            {
+              "parameter": "catalog_code",
+              "value": "000000001"
+            }
+          ],
+          "fixture": {
+            "kind": "mcp_execute_query",
+            "response": {
+              "success": true,
+              "data": [
+                {
+                  "Номенклатура": {
+                    "_objectRef": true,
+                    "УникальныйИдентификатор": "00000000-0000-4000-8000-000000000101",
+                    "ТипОбъекта": "СправочникСсылка.Номенклатура",
+                    "Представление": "Куртка демисезонная"
+                  },
+                  "Код": "000000001",
+                  "Артикул": "КР-01",
+                  "Наименование": "Куртка демисезонная"
+                }
+              ],
+              "schema": {
+                "columns": [
+                  {
+                    "name": "Номенклатура",
+                    "types": [
+                      "СправочникСсылка.Номенклатура"
+                    ]
+                  },
+                  {
+                    "name": "Код",
+                    "types": [
+                      "Строка"
+                    ]
+                  },
+                  {
+                    "name": "Артикул",
+                    "types": [
+                      "Строка"
+                    ]
+                  },
+                  {
+                    "name": "Наименование",
+                    "types": [
+                      "Строка"
+                    ]
+                  }
+                ]
+              },
+              "count": 1
+            }
+          },
+          "expected": {
+            "status": "success_with_rows",
+            "required_fact_ids": [
+              "item.ref",
+              "item.code",
+              "item.name"
+            ]
+          }
+        },
+        {
+          "test_id": "ut.item-by-code.empty",
+          "case_kind": "negative",
+          "bindings": [],
+          "fixture": {
+            "kind": "mcp_execute_query",
+            "response": {
+              "success": true,
+              "data": [],
+              "schema": {
+                "columns": []
+              },
+              "count": 0
+            }
+          },
+          "expected": {
+            "status": "success_empty",
+            "required_fact_ids": []
+          }
+        }
+      ],
+      "provenance": {
+        "author": "ChatBot 1C slice 1",
+        "created_at": "2026-07-21T00:00:00Z",
+        "reviewed_by": "Architecture and PM source proof",
+        "reviewed_at": "2026-07-21T00:00:00Z",
+        "source_configuration": {
+          "configuration_id": "УправлениеТорговлейБазовая",
+          "release": "11.5.27.56",
+          "compatibility_mode": "8.3.27",
+          "metadata_snapshot_sha256": "5fd976edf70c1dd0c65aeabce8362e6767876bcc9e33985d0aa47bdbbe8a86f4"
+        },
+        "source_references": [
+          {
+            "kind": "configuration_metadata",
+            "uri": "ut-config://11.5.27.56/Catalogs/Номенклатура.xml",
+            "sha256": "5fd976edf70c1dd0c65aeabce8362e6767876bcc9e33985d0aa47bdbbe8a86f4"
+          }
+        ],
+        "change_note_ru": "Навык построен по проверенным metadata/help исходникам УТ 11.5.27.56."
+      },
+      "integrity": {
+        "algorithm": "sha256",
+        "canonicalization": "RFC8785",
+        "scope": "document_without_integrity",
+        "digest": "a0dbc5adbfccee3a85b610f5fb352b9cff6fe11457f080d40ef80ee47a45294a"
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "document_type": "skill",
+      "skill_id": "ut115.ref.item.resolve-barcode-exact",
+      "version": "1.0.0",
+      "display": {
+        "name_ru": "Поиск номенклатуры по точному штрихкоду",
+        "purpose_ru": "Находит связанную номенклатуру только по точному штрихкоду регистра УТ.",
+        "limitations_ru": [
+          "Не выполняет prefix/contains поиск по штрихкоду."
+        ]
+      },
+      "provides": {
+        "capability_ids": [
+          "CAP-REF-ITEM-FIND"
+        ],
+        "fact_types": [
+          "catalog.item",
+          "catalog.item.code",
+          "catalog.item.article",
+          "catalog.item.name"
+        ]
+      },
+      "compatibility": {
+        "configuration_id": "УправлениеТорговлейБазовая",
+        "configuration_name": "1С:Управление торговлей (базовая), редакция 11",
+        "release_range": {
+          "minimum": "11.5.27.56",
+          "maximum": "11.5.27.56",
+          "include_minimum": true,
+          "include_maximum": true
+        },
+        "compatibility_modes": [
+          "8.3.27"
+        ],
+        "required_metadata": [
+          {
+            "object_name": "РегистрСведений.ШтрихкодыНоменклатуры",
+            "attributes": [
+              "Штрихкод",
+              "Номенклатура",
+              "Характеристика",
+              "Серия",
+              "Упаковка"
+            ]
+          },
+          {
+            "object_name": "Справочник.Номенклатура",
+            "attributes": [
+              "Ссылка",
+              "Код",
+              "Артикул",
+              "Наименование"
+            ]
+          }
+        ],
+        "metadata_snapshot_sha256": "fdee46a99d1b44dfe590f6e4b1c1c468d92159e437b9285fcd3daa7a58521bd3"
+      },
+      "selection": {
+        "intent_kinds": [
+          "data"
+        ],
+        "aliases_ru": [
+          "найти номенклатуру по точному штрихкоду",
+          "товар со штрихкодом"
+        ],
+        "anti_examples_ru": [
+          "найти товар по части штрихкода или названия"
+        ],
+        "required_context_fact_types": []
+      },
+      "parameters": [
+        {
+          "name": "barcode",
+          "title_ru": "Штрихкод",
+          "description_ru": "Точное значение штрихкода номенклатуры.",
+          "value_type": "string",
+          "required": true,
+          "allowed_sources": [
+            "user_slot"
+          ],
+          "normalization": "trim"
+        }
+      ],
+      "operation": {
+        "kind": "data_query",
+        "tool": "execute_query",
+        "read_only": true,
+        "query_template": {
+          "template_id": "ut115.ref.item.resolve-barcode-exact.v1",
+          "language": "1c-query",
+          "text": "ВЫБРАТЬ ПЕРВЫЕ 20\n  Штрихкоды.Номенклатура КАК Номенклатура,\n  Штрихкоды.Номенклатура.Код КАК Код,\n  Штрихкоды.Номенклатура.Артикул КАК Артикул,\n  Штрихкоды.Номенклатура.Наименование КАК Наименование\nИЗ РегистрСведений.ШтрихкодыНоменклатуры КАК Штрихкоды\nГДЕ Штрихкоды.Штрихкод = &Штрихкод\nУПОРЯДОЧИТЬ ПО Штрихкоды.Номенклатура.Наименование",
+          "execution": {
+            "kind": "single_select",
+            "statement_count": 1,
+            "final_statement": 1
+          },
+          "invariant_constants": [
+            {
+              "kind": "structural_integer",
+              "statement": 1,
+              "value": 20,
+              "role": "top_limit",
+              "occurrences": 1
+            }
+          ],
+          "include_schema": true,
+          "mcp_limit": {
+            "default": 20,
+            "maximum": 1000
+          }
+        },
+        "parameter_bindings": [
+          {
+            "parameter": "barcode",
+            "query_parameter": "Штрихкод",
+            "encoding": "string"
+          }
+        ],
+        "column_bindings": [
+          {
+            "column": "Номенклатура",
+            "fact_id": "item.ref",
+            "accepted_mcp_types": [
+              "СправочникСсылка.Номенклатура"
+            ],
+            "converter": "object_ref"
+          },
+          {
+            "column": "Код",
+            "fact_id": "item.code",
+            "accepted_mcp_types": [
+              "Строка"
+            ],
+            "converter": "string"
+          },
+          {
+            "column": "Артикул",
+            "fact_id": "item.article",
+            "accepted_mcp_types": [
+              "Строка"
+            ],
+            "converter": "string"
+          },
+          {
+            "column": "Наименование",
+            "fact_id": "item.name",
+            "accepted_mcp_types": [
+              "Строка"
+            ],
+            "converter": "string"
+          }
+        ],
+        "pagination": {
+          "strategy": "prefix",
+          "stable_order_fact_ids": [
+            "item.name",
+            "item.ref"
+          ],
+          "maximum_total": 1000
+        }
+      },
+      "output_contract": {
+        "contract_id": "ut115.ref.item.resolve-barcode-exact.v1",
+        "contract_version": "1.0.0",
+        "cardinality": "many",
+        "facts": [
+          {
+            "fact_id": "item.ref",
+            "semantic_type": "catalog.item",
+            "value_type": "entity_ref",
+            "role": "entity",
+            "required": true,
+            "nullable": false,
+            "title_ru": "Номенклатура",
+            "unit_contract": {
+              "mode": "not_applicable"
+            }
+          },
+          {
+            "fact_id": "item.code",
+            "semantic_type": "catalog.item.code",
+            "value_type": "string",
+            "role": "attribute",
+            "required": true,
+            "nullable": false,
+            "title_ru": "Код",
+            "unit_contract": {
+              "mode": "not_applicable"
+            }
+          },
+          {
+            "fact_id": "item.article",
+            "semantic_type": "catalog.item.article",
+            "value_type": "string",
+            "role": "attribute",
+            "required": false,
+            "nullable": true,
+            "title_ru": "Артикул",
+            "unit_contract": {
+              "mode": "not_applicable"
+            }
+          },
+          {
+            "fact_id": "item.name",
+            "semantic_type": "catalog.item.name",
+            "value_type": "string",
+            "role": "attribute",
+            "required": true,
+            "nullable": false,
+            "title_ru": "Наименование",
+            "unit_contract": {
+              "mode": "not_applicable"
+            }
+          }
+        ],
+        "sufficiency": {
+          "required_fact_sets": [
+            [
+              "item.ref",
+              "item.code",
+              "item.name"
+            ]
+          ],
+          "empty_semantics": "confirmed_no_rows",
+          "zero_fact_ids": [],
+          "truncation_policy": "page_is_complete"
+        },
+        "renderer": {
+          "kind": "table",
+          "primary_fact_ids": [
+            "item.name"
+          ],
+          "column_fact_ids": [
+            "item.ref",
+            "item.code",
+            "item.article",
+            "item.name"
+          ]
+        },
+        "row_identity_fact_ids": [
+          "item.ref"
+        ]
+      },
+      "result_constraints": [],
+      "dependencies": {
+        "runtime_contracts": [
+          {
+            "contract": "skill-runtime",
+            "version_range": "^1.0.0"
+          },
+          {
+            "contract": "mcp.execute_query",
+            "version_range": "^1.0.0"
+          }
+        ],
+        "skills": []
+      },
+      "examples": [
+        {
+          "question_ru": "найти номенклатуру по точному штрихкоду?",
+          "applicability": "applicable",
+          "reason_ru": "Вопрос соответствует назначению и typed outputs навыка."
+        },
+        {
+          "question_ru": "найти товар по части штрихкода или названия?",
+          "applicability": "not_applicable",
+          "reason_ru": "Вопрос находится за явно объявленной границей навыка."
+        }
+      ],
+      "tests": [
+        {
+          "test_id": "ut.item-by-barcode.positive",
+          "case_kind": "positive",
+          "bindings": [
+            {
+              "parameter": "barcode",
+              "value": "4600000000001"
+            }
+          ],
+          "fixture": {
+            "kind": "mcp_execute_query",
+            "response": {
+              "success": true,
+              "data": [
+                {
+                  "Номенклатура": {
+                    "_objectRef": true,
+                    "УникальныйИдентификатор": "00000000-0000-4000-8000-000000000101",
+                    "ТипОбъекта": "СправочникСсылка.Номенклатура",
+                    "Представление": "Куртка демисезонная"
+                  },
+                  "Код": "000000001",
+                  "Артикул": "КР-01",
+                  "Наименование": "Куртка демисезонная"
+                }
+              ],
+              "schema": {
+                "columns": [
+                  {
+                    "name": "Номенклатура",
+                    "types": [
+                      "СправочникСсылка.Номенклатура"
+                    ]
+                  },
+                  {
+                    "name": "Код",
+                    "types": [
+                      "Строка"
+                    ]
+                  },
+                  {
+                    "name": "Артикул",
+                    "types": [
+                      "Строка"
+                    ]
+                  },
+                  {
+                    "name": "Наименование",
+                    "types": [
+                      "Строка"
+                    ]
+                  }
+                ]
+              },
+              "count": 1
+            }
+          },
+          "expected": {
+            "status": "success_with_rows",
+            "required_fact_ids": [
+              "item.ref",
+              "item.code",
+              "item.name"
+            ]
+          }
+        },
+        {
+          "test_id": "ut.item-by-barcode.empty",
+          "case_kind": "negative",
+          "bindings": [],
+          "fixture": {
+            "kind": "mcp_execute_query",
+            "response": {
+              "success": true,
+              "data": [],
+              "schema": {
+                "columns": []
+              },
+              "count": 0
+            }
+          },
+          "expected": {
+            "status": "success_empty",
+            "required_fact_ids": []
+          }
+        }
+      ],
+      "provenance": {
+        "author": "ChatBot 1C slice 1",
+        "created_at": "2026-07-21T00:00:00Z",
+        "reviewed_by": "Architecture and PM source proof",
+        "reviewed_at": "2026-07-21T00:00:00Z",
+        "source_configuration": {
+          "configuration_id": "УправлениеТорговлейБазовая",
+          "release": "11.5.27.56",
+          "compatibility_mode": "8.3.27",
+          "metadata_snapshot_sha256": "fdee46a99d1b44dfe590f6e4b1c1c468d92159e437b9285fcd3daa7a58521bd3"
+        },
+        "source_references": [
+          {
+            "kind": "configuration_metadata",
+            "uri": "ut-config://11.5.27.56/InformationRegisters/ШтрихкодыНоменклатуры.xml",
+            "sha256": "fdee46a99d1b44dfe590f6e4b1c1c468d92159e437b9285fcd3daa7a58521bd3"
+          }
+        ],
+        "change_note_ru": "Навык построен по проверенным metadata/help исходникам УТ 11.5.27.56."
+      },
+      "integrity": {
+        "algorithm": "sha256",
+        "canonicalization": "RFC8785",
+        "scope": "document_without_integrity",
+        "digest": "e34067299cfac614a32e462af948c87f58ee231ab628a6831a13751814b3150c"
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "document_type": "skill",
+      "skill_id": "ut115.ref.item.resolve-name-contains",
+      "version": "1.0.0",
+      "display": {
+        "name_ru": "Поиск номенклатуры по наименованию",
+        "purpose_ru": "Находит номенклатуру по параметризованному фрагменту наименования и возвращает exact ссылки.",
+        "limitations_ru": [
+          "Не использует этот поиск для точного совпадения артикула."
+        ]
+      },
+      "provides": {
+        "capability_ids": [
+          "CAP-REF-ITEM-FIND"
+        ],
+        "fact_types": [
+          "catalog.item",
+          "catalog.item.code",
+          "catalog.item.article",
+          "catalog.item.name"
+        ]
+      },
+      "compatibility": {
+        "configuration_id": "УправлениеТорговлейБазовая",
+        "configuration_name": "1С:Управление торговлей (базовая), редакция 11",
+        "release_range": {
+          "minimum": "11.5.27.56",
+          "maximum": "11.5.27.56",
+          "include_minimum": true,
+          "include_maximum": true
+        },
+        "compatibility_modes": [
+          "8.3.27"
+        ],
+        "required_metadata": [
+          {
+            "object_name": "Справочник.Номенклатура",
+            "attributes": [
+              "Ссылка",
+              "Код",
+              "Артикул",
+              "Наименование",
+              "ЭтоГруппа"
+            ]
+          }
+        ],
+        "metadata_snapshot_sha256": "5fd976edf70c1dd0c65aeabce8362e6767876bcc9e33985d0aa47bdbbe8a86f4"
+      },
+      "selection": {
+        "intent_kinds": [
+          "data"
+        ],
+        "aliases_ru": [
+          "поиск товара по названию",
+          "найти номенклатуру по части наименования"
+        ],
+        "anti_examples_ru": [
+          "найти товар по точному артикулу"
+        ],
+        "required_context_fact_types": []
+      },
+      "parameters": [
+        {
+          "name": "name_fragment",
+          "title_ru": "Фрагмент наименования",
+          "description_ru": "Часть наименования номенклатуры.",
+          "value_type": "normalized_text",
+          "required": true,
+          "allowed_sources": [
+            "user_slot"
+          ],
+          "normalization": "like_contains"
+        }
+      ],
+      "operation": {
+        "kind": "data_query",
+        "tool": "execute_query",
+        "read_only": true,
+        "query_template": {
+          "template_id": "ut115.ref.item.resolve-name-contains.v1",
+          "language": "1c-query",
+          "text": "ВЫБРАТЬ ПЕРВЫЕ 20\n  Номенклатура.Ссылка КАК Номенклатура,\n  Номенклатура.Код КАК Код,\n  Номенклатура.Артикул КАК Артикул,\n  Номенклатура.Наименование КАК Наименование\nИЗ Справочник.Номенклатура КАК Номенклатура\nГДЕ НЕ Номенклатура.ЭтоГруппа\n  И Номенклатура.Наименование ПОДОБНО &Шаблон СПЕЦСИМВОЛ \"~\"\nУПОРЯДОЧИТЬ ПО Номенклатура.Наименование",
+          "execution": {
+            "kind": "single_select",
+            "statement_count": 1,
+            "final_statement": 1
+          },
+          "invariant_constants": [
+            {
+              "kind": "structural_integer",
+              "statement": 1,
+              "value": 20,
+              "role": "top_limit",
+              "occurrences": 1
+            }
+          ],
+          "include_schema": true,
+          "mcp_limit": {
+            "default": 20,
+            "maximum": 1000
+          }
+        },
+        "parameter_bindings": [
+          {
+            "parameter": "name_fragment",
+            "query_parameter": "Шаблон",
+            "encoding": "like_contains"
+          }
+        ],
+        "column_bindings": [
+          {
+            "column": "Номенклатура",
+            "fact_id": "item.ref",
+            "accepted_mcp_types": [
+              "СправочникСсылка.Номенклатура"
+            ],
+            "converter": "object_ref"
+          },
+          {
+            "column": "Код",
+            "fact_id": "item.code",
+            "accepted_mcp_types": [
+              "Строка"
+            ],
+            "converter": "string"
+          },
+          {
+            "column": "Артикул",
+            "fact_id": "item.article",
+            "accepted_mcp_types": [
+              "Строка"
+            ],
+            "converter": "string"
+          },
+          {
+            "column": "Наименование",
+            "fact_id": "item.name",
+            "accepted_mcp_types": [
+              "Строка"
+            ],
+            "converter": "string"
+          }
+        ],
+        "pagination": {
+          "strategy": "prefix",
+          "stable_order_fact_ids": [
+            "item.name",
+            "item.ref"
+          ],
+          "maximum_total": 1000
+        }
+      },
+      "output_contract": {
+        "contract_id": "ut115.ref.item.resolve-name-contains.v1",
+        "contract_version": "1.0.0",
+        "cardinality": "many",
+        "facts": [
+          {
+            "fact_id": "item.ref",
+            "semantic_type": "catalog.item",
+            "value_type": "entity_ref",
+            "role": "entity",
+            "required": true,
+            "nullable": false,
+            "title_ru": "Номенклатура",
+            "unit_contract": {
+              "mode": "not_applicable"
+            }
+          },
+          {
+            "fact_id": "item.code",
+            "semantic_type": "catalog.item.code",
+            "value_type": "string",
+            "role": "attribute",
+            "required": true,
+            "nullable": false,
+            "title_ru": "Код",
+            "unit_contract": {
+              "mode": "not_applicable"
+            }
+          },
+          {
+            "fact_id": "item.article",
+            "semantic_type": "catalog.item.article",
+            "value_type": "string",
+            "role": "attribute",
+            "required": false,
+            "nullable": true,
+            "title_ru": "Артикул",
+            "unit_contract": {
+              "mode": "not_applicable"
+            }
+          },
+          {
+            "fact_id": "item.name",
+            "semantic_type": "catalog.item.name",
+            "value_type": "string",
+            "role": "attribute",
+            "required": true,
+            "nullable": false,
+            "title_ru": "Наименование",
+            "unit_contract": {
+              "mode": "not_applicable"
+            }
+          }
+        ],
+        "sufficiency": {
+          "required_fact_sets": [
+            [
+              "item.ref",
+              "item.code",
+              "item.name"
+            ]
+          ],
+          "empty_semantics": "confirmed_no_rows",
+          "zero_fact_ids": [],
+          "truncation_policy": "page_is_complete"
+        },
+        "renderer": {
+          "kind": "table",
+          "primary_fact_ids": [
+            "item.name"
+          ],
+          "column_fact_ids": [
+            "item.ref",
+            "item.code",
+            "item.article",
+            "item.name"
+          ]
+        },
+        "row_identity_fact_ids": [
+          "item.ref"
+        ]
+      },
+      "result_constraints": [],
+      "dependencies": {
+        "runtime_contracts": [
+          {
+            "contract": "skill-runtime",
+            "version_range": "^1.0.0"
+          },
+          {
+            "contract": "mcp.execute_query",
+            "version_range": "^1.0.0"
+          }
+        ],
+        "skills": []
+      },
+      "examples": [
+        {
+          "question_ru": "поиск товара по названию?",
+          "applicability": "applicable",
+          "reason_ru": "Вопрос соответствует назначению и typed outputs навыка."
+        },
+        {
+          "question_ru": "найти товар по точному артикулу?",
+          "applicability": "not_applicable",
+          "reason_ru": "Вопрос находится за явно объявленной границей навыка."
+        }
+      ],
+      "tests": [
+        {
+          "test_id": "ut.item-by-name.positive",
+          "case_kind": "positive",
+          "bindings": [
+            {
+              "parameter": "name_fragment",
+              "value": "куртка"
+            }
+          ],
+          "fixture": {
+            "kind": "mcp_execute_query",
+            "response": {
+              "success": true,
+              "data": [
+                {
+                  "Номенклатура": {
+                    "_objectRef": true,
+                    "УникальныйИдентификатор": "00000000-0000-4000-8000-000000000101",
+                    "ТипОбъекта": "СправочникСсылка.Номенклатура",
+                    "Представление": "Куртка демисезонная"
+                  },
+                  "Код": "000000001",
+                  "Артикул": "КР-01",
+                  "Наименование": "Куртка демисезонная"
+                }
+              ],
+              "schema": {
+                "columns": [
+                  {
+                    "name": "Номенклатура",
+                    "types": [
+                      "СправочникСсылка.Номенклатура"
+                    ]
+                  },
+                  {
+                    "name": "Код",
+                    "types": [
+                      "Строка"
+                    ]
+                  },
+                  {
+                    "name": "Артикул",
+                    "types": [
+                      "Строка"
+                    ]
+                  },
+                  {
+                    "name": "Наименование",
+                    "types": [
+                      "Строка"
+                    ]
+                  }
+                ]
+              },
+              "count": 1
+            }
+          },
+          "expected": {
+            "status": "success_with_rows",
+            "required_fact_ids": [
+              "item.ref",
+              "item.code",
+              "item.name"
+            ]
+          }
+        },
+        {
+          "test_id": "ut.item-by-name.empty",
+          "case_kind": "negative",
+          "bindings": [],
+          "fixture": {
+            "kind": "mcp_execute_query",
+            "response": {
+              "success": true,
+              "data": [],
+              "schema": {
+                "columns": []
+              },
+              "count": 0
+            }
+          },
+          "expected": {
+            "status": "success_empty",
+            "required_fact_ids": []
+          }
+        }
+      ],
+      "provenance": {
+        "author": "ChatBot 1C slice 1",
+        "created_at": "2026-07-21T00:00:00Z",
+        "reviewed_by": "Architecture and PM source proof",
+        "reviewed_at": "2026-07-21T00:00:00Z",
+        "source_configuration": {
+          "configuration_id": "УправлениеТорговлейБазовая",
+          "release": "11.5.27.56",
+          "compatibility_mode": "8.3.27",
+          "metadata_snapshot_sha256": "5fd976edf70c1dd0c65aeabce8362e6767876bcc9e33985d0aa47bdbbe8a86f4"
+        },
+        "source_references": [
+          {
+            "kind": "configuration_metadata",
+            "uri": "ut-config://11.5.27.56/Catalogs/Номенклатура.xml",
+            "sha256": "5fd976edf70c1dd0c65aeabce8362e6767876bcc9e33985d0aa47bdbbe8a86f4"
+          }
+        ],
+        "change_note_ru": "Навык построен по проверенным metadata/help исходникам УТ 11.5.27.56."
+      },
+      "integrity": {
+        "algorithm": "sha256",
+        "canonicalization": "RFC8785",
+        "scope": "document_without_integrity",
+        "digest": "4c6be7dbcb8b61b1801d105b56ae4d7a3d740b929efed94a6d764cc4debe0ba7"
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "document_type": "skill",
+      "skill_id": "ut115.stock.balance",
+      "version": "1.0.0",
+      "display": {
+        "name_ru": "Фактический остаток подтвержденной номенклатуры",
+        "purpose_ru": "Возвращает физический ВНаличииОстаток регистра ТоварыНаСкладах по exact номенклатуре и моменту.",
+        "limitations_ru": [
+          "Показывает физическое наличие, а не доступность с учетом резервов."
+        ]
+      },
+      "provides": {
+        "capability_ids": [
+          "CAP-STOCK-BALANCE",
+          "CAP-STOCK-BY-WAREHOUSE",
+          "CAP-STOCK-BY-ITEM"
+        ],
+        "fact_types": [
+          "catalog.item",
+          "catalog.warehouse",
+          "catalog.storage_bin",
+          "catalog.item.characteristic",
+          "analytics.assignment",
+          "catalog.item.unit",
+          "measure.stock_balance",
+          "time.moment"
+        ]
+      },
+      "compatibility": {
+        "configuration_id": "УправлениеТорговлейБазовая",
+        "configuration_name": "1С:Управление торговлей (базовая), редакция 11",
+        "release_range": {
+          "minimum": "11.5.27.56",
+          "maximum": "11.5.27.56",
+          "include_minimum": true,
+          "include_maximum": true
+        },
+        "compatibility_modes": [
+          "8.3.27"
+        ],
+        "required_metadata": [
+          {
+            "object_name": "РегистрНакопления.ТоварыНаСкладах",
+            "attributes": [
+              "Номенклатура",
+              "Склад",
+              "Помещение",
+              "Характеристика",
+              "Назначение",
+              "ВНаличии"
+            ]
+          }
+        ],
+        "metadata_snapshot_sha256": "40dd46f5fd7be824dbb68c317c961973c92a06c534943419e552f0ba8d8f3113"
+      },
+      "selection": {
+        "intent_kinds": [
+          "data"
+        ],
+        "aliases_ru": [
+          "фактический остаток товара",
+          "сколько товара в наличии на складе"
+        ],
+        "anti_examples_ru": [
+          "сколько товара доступно с учетом резервов"
+        ],
+        "required_context_fact_types": [
+          "catalog.item"
+        ]
+      },
+      "parameters": [
+        {
+          "name": "item",
+          "title_ru": "Номенклатура",
+          "description_ru": "Подтвержденная exact ссылка номенклатуры.",
+          "value_type": "entity_ref",
+          "required": true,
+          "allowed_sources": [
+            "session_context",
+            "previous_step"
+          ],
+          "normalization": "object_ref",
+          "semantic_type": "catalog.item",
+          "entity_types": [
+            "catalog.item"
+          ]
+        },
+        {
+          "name": "moment",
+          "title_ru": "Момент",
+          "description_ru": "Момент расчета остатка с часовым поясом.",
+          "value_type": "datetime",
+          "required": true,
+          "allowed_sources": [
+            "user_slot",
+            "system"
+          ],
+          "normalization": "none"
+        }
+      ],
+      "operation": {
+        "kind": "data_query",
+        "tool": "execute_query",
+        "read_only": true,
+        "query_template": {
+          "template_id": "ut115.stock.balance.v1",
+          "language": "1c-query",
+          "text": "ВЫБРАТЬ\n  Остатки.Номенклатура КАК Номенклатура,\n  Остатки.Склад КАК Склад,\n  Остатки.Помещение КАК Помещение,\n  Остатки.Характеристика КАК Характеристика,\n  Остатки.Назначение КАК Назначение,\n  Остатки.Номенклатура.ЕдиницаИзмерения.Наименование КАК Единица,\n  Остатки.ВНаличииОстаток КАК ВНаличииОстаток,\n  &Момент КАК Момент\nИЗ РегистрНакопления.ТоварыНаСкладах.Остатки(&Момент, Номенклатура = &Номенклатура) КАК Остатки\nУПОРЯДОЧИТЬ ПО Остатки.Склад, Остатки.Помещение",
+          "execution": {
+            "kind": "single_select",
+            "statement_count": 1,
+            "final_statement": 1
+          },
+          "invariant_constants": [],
+          "include_schema": true,
+          "mcp_limit": {
+            "default": 20,
+            "maximum": 1000
+          }
+        },
+        "parameter_bindings": [
+          {
+            "parameter": "item",
+            "query_parameter": "Номенклатура",
+            "encoding": "object_ref"
+          },
+          {
+            "parameter": "moment",
+            "query_parameter": "Момент",
+            "encoding": "datetime"
+          }
+        ],
+        "column_bindings": [
+          {
+            "column": "Номенклатура",
+            "fact_id": "item.ref",
+            "accepted_mcp_types": [
+              "СправочникСсылка.Номенклатура"
+            ],
+            "converter": "object_ref"
+          },
+          {
+            "column": "Склад",
+            "fact_id": "warehouse.ref",
+            "accepted_mcp_types": [
+              "СправочникСсылка.Склады"
+            ],
+            "converter": "object_ref"
+          },
+          {
+            "column": "Помещение",
+            "fact_id": "storage_bin.ref",
+            "accepted_mcp_types": [
+              "СправочникСсылка.СкладскиеПомещения"
+            ],
+            "converter": "object_ref"
+          },
+          {
+            "column": "Характеристика",
+            "fact_id": "characteristic.ref",
+            "accepted_mcp_types": [
+              "СправочникСсылка.ХарактеристикиНоменклатуры"
+            ],
+            "converter": "object_ref"
+          },
+          {
+            "column": "Назначение",
+            "fact_id": "assignment.ref",
+            "accepted_mcp_types": [
+              "СправочникСсылка.Назначения"
+            ],
+            "converter": "object_ref"
+          },
+          {
+            "column": "Единица",
+            "fact_id": "item.unit",
+            "accepted_mcp_types": [
+              "Строка"
+            ],
+            "converter": "string"
+          },
+          {
+            "column": "ВНаличииОстаток",
+            "fact_id": "stock.balance",
+            "accepted_mcp_types": [
+              "Число"
+            ],
+            "converter": "decimal"
+          },
+          {
+            "column": "Момент",
+            "fact_id": "stock.moment",
+            "accepted_mcp_types": [
+              "Дата"
+            ],
+            "converter": "datetime"
+          }
+        ],
+        "pagination": {
+          "strategy": "prefix",
+          "stable_order_fact_ids": [
+            "warehouse.ref",
+            "storage_bin.ref",
+            "item.ref"
+          ],
+          "maximum_total": 1000
+        }
+      },
+      "output_contract": {
+        "contract_id": "ut115.stock.balance.v1",
+        "contract_version": "1.0.0",
+        "cardinality": "many",
+        "facts": [
+          {
+            "fact_id": "item.ref",
+            "semantic_type": "catalog.item",
+            "value_type": "entity_ref",
+            "role": "entity",
+            "required": true,
+            "nullable": false,
+            "title_ru": "Номенклатура",
+            "unit_contract": {
+              "mode": "not_applicable"
+            }
+          },
+          {
+            "fact_id": "warehouse.ref",
+            "semantic_type": "catalog.warehouse",
+            "value_type": "entity_ref",
+            "role": "dimension",
+            "required": true,
+            "nullable": false,
+            "title_ru": "Склад",
+            "unit_contract": {
+              "mode": "not_applicable"
+            }
+          },
+          {
+            "fact_id": "storage_bin.ref",
+            "semantic_type": "catalog.storage_bin",
+            "value_type": "entity_ref",
+            "role": "dimension",
+            "required": true,
+            "nullable": false,
+            "title_ru": "Помещение",
+            "unit_contract": {
+              "mode": "not_applicable"
+            }
+          },
+          {
+            "fact_id": "characteristic.ref",
+            "semantic_type": "catalog.item.characteristic",
+            "value_type": "entity_ref",
+            "role": "dimension",
+            "required": true,
+            "nullable": false,
+            "title_ru": "Характеристика",
+            "unit_contract": {
+              "mode": "not_applicable"
+            }
+          },
+          {
+            "fact_id": "assignment.ref",
+            "semantic_type": "analytics.assignment",
+            "value_type": "entity_ref",
+            "role": "dimension",
+            "required": true,
+            "nullable": false,
+            "title_ru": "Назначение",
+            "unit_contract": {
+              "mode": "not_applicable"
+            }
+          },
+          {
+            "fact_id": "item.unit",
+            "semantic_type": "catalog.item.unit",
+            "value_type": "string",
+            "role": "dimension",
+            "required": true,
+            "nullable": false,
+            "title_ru": "Единица хранения",
+            "unit_contract": {
+              "mode": "not_applicable"
+            }
+          },
+          {
+            "fact_id": "stock.balance",
+            "semantic_type": "measure.stock_balance",
+            "value_type": "quantity",
+            "role": "measure",
+            "required": true,
+            "nullable": false,
+            "title_ru": "Фактический остаток",
+            "unit_contract": {
+              "mode": "from_fact",
+              "fact_id": "item.unit"
+            }
+          },
+          {
+            "fact_id": "stock.moment",
+            "semantic_type": "time.moment",
+            "value_type": "datetime",
+            "role": "time",
+            "required": true,
+            "nullable": false,
+            "title_ru": "Момент остатка",
+            "unit_contract": {
+              "mode": "not_applicable"
+            }
+          }
+        ],
+        "sufficiency": {
+          "required_fact_sets": [
+            [
+              "item.ref",
+              "warehouse.ref",
+              "storage_bin.ref",
+              "characteristic.ref",
+              "assignment.ref",
+              "item.unit",
+              "stock.balance",
+              "stock.moment"
+            ]
+          ],
+          "empty_semantics": "confirmed_no_rows",
+          "zero_fact_ids": [
+            "stock.balance"
+          ],
+          "truncation_policy": "page_is_complete"
+        },
+        "renderer": {
+          "kind": "table",
+          "primary_fact_ids": [
+            "stock.moment"
+          ],
+          "column_fact_ids": [
+            "item.ref",
+            "warehouse.ref",
+            "storage_bin.ref",
+            "characteristic.ref",
+            "assignment.ref",
+            "item.unit",
+            "stock.balance",
+            "stock.moment"
+          ]
+        },
+        "row_identity_fact_ids": [
+          "item.ref",
+          "warehouse.ref",
+          "storage_bin.ref",
+          "characteristic.ref",
+          "assignment.ref"
+        ]
+      },
+      "result_constraints": [
+        {
+          "kind": "fact_equals_parameter",
+          "fact_id": "item.ref",
+          "parameter": "item"
+        }
+      ],
+      "dependencies": {
+        "runtime_contracts": [
+          {
+            "contract": "skill-runtime",
+            "version_range": "^1.0.0"
+          },
+          {
+            "contract": "mcp.execute_query",
+            "version_range": "^1.0.0"
+          }
+        ],
+        "skills": []
+      },
+      "examples": [
+        {
+          "question_ru": "фактический остаток товара?",
+          "applicability": "applicable",
+          "reason_ru": "Вопрос соответствует назначению и typed outputs навыка."
+        },
+        {
+          "question_ru": "сколько товара доступно с учетом резервов?",
+          "applicability": "not_applicable",
+          "reason_ru": "Вопрос находится за явно объявленной границей навыка."
+        }
+      ],
+      "tests": [
+        {
+          "test_id": "ut.stock.positive",
+          "case_kind": "positive",
+          "bindings": [
+            {
+              "parameter": "item",
+              "value": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000000101",
+                "ТипОбъекта": "СправочникСсылка.Номенклатура",
+                "Представление": "Куртка демисезонная"
+              }
+            },
+            {
+              "parameter": "moment",
+              "value": "2026-07-21T12:00:00+03:00"
+            }
+          ],
+          "fixture": {
+            "kind": "mcp_execute_query",
+            "response": {
+              "success": true,
+              "data": [
+                {
+                  "Номенклатура": {
+                    "_objectRef": true,
+                    "УникальныйИдентификатор": "00000000-0000-4000-8000-000000000101",
+                    "ТипОбъекта": "СправочникСсылка.Номенклатура",
+                    "Представление": "Куртка демисезонная"
+                  },
+                  "Склад": {
+                    "_objectRef": true,
+                    "УникальныйИдентификатор": "00000000-0000-4000-8000-000000000201",
+                    "ТипОбъекта": "СправочникСсылка.Склады",
+                    "Представление": "Основной склад"
+                  },
+                  "Помещение": {
+                    "_objectRef": true,
+                    "УникальныйИдентификатор": "00000000-0000-4000-8000-000000000202",
+                    "ТипОбъекта": "СправочникСсылка.СкладскиеПомещения",
+                    "Представление": "Основное помещение"
+                  },
+                  "Характеристика": {
+                    "_objectRef": true,
+                    "УникальныйИдентификатор": "00000000-0000-4000-8000-000000000203",
+                    "ТипОбъекта": "СправочникСсылка.ХарактеристикиНоменклатуры",
+                    "Представление": "Без характеристики"
+                  },
+                  "Назначение": {
+                    "_objectRef": true,
+                    "УникальныйИдентификатор": "00000000-0000-4000-8000-000000000204",
+                    "ТипОбъекта": "СправочникСсылка.Назначения",
+                    "Представление": "Без назначения"
+                  },
+                  "Единица": "шт",
+                  "ВНаличииОстаток": 7.0,
+                  "Момент": "2026-07-21T12:00:00+03:00"
+                }
+              ],
+              "schema": {
+                "columns": [
+                  {
+                    "name": "Номенклатура",
+                    "types": [
+                      "СправочникСсылка.Номенклатура"
+                    ]
+                  },
+                  {
+                    "name": "Склад",
+                    "types": [
+                      "СправочникСсылка.Склады"
+                    ]
+                  },
+                  {
+                    "name": "Помещение",
+                    "types": [
+                      "СправочникСсылка.СкладскиеПомещения"
+                    ]
+                  },
+                  {
+                    "name": "Характеристика",
+                    "types": [
+                      "СправочникСсылка.ХарактеристикиНоменклатуры"
+                    ]
+                  },
+                  {
+                    "name": "Назначение",
+                    "types": [
+                      "СправочникСсылка.Назначения"
+                    ]
+                  },
+                  {
+                    "name": "Единица",
+                    "types": [
+                      "Строка"
+                    ]
+                  },
+                  {
+                    "name": "ВНаличииОстаток",
+                    "types": [
+                      "Число"
+                    ]
+                  },
+                  {
+                    "name": "Момент",
+                    "types": [
+                      "Дата"
+                    ]
+                  }
+                ]
+              },
+              "count": 1
+            }
+          },
+          "expected": {
+            "status": "success_with_rows",
+            "required_fact_ids": [
+              "item.ref",
+              "warehouse.ref",
+              "storage_bin.ref",
+              "characteristic.ref",
+              "assignment.ref",
+              "item.unit",
+              "stock.balance",
+              "stock.moment"
+            ]
+          }
+        },
+        {
+          "test_id": "ut.stock.empty",
+          "case_kind": "negative",
+          "bindings": [],
+          "fixture": {
+            "kind": "mcp_execute_query",
+            "response": {
+              "success": true,
+              "data": [],
+              "schema": {
+                "columns": []
+              },
+              "count": 0
+            }
+          },
+          "expected": {
+            "status": "success_empty",
+            "required_fact_ids": []
+          }
+        }
+      ],
+      "provenance": {
+        "author": "ChatBot 1C slice 1",
+        "created_at": "2026-07-21T00:00:00Z",
+        "reviewed_by": "Architecture and PM source proof",
+        "reviewed_at": "2026-07-21T00:00:00Z",
+        "source_configuration": {
+          "configuration_id": "УправлениеТорговлейБазовая",
+          "release": "11.5.27.56",
+          "compatibility_mode": "8.3.27",
+          "metadata_snapshot_sha256": "40dd46f5fd7be824dbb68c317c961973c92a06c534943419e552f0ba8d8f3113"
+        },
+        "source_references": [
+          {
+            "kind": "configuration_metadata",
+            "uri": "ut-config://11.5.27.56/AccumulationRegisters/ТоварыНаСкладах.xml",
+            "sha256": "40dd46f5fd7be824dbb68c317c961973c92a06c534943419e552f0ba8d8f3113"
+          },
+          {
+            "kind": "configuration_source",
+            "uri": "ut-config://11.5.27.56/Reports/СправочноеРазмещениеНоменклатуры/Templates/ОсновнаяСхемаКомпоновкиДанных/Ext/Template.xml"
+          }
+        ],
+        "change_note_ru": "Навык построен по проверенным metadata/help исходникам УТ 11.5.27.56."
+      },
+      "integrity": {
+        "algorithm": "sha256",
+        "canonicalization": "RFC8785",
+        "scope": "document_without_integrity",
+        "digest": "d83818552ec0f5e9cf7aade3bf3ef38dde1d96211b14081fd524be01ddede48d"
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "document_type": "skill",
+      "skill_id": "ut115.sales.order-header-status-by-number",
+      "version": "1.0.0",
+      "display": {
+        "name_ru": "Поиск заказа клиента и его статуса по номеру",
+        "purpose_ru": "Находит уникальный заказ клиента по typed номеру, возвращает статус и exact document ref.",
+        "limitations_ru": [
+          "При нескольких совпадениях требует уточнение и не выбирает заказ автоматически."
+        ]
+      },
+      "provides": {
+        "capability_ids": [
+          "CAP-COMMON-ENTITY",
+          "CAP-SALES-ORDER-STATUS"
+        ],
+        "fact_types": [
+          "document.sales_order",
+          "document.number",
+          "time.document_moment",
+          "document.posted",
+          "document.sales_order.status"
+        ]
+      },
+      "compatibility": {
+        "configuration_id": "УправлениеТорговлейБазовая",
+        "configuration_name": "1С:Управление торговлей (базовая), редакция 11",
+        "release_range": {
+          "minimum": "11.5.27.56",
+          "maximum": "11.5.27.56",
+          "include_minimum": true,
+          "include_maximum": true
+        },
+        "compatibility_modes": [
+          "8.3.27"
+        ],
+        "required_metadata": [
+          {
+            "object_name": "Документ.ЗаказКлиента",
+            "attributes": [
+              "Ссылка",
+              "Номер",
+              "Дата",
+              "Проведен",
+              "Статус"
+            ]
+          }
+        ],
+        "metadata_snapshot_sha256": "dbb8b95230a929de03c7af4534adea7550d6de72fdaca9e2defb9c38978d1a61"
+      },
+      "selection": {
+        "intent_kinds": [
+          "data"
+        ],
+        "aliases_ru": [
+          "найти заказ клиента по номеру",
+          "статус заказа клиента"
+        ],
+        "anti_examples_ru": [
+          "изменить статус заказа клиента"
+        ],
+        "required_context_fact_types": []
+      },
+      "parameters": [
+        {
+          "name": "document_number",
+          "title_ru": "Номер заказа",
+          "description_ru": "Точный номер заказа клиента из вопроса.",
+          "value_type": "string",
+          "required": true,
+          "allowed_sources": [
+            "user_slot"
+          ],
+          "normalization": "trim"
+        }
+      ],
+      "operation": {
+        "kind": "data_query",
+        "tool": "execute_query",
+        "read_only": true,
+        "query_template": {
+          "template_id": "ut115.sales.order-header-status-by-number.v1",
+          "language": "1c-query",
+          "text": "ВЫБРАТЬ ПЕРВЫЕ 2\n  Заказ.Ссылка КАК Заказ,\n  Заказ.Номер КАК Номер,\n  Заказ.Дата КАК Дата,\n  Заказ.Проведен КАК Проведен,\n  ПРЕДСТАВЛЕНИЕ(Заказ.Статус) КАК Статус\nИЗ Документ.ЗаказКлиента КАК Заказ\nГДЕ Заказ.Номер = &Номер\nУПОРЯДОЧИТЬ ПО Заказ.Дата УБЫВ",
+          "execution": {
+            "kind": "single_select",
+            "statement_count": 1,
+            "final_statement": 1
+          },
+          "invariant_constants": [
+            {
+              "kind": "structural_integer",
+              "statement": 1,
+              "value": 2,
+              "role": "top_limit",
+              "occurrences": 1
+            }
+          ],
+          "include_schema": true,
+          "mcp_limit": {
+            "default": 2,
+            "maximum": 1000
+          }
+        },
+        "parameter_bindings": [
+          {
+            "parameter": "document_number",
+            "query_parameter": "Номер",
+            "encoding": "string"
+          }
+        ],
+        "column_bindings": [
+          {
+            "column": "Заказ",
+            "fact_id": "order.ref",
+            "accepted_mcp_types": [
+              "ДокументСсылка.ЗаказКлиента"
+            ],
+            "converter": "object_ref"
+          },
+          {
+            "column": "Номер",
+            "fact_id": "order.number",
+            "accepted_mcp_types": [
+              "Строка"
+            ],
+            "converter": "string"
+          },
+          {
+            "column": "Дата",
+            "fact_id": "order.date",
+            "accepted_mcp_types": [
+              "Дата"
+            ],
+            "converter": "datetime"
+          },
+          {
+            "column": "Проведен",
+            "fact_id": "order.posted",
+            "accepted_mcp_types": [
+              "Булево"
+            ],
+            "converter": "boolean"
+          },
+          {
+            "column": "Статус",
+            "fact_id": "order.status",
+            "accepted_mcp_types": [
+              "Строка"
+            ],
+            "converter": "string"
+          }
+        ],
+        "pagination": {
+          "strategy": "none"
+        }
+      },
+      "output_contract": {
+        "contract_id": "ut115.sales.order-header-status-by-number.v1",
+        "contract_version": "1.0.0",
+        "cardinality": "zero_or_one",
+        "facts": [
+          {
+            "fact_id": "order.ref",
+            "semantic_type": "document.sales_order",
+            "value_type": "entity_ref",
+            "role": "entity",
+            "required": true,
+            "nullable": false,
+            "title_ru": "Заказ клиента",
+            "unit_contract": {
+              "mode": "not_applicable"
+            }
+          },
+          {
+            "fact_id": "order.number",
+            "semantic_type": "document.number",
+            "value_type": "string",
+            "role": "attribute",
+            "required": true,
+            "nullable": false,
+            "title_ru": "Номер",
+            "unit_contract": {
+              "mode": "not_applicable"
+            }
+          },
+          {
+            "fact_id": "order.date",
+            "semantic_type": "time.document_moment",
+            "value_type": "datetime",
+            "role": "time",
+            "required": true,
+            "nullable": false,
+            "title_ru": "Дата",
+            "unit_contract": {
+              "mode": "not_applicable"
+            }
+          },
+          {
+            "fact_id": "order.posted",
+            "semantic_type": "document.posted",
+            "value_type": "boolean",
+            "role": "attribute",
+            "required": true,
+            "nullable": false,
+            "title_ru": "Проведен",
+            "unit_contract": {
+              "mode": "not_applicable"
+            }
+          },
+          {
+            "fact_id": "order.status",
+            "semantic_type": "document.sales_order.status",
+            "value_type": "string",
+            "role": "attribute",
+            "required": true,
+            "nullable": false,
+            "title_ru": "Статус",
+            "unit_contract": {
+              "mode": "not_applicable"
+            }
+          }
+        ],
+        "sufficiency": {
+          "required_fact_sets": [
+            [
+              "order.ref",
+              "order.number",
+              "order.date",
+              "order.posted",
+              "order.status"
+            ]
+          ],
+          "empty_semantics": "confirmed_not_found",
+          "zero_fact_ids": [],
+          "truncation_policy": "page_is_complete"
+        },
+        "renderer": {
+          "kind": "scalar",
+          "primary_fact_ids": [
+            "order.status"
+          ],
+          "column_fact_ids": [
+            "order.ref",
+            "order.number",
+            "order.date",
+            "order.posted",
+            "order.status"
+          ]
+        },
+        "row_identity_fact_ids": [
+          "order.ref"
+        ]
+      },
+      "result_constraints": [],
+      "dependencies": {
+        "runtime_contracts": [
+          {
+            "contract": "skill-runtime",
+            "version_range": "^1.0.0"
+          },
+          {
+            "contract": "mcp.execute_query",
+            "version_range": "^1.0.0"
+          }
+        ],
+        "skills": []
+      },
+      "examples": [
+        {
+          "question_ru": "найти заказ клиента по номеру?",
+          "applicability": "applicable",
+          "reason_ru": "Вопрос соответствует назначению и typed outputs навыка."
+        },
+        {
+          "question_ru": "изменить статус заказа клиента?",
+          "applicability": "not_applicable",
+          "reason_ru": "Вопрос находится за явно объявленной границей навыка."
+        }
+      ],
+      "tests": [
+        {
+          "test_id": "ut.order-header.unique",
+          "case_kind": "positive",
+          "bindings": [
+            {
+              "parameter": "document_number",
+              "value": "0000-000005"
+            }
+          ],
+          "fixture": {
+            "kind": "mcp_execute_query",
+            "response": {
+              "success": true,
+              "data": [
+                {
+                  "Заказ": {
+                    "_objectRef": true,
+                    "УникальныйИдентификатор": "00000000-0000-4000-8000-000000000301",
+                    "ТипОбъекта": "ДокументСсылка.ЗаказКлиента",
+                    "Представление": "Заказ клиента 0000-000005 от 12.02.2025"
+                  },
+                  "Номер": "0000-000005",
+                  "Дата": "2025-02-12T10:00:00+03:00",
+                  "Проведен": true,
+                  "Статус": "К выполнению"
+                }
+              ],
+              "schema": {
+                "columns": [
+                  {
+                    "name": "Заказ",
+                    "types": [
+                      "ДокументСсылка.ЗаказКлиента"
+                    ]
+                  },
+                  {
+                    "name": "Номер",
+                    "types": [
+                      "Строка"
+                    ]
+                  },
+                  {
+                    "name": "Дата",
+                    "types": [
+                      "Дата"
+                    ]
+                  },
+                  {
+                    "name": "Проведен",
+                    "types": [
+                      "Булево"
+                    ]
+                  },
+                  {
+                    "name": "Статус",
+                    "types": [
+                      "Строка"
+                    ]
+                  }
+                ]
+              },
+              "count": 1
+            }
+          },
+          "expected": {
+            "status": "success_with_rows",
+            "required_fact_ids": [
+              "order.ref",
+              "order.number",
+              "order.date",
+              "order.posted",
+              "order.status"
+            ]
+          }
+        },
+        {
+          "test_id": "ut.order-header.empty",
+          "case_kind": "negative",
+          "bindings": [],
+          "fixture": {
+            "kind": "mcp_execute_query",
+            "response": {
+              "success": true,
+              "data": [],
+              "schema": {
+                "columns": []
+              },
+              "count": 0
+            }
+          },
+          "expected": {
+            "status": "success_empty",
+            "required_fact_ids": []
+          }
+        }
+      ],
+      "provenance": {
+        "author": "ChatBot 1C slice 1",
+        "created_at": "2026-07-21T00:00:00Z",
+        "reviewed_by": "Architecture and PM source proof",
+        "reviewed_at": "2026-07-21T00:00:00Z",
+        "source_configuration": {
+          "configuration_id": "УправлениеТорговлейБазовая",
+          "release": "11.5.27.56",
+          "compatibility_mode": "8.3.27",
+          "metadata_snapshot_sha256": "dbb8b95230a929de03c7af4534adea7550d6de72fdaca9e2defb9c38978d1a61"
+        },
+        "source_references": [
+          {
+            "kind": "configuration_metadata",
+            "uri": "ut-config://11.5.27.56/Documents/ЗаказКлиента.xml",
+            "sha256": "dbb8b95230a929de03c7af4534adea7550d6de72fdaca9e2defb9c38978d1a61"
+          }
+        ],
+        "change_note_ru": "Навык построен по проверенным metadata/help исходникам УТ 11.5.27.56."
+      },
+      "integrity": {
+        "algorithm": "sha256",
+        "canonicalization": "RFC8785",
+        "scope": "document_without_integrity",
+        "digest": "bf145039f269f4a1de9be4a9f16590efa8c35121e1a3b701db6299a5c97a7959"
+      }
+    },
+    {
+      "schema_version": "1.0.0",
+      "document_type": "skill",
+      "skill_id": "ut115.sales.order-lines",
+      "version": "1.0.0",
+      "display": {
+        "name_ru": "Строки подтвержденного заказа клиента",
+        "purpose_ru": "Возвращает неотмененные строки только для переданной exact ссылки заказа клиента.",
+        "limitations_ru": [
+          "Не ищет заказ повторно по номеру или представлению и не включает отмененные строки."
+        ]
+      },
+      "provides": {
+        "capability_ids": [
+          "CAP-SALES-ORDER-LINES"
+        ],
+        "fact_types": [
+          "document.sales_order",
+          "document.line_number",
+          "catalog.item",
+          "catalog.item.unit",
+          "measure.ordered_quantity",
+          "measure.unit_price",
+          "currency.code",
+          "measure.line_amount"
+        ]
+      },
+      "compatibility": {
+        "configuration_id": "УправлениеТорговлейБазовая",
+        "configuration_name": "1С:Управление торговлей (базовая), редакция 11",
+        "release_range": {
+          "minimum": "11.5.27.56",
+          "maximum": "11.5.27.56",
+          "include_minimum": true,
+          "include_maximum": true
+        },
+        "compatibility_modes": [
+          "8.3.27"
+        ],
+        "required_metadata": [
+          {
+            "object_name": "Документ.ЗаказКлиента",
+            "attributes": [
+              "Товары.НомерСтроки",
+              "Товары.Номенклатура",
+              "Товары.Упаковка",
+              "Товары.Количество",
+              "Товары.Цена",
+              "Товары.Сумма",
+              "Товары.Отменено",
+              "Валюта"
+            ]
+          }
+        ],
+        "metadata_snapshot_sha256": "dbb8b95230a929de03c7af4534adea7550d6de72fdaca9e2defb9c38978d1a61"
+      },
+      "selection": {
+        "intent_kinds": [
+          "data"
+        ],
+        "aliases_ru": [
+          "какие товары входят в этот заказ",
+          "строки заказа клиента"
+        ],
+        "anti_examples_ru": [
+          "добавить товар в заказ клиента"
+        ],
+        "required_context_fact_types": [
+          "document.sales_order"
+        ]
+      },
+      "parameters": [
+        {
+          "name": "order",
+          "title_ru": "Заказ клиента",
+          "description_ru": "Exact _objectRef подтвержденного заказа клиента.",
+          "value_type": "entity_ref",
+          "required": true,
+          "allowed_sources": [
+            "session_context",
+            "previous_step"
+          ],
+          "normalization": "object_ref",
+          "semantic_type": "document.sales_order",
+          "entity_types": [
+            "document.sales_order"
+          ]
+        }
+      ],
+      "operation": {
+        "kind": "data_query",
+        "tool": "execute_query",
+        "read_only": true,
+        "query_template": {
+          "template_id": "ut115.sales.order-lines.v1",
+          "language": "1c-query",
+          "text": "ВЫБРАТЬ\n  Строки.Ссылка КАК Заказ,\n  Строки.НомерСтроки КАК НомерСтроки,\n  Строки.Номенклатура КАК Номенклатура,\n  Строки.Упаковка.Наименование КАК Единица,\n  Строки.Количество КАК Количество,\n  Строки.Цена КАК Цена,\n  Строки.Ссылка.Валюта.Код КАК Валюта,\n  Строки.Сумма КАК Сумма\nИЗ Документ.ЗаказКлиента.Товары КАК Строки\nГДЕ Строки.Ссылка = &Документ\n  И НЕ Строки.Отменено\nУПОРЯДОЧИТЬ ПО Строки.НомерСтроки",
+          "execution": {
+            "kind": "single_select",
+            "statement_count": 1,
+            "final_statement": 1
+          },
+          "invariant_constants": [],
+          "include_schema": true,
+          "mcp_limit": {
+            "default": 20,
+            "maximum": 1000
+          }
+        },
+        "parameter_bindings": [
+          {
+            "parameter": "order",
+            "query_parameter": "Документ",
+            "encoding": "object_ref"
+          }
+        ],
+        "column_bindings": [
+          {
+            "column": "Заказ",
+            "fact_id": "order.ref",
+            "accepted_mcp_types": [
+              "ДокументСсылка.ЗаказКлиента"
+            ],
+            "converter": "object_ref"
+          },
+          {
+            "column": "НомерСтроки",
+            "fact_id": "order.line_number",
+            "accepted_mcp_types": [
+              "Число"
+            ],
+            "converter": "integer"
+          },
+          {
+            "column": "Номенклатура",
+            "fact_id": "line.item",
+            "accepted_mcp_types": [
+              "СправочникСсылка.Номенклатура"
+            ],
+            "converter": "object_ref"
+          },
+          {
+            "column": "Единица",
+            "fact_id": "line.unit",
+            "accepted_mcp_types": [
+              "Строка"
+            ],
+            "converter": "string"
+          },
+          {
+            "column": "Количество",
+            "fact_id": "line.quantity",
+            "accepted_mcp_types": [
+              "Число"
+            ],
+            "converter": "decimal"
+          },
+          {
+            "column": "Цена",
+            "fact_id": "line.price",
+            "accepted_mcp_types": [
+              "Число"
+            ],
+            "converter": "decimal"
+          },
+          {
+            "column": "Валюта",
+            "fact_id": "line.currency",
+            "accepted_mcp_types": [
+              "Строка"
+            ],
+            "converter": "string"
+          },
+          {
+            "column": "Сумма",
+            "fact_id": "line.amount",
+            "accepted_mcp_types": [
+              "Число"
+            ],
+            "converter": "decimal"
+          }
+        ],
+        "pagination": {
+          "strategy": "prefix",
+          "stable_order_fact_ids": [
+            "order.ref",
+            "order.line_number"
+          ],
+          "maximum_total": 1000
+        }
+      },
+      "output_contract": {
+        "contract_id": "ut115.sales.order-lines.v1",
+        "contract_version": "1.0.0",
+        "cardinality": "many",
+        "facts": [
+          {
+            "fact_id": "order.ref",
+            "semantic_type": "document.sales_order",
+            "value_type": "entity_ref",
+            "role": "entity",
+            "required": true,
+            "nullable": false,
+            "title_ru": "Заказ клиента",
+            "unit_contract": {
+              "mode": "not_applicable"
+            }
+          },
+          {
+            "fact_id": "order.line_number",
+            "semantic_type": "document.line_number",
+            "value_type": "integer",
+            "role": "dimension",
+            "required": true,
+            "nullable": false,
+            "title_ru": "Номер строки",
+            "unit_contract": {
+              "mode": "not_applicable"
+            }
+          },
+          {
+            "fact_id": "line.item",
+            "semantic_type": "catalog.item",
+            "value_type": "entity_ref",
+            "role": "entity",
+            "required": true,
+            "nullable": false,
+            "title_ru": "Номенклатура",
+            "unit_contract": {
+              "mode": "not_applicable"
+            }
+          },
+          {
+            "fact_id": "line.unit",
+            "semantic_type": "catalog.item.unit",
+            "value_type": "string",
+            "role": "dimension",
+            "required": true,
+            "nullable": false,
+            "title_ru": "Единица",
+            "unit_contract": {
+              "mode": "not_applicable"
+            }
+          },
+          {
+            "fact_id": "line.quantity",
+            "semantic_type": "measure.ordered_quantity",
+            "value_type": "quantity",
+            "role": "measure",
+            "required": true,
+            "nullable": false,
+            "title_ru": "Количество",
+            "unit_contract": {
+              "mode": "from_fact",
+              "fact_id": "line.unit"
+            }
+          },
+          {
+            "fact_id": "line.price",
+            "semantic_type": "measure.unit_price",
+            "value_type": "money",
+            "role": "measure",
+            "required": true,
+            "nullable": false,
+            "title_ru": "Цена",
+            "unit_contract": {
+              "mode": "from_fact",
+              "fact_id": "line.currency"
+            }
+          },
+          {
+            "fact_id": "line.currency",
+            "semantic_type": "currency.code",
+            "value_type": "string",
+            "role": "dimension",
+            "required": true,
+            "nullable": false,
+            "title_ru": "Валюта",
+            "unit_contract": {
+              "mode": "not_applicable"
+            }
+          },
+          {
+            "fact_id": "line.amount",
+            "semantic_type": "measure.line_amount",
+            "value_type": "money",
+            "role": "measure",
+            "required": true,
+            "nullable": false,
+            "title_ru": "Сумма",
+            "unit_contract": {
+              "mode": "from_fact",
+              "fact_id": "line.currency"
+            }
+          }
+        ],
+        "sufficiency": {
+          "required_fact_sets": [
+            [
+              "order.ref",
+              "order.line_number",
+              "line.item",
+              "line.unit",
+              "line.quantity",
+              "line.price",
+              "line.currency",
+              "line.amount"
+            ]
+          ],
+          "empty_semantics": "confirmed_no_rows",
+          "zero_fact_ids": [],
+          "truncation_policy": "page_is_complete"
+        },
+        "renderer": {
+          "kind": "table",
+          "primary_fact_ids": [
+            "line.amount"
+          ],
+          "column_fact_ids": [
+            "order.ref",
+            "order.line_number",
+            "line.item",
+            "line.unit",
+            "line.quantity",
+            "line.price",
+            "line.currency",
+            "line.amount"
+          ]
+        },
+        "row_identity_fact_ids": [
+          "order.ref",
+          "order.line_number"
+        ]
+      },
+      "result_constraints": [
+        {
+          "kind": "fact_equals_parameter",
+          "fact_id": "order.ref",
+          "parameter": "order"
+        }
+      ],
+      "dependencies": {
+        "runtime_contracts": [
+          {
+            "contract": "skill-runtime",
+            "version_range": "^1.0.0"
+          },
+          {
+            "contract": "mcp.execute_query",
+            "version_range": "^1.0.0"
+          }
+        ],
+        "skills": [
+          {
+            "skill_id": "ut115.sales.order-header-status-by-number",
+            "version_range": "^1.0.0",
+            "required_fact_types": [
+              "document.sales_order"
+            ]
+          }
+        ]
+      },
+      "examples": [
+        {
+          "question_ru": "какие товары входят в этот заказ?",
+          "applicability": "applicable",
+          "reason_ru": "Вопрос соответствует назначению и typed outputs навыка."
+        },
+        {
+          "question_ru": "добавить товар в заказ клиента?",
+          "applicability": "not_applicable",
+          "reason_ru": "Вопрос находится за явно объявленной границей навыка."
+        }
+      ],
+      "tests": [
+        {
+          "test_id": "ut.order-lines.positive",
+          "case_kind": "positive",
+          "bindings": [
+            {
+              "parameter": "order",
+              "value": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000000301",
+                "ТипОбъекта": "ДокументСсылка.ЗаказКлиента",
+                "Представление": "Заказ клиента 0000-000005 от 12.02.2025"
+              }
+            }
+          ],
+          "fixture": {
+            "kind": "mcp_execute_query",
+            "response": {
+              "success": true,
+              "data": [
+                {
+                  "Заказ": {
+                    "_objectRef": true,
+                    "УникальныйИдентификатор": "00000000-0000-4000-8000-000000000301",
+                    "ТипОбъекта": "ДокументСсылка.ЗаказКлиента",
+                    "Представление": "Заказ клиента 0000-000005 от 12.02.2025"
+                  },
+                  "НомерСтроки": 1,
+                  "Номенклатура": {
+                    "_objectRef": true,
+                    "УникальныйИдентификатор": "00000000-0000-4000-8000-000000000101",
+                    "ТипОбъекта": "СправочникСсылка.Номенклатура",
+                    "Представление": "Куртка демисезонная"
+                  },
+                  "Единица": "шт",
+                  "Количество": 2.0,
+                  "Цена": 1500.0,
+                  "Валюта": "RUB",
+                  "Сумма": 3000.0
+                }
+              ],
+              "schema": {
+                "columns": [
+                  {
+                    "name": "Заказ",
+                    "types": [
+                      "ДокументСсылка.ЗаказКлиента"
+                    ]
+                  },
+                  {
+                    "name": "НомерСтроки",
+                    "types": [
+                      "Число"
+                    ]
+                  },
+                  {
+                    "name": "Номенклатура",
+                    "types": [
+                      "СправочникСсылка.Номенклатура"
+                    ]
+                  },
+                  {
+                    "name": "Единица",
+                    "types": [
+                      "Строка"
+                    ]
+                  },
+                  {
+                    "name": "Количество",
+                    "types": [
+                      "Число"
+                    ]
+                  },
+                  {
+                    "name": "Цена",
+                    "types": [
+                      "Число"
+                    ]
+                  },
+                  {
+                    "name": "Валюта",
+                    "types": [
+                      "Строка"
+                    ]
+                  },
+                  {
+                    "name": "Сумма",
+                    "types": [
+                      "Число"
+                    ]
+                  }
+                ]
+              },
+              "count": 1
+            }
+          },
+          "expected": {
+            "status": "success_with_rows",
+            "required_fact_ids": [
+              "order.ref",
+              "order.line_number",
+              "line.item",
+              "line.unit",
+              "line.quantity",
+              "line.price",
+              "line.currency",
+              "line.amount"
+            ]
+          }
+        },
+        {
+          "test_id": "ut.order-lines.empty",
+          "case_kind": "negative",
+          "bindings": [],
+          "fixture": {
+            "kind": "mcp_execute_query",
+            "response": {
+              "success": true,
+              "data": [],
+              "schema": {
+                "columns": []
+              },
+              "count": 0
+            }
+          },
+          "expected": {
+            "status": "success_empty",
+            "required_fact_ids": []
+          }
+        }
+      ],
+      "provenance": {
+        "author": "ChatBot 1C slice 1",
+        "created_at": "2026-07-21T00:00:00Z",
+        "reviewed_by": "Architecture and PM source proof",
+        "reviewed_at": "2026-07-21T00:00:00Z",
+        "source_configuration": {
+          "configuration_id": "УправлениеТорговлейБазовая",
+          "release": "11.5.27.56",
+          "compatibility_mode": "8.3.27",
+          "metadata_snapshot_sha256": "dbb8b95230a929de03c7af4534adea7550d6de72fdaca9e2defb9c38978d1a61"
+        },
+        "source_references": [
+          {
+            "kind": "configuration_metadata",
+            "uri": "ut-config://11.5.27.56/Documents/ЗаказКлиента.xml",
+            "sha256": "dbb8b95230a929de03c7af4534adea7550d6de72fdaca9e2defb9c38978d1a61"
+          },
+          {
+            "kind": "configuration_source",
+            "uri": "ut-config://11.5.27.56/Reports/ОценкаРентабельностиПродаж2_5/Templates/ОсновнаяСхемаКомпоновкиДанных/Ext/Template.xml"
+          }
+        ],
+        "change_note_ru": "Навык построен по проверенным metadata/help исходникам УТ 11.5.27.56."
+      },
+      "integrity": {
+        "algorithm": "sha256",
+        "canonicalization": "RFC8785",
+        "scope": "document_without_integrity",
+        "digest": "df44467b5cda922cda8344cf184890d56ce0f6dc2bde525c43aa6ec021421152"
+      }
+    }
+  ],
+  "dependency_lock": [
+    {
+      "skill_id": "ut115.doc.term",
+      "version": "1.0.0",
+      "digest": "0f9162d840f5b8287c703a226264ba9902bb15eb8a9cf74c65231e38cf0e3539"
+    },
+    {
+      "skill_id": "ut115.ref.item.resolve-article-exact",
+      "version": "1.0.0",
+      "digest": "09b338fa1ea3e6ed8b6348cb8561a98dc6e917440329c6cc13ddc9b474b9815d"
+    },
+    {
+      "skill_id": "ut115.ref.item.resolve-code-exact",
+      "version": "1.0.0",
+      "digest": "a0dbc5adbfccee3a85b610f5fb352b9cff6fe11457f080d40ef80ee47a45294a"
+    },
+    {
+      "skill_id": "ut115.ref.item.resolve-barcode-exact",
+      "version": "1.0.0",
+      "digest": "e34067299cfac614a32e462af948c87f58ee231ab628a6831a13751814b3150c"
+    },
+    {
+      "skill_id": "ut115.ref.item.resolve-name-contains",
+      "version": "1.0.0",
+      "digest": "4c6be7dbcb8b61b1801d105b56ae4d7a3d740b929efed94a6d764cc4debe0ba7"
+    },
+    {
+      "skill_id": "ut115.stock.balance",
+      "version": "1.0.0",
+      "digest": "d83818552ec0f5e9cf7aade3bf3ef38dde1d96211b14081fd524be01ddede48d"
+    },
+    {
+      "skill_id": "ut115.sales.order-header-status-by-number",
+      "version": "1.0.0",
+      "digest": "bf145039f269f4a1de9be4a9f16590efa8c35121e1a3b701db6299a5c97a7959"
+    },
+    {
+      "skill_id": "ut115.sales.order-lines",
+      "version": "1.0.0",
+      "digest": "df44467b5cda922cda8344cf184890d56ce0f6dc2bde525c43aa6ec021421152"
+    }
+  ],
+  "provenance": {
+    "author": "ChatBot 1C slice 1",
+    "created_at": "2026-07-21T00:00:00Z",
+    "release_note_ru": "Первый production catalog для обязательных сценариев slice 1.",
+    "source_references": [
+      {
+        "kind": "configuration_metadata",
+        "uri": "ut-config://11.5.27.56/Catalogs/Номенклатура.xml",
+        "sha256": "5fd976edf70c1dd0c65aeabce8362e6767876bcc9e33985d0aa47bdbbe8a86f4"
+      },
+      {
+        "kind": "configuration_metadata",
+        "uri": "ut-config://11.5.27.56/AccumulationRegisters/ТоварыНаСкладах.xml",
+        "sha256": "40dd46f5fd7be824dbb68c317c961973c92a06c534943419e552f0ba8d8f3113"
+      },
+      {
+        "kind": "configuration_metadata",
+        "uri": "ut-config://11.5.27.56/Documents/ЗаказКлиента.xml",
+        "sha256": "dbb8b95230a929de03c7af4534adea7550d6de72fdaca9e2defb9c38978d1a61"
+      },
+      {
+        "kind": "built_in_help",
+        "uri": "ut-help://11.5.27.56/Documents/ЗаказКлиента/Ext/Help/ru.html#top",
+        "sha256": "0a5de708506f8fd2d491e71a0ac30e106cb8705f241f883aacfa34b011810902"
+      }
+    ]
+  },
+  "integrity": {
+    "algorithm": "sha256",
+    "canonicalization": "RFC8785",
+    "scope": "document_without_integrity",
+    "digest": "2b7d1202567bf224bc7fa5eb8291f546e31af60898b2720e9acaf527e3118f1c"
+  }
+}
