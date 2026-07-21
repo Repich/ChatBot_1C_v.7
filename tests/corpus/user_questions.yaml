@@ -1,0 +1,1007 @@
+schema_version: 1
+corpus_id: ut_11_5_27_56_mvp
+title: "Эталонный корпус пользовательских вопросов ChatBot 1C v7"
+scenario_count: 106
+target:
+  configuration: "1С:Управление торговлей (базовая), редакция 11"
+  release: "11.5.27.56"
+  compatibility_mode: "8.3.27"
+  documentation_priority: "Встроенная справка целевой выгрузки"
+  data_source: "Локальная демонстрационная база УТ через read-only MCP"
+baseline_policy: >-
+  Фактические эталоны для сценариев типа data формируются автоматически на
+  контрольной базе и сохраняются вместе с маркером состояния данных. При
+  изменении маркера фактические эталоны должны быть сформированы заново.
+type_definitions:
+  data: "Ответ требует фактических данных контрольной базы."
+  documentation: "Ответ подтверждается доступной документацией."
+  follow_up: "Ответ должен корректно использовать контекст предыдущих сообщений."
+  negative: "Ожидается уточнение, отказ, отсутствие данных или контролируемая ошибка."
+
+scenarios:
+  - id: Q001
+    category: documentation
+    type: documentation
+    question: "Что такое заказ клиента в УТ?"
+    expected_behavior: >-
+      Дать краткое определение назначения заказа клиента и сослаться на
+      встроенную справку целевого релиза.
+    capability_ids: [CAP-DOC-TERM, CAP-DOC-SOURCE]
+
+  - id: Q002
+    category: documentation
+    type: documentation
+    question: "Чем партнер отличается от контрагента?"
+    expected_behavior: >-
+      Объяснить бизнес-различие понятий без их смешения и привести источник из
+      встроенной справки.
+    capability_ids: [CAP-DOC-TERM, CAP-DOC-SOURCE]
+
+  - id: Q003
+    category: documentation
+    type: documentation
+    question: "Как оформить продажу товара клиенту?"
+    expected_behavior: >-
+      Описать подтвержденную документацией последовательность типовой продажи,
+      существенные предварительные условия и источник.
+    capability_ids: [CAP-DOC-SEARCH, CAP-DOC-PROCEDURE, CAP-DOC-SOURCE]
+
+  - id: Q004
+    category: documentation
+    type: documentation
+    question: "Как создать заказ поставщику?"
+    expected_behavior: >-
+      Описать типовой порядок создания заказа поставщику и сослаться на
+      встроенную справку.
+    capability_ids: [CAP-DOC-SEARCH, CAP-DOC-PROCEDURE, CAP-DOC-SOURCE]
+
+  - id: Q005
+    category: documentation
+    type: documentation
+    question: "Как переместить товар между складами?"
+    expected_behavior: >-
+      Описать подтвержденную последовательность оформления перемещения и
+      существенные условия выполнения операции.
+    capability_ids: [CAP-DOC-SEARCH, CAP-DOC-PROCEDURE, CAP-DOC-SOURCE]
+
+  - id: Q006
+    category: documentation
+    type: documentation
+    question: "Как оформить возврат товара от клиента?"
+    expected_behavior: >-
+      Описать порядок оформления возврата с указанием документационного
+      источника и не добавлять неподтвержденные шаги.
+    capability_ids: [CAP-DOC-SEARCH, CAP-DOC-PROCEDURE, CAP-DOC-SOURCE]
+
+  - id: Q007
+    category: documentation
+    type: documentation
+    question: "Почему не проводится реализация при наличии товара на складе?"
+    expected_behavior: >-
+      Перечислить только подтвержденные возможные причины, предложить
+      проверяемые действия и не заявлять одну причину без диагностики.
+    capability_ids: [CAP-DOC-SEARCH, CAP-DOC-ERROR, CAP-DOC-SOURCE]
+
+  - id: Q008
+    category: documentation
+    type: documentation
+    question: "Где настраиваются виды цен?"
+    expected_behavior: >-
+      Указать подтвержденное документацией место и назначение настройки видов
+      цен для целевого релиза.
+    capability_ids: [CAP-DOC-SEARCH, CAP-DOC-PROCEDURE, CAP-DOC-SOURCE]
+
+  - id: Q009
+    category: documentation
+    type: documentation
+    question: "Как провести инвентаризацию склада?"
+    expected_behavior: >-
+      Описать основные этапы инвентаризации в правильном порядке и сослаться на
+      встроенную справку.
+    capability_ids: [CAP-DOC-SEARCH, CAP-DOC-PROCEDURE, CAP-DOC-SOURCE]
+
+  - id: Q010
+    category: documentation
+    type: documentation
+    question: "Что означает статус заказа «К выполнению»?"
+    expected_behavior: >-
+      Объяснить бизнес-смысл статуса, его существенные последствия и источник,
+      не подменяя статус фактом полного исполнения.
+    capability_ids: [CAP-DOC-STATUS, CAP-DOC-SOURCE]
+
+  - id: Q011
+    category: reference_data
+    type: data
+    question: "Найди номенклатуру с артикулом V100123588."
+    expected_behavior: >-
+      Найти позиции по точному артикулу, показать идентифицирующие реквизиты или
+      подтвердить отсутствие совпадений.
+    capability_ids: [CAP-REF-ITEM-FIND]
+
+  - id: Q012
+    category: reference_data
+    type: data
+    question: "Покажи всю номенклатуру, в названии которой есть слово «куртка»."
+    expected_behavior: >-
+      Вернуть все подтвержденные совпадения по наименованию с понятным числом
+      результатов и без условия на начало строки.
+    capability_ids: [CAP-REF-ITEM-FIND]
+
+  - id: Q013
+    category: reference_data
+    type: data
+    question: "Какой штрихкод у телевизора «Рубин»?"
+    expected_behavior: >-
+      Однозначно найти товар, показать его штрихкод и идентифицирующие реквизиты;
+      при нескольких товарах запросить уточнение.
+    capability_ids: [CAP-REF-ITEM-FIND, CAP-REF-ITEM-DETAILS]
+
+  - id: Q014
+    category: reference_data
+    type: data
+    question: "В каких единицах хранится товар «Пиво светлое»?"
+    expected_behavior: >-
+      Найти товар и показать доступные единицы хранения или учета, не смешивая
+      их с количеством остатка.
+    capability_ids: [CAP-REF-ITEM-FIND, CAP-REF-ITEM-DETAILS]
+
+  - id: Q015
+    category: reference_data
+    type: data
+    question: "Покажи товары без заполненного артикула."
+    expected_behavior: >-
+      Вернуть ограниченный или полный по запросу список товаров с действительно
+      пустым артикулом и указать количество найденных позиций.
+    capability_ids: [CAP-REF-ITEM-FIND, CAP-COMMON-COUNT]
+
+  - id: Q016
+    category: reference_data
+    type: data
+    question: "Сколько товаров входит в группу «Бытовая техника»?"
+    expected_behavior: >-
+      Найти требуемую группу, посчитать относящуюся к ней номенклатуру и явно
+      указать правило учета вложенных групп, если оно влияет на результат.
+    capability_ids: [CAP-REF-ITEM-GROUP, CAP-COMMON-COUNT]
+
+  - id: Q017
+    category: reference_data
+    type: data
+    question: "Покажи карточку клиента «Альтаир»."
+    expected_behavior: >-
+      Найти именно клиента, показать доступные бизнес-реквизиты и не заменить
+      его договором или объектом расчетов.
+    capability_ids: [CAP-REF-PARTNER-FIND, CAP-REF-PARTNER-DETAILS]
+
+  - id: Q018
+    category: reference_data
+    type: data
+    question: "Найди поставщиков, в названии которых есть «Электро»."
+    expected_behavior: >-
+      Вернуть партнеров, подтвержденных в роли поставщика, с совпадением по
+      подстроке и не включать одноименных клиентов без этой роли.
+    capability_ids: [CAP-REF-PARTNER-FIND]
+
+  - id: Q019
+    category: reference_data
+    type: data
+    question: "Покажи все розничные склады."
+    expected_behavior: >-
+      Вернуть склады, удовлетворяющие фактическому признаку розничного склада,
+      и показать этот признак или объяснить невозможность его определить.
+    capability_ids: [CAP-REF-WAREHOUSE-FIND]
+
+  - id: Q020
+    category: reference_data
+    type: data
+    question: "Какие кассы относятся к организации «Торговый дом»?"
+    expected_behavior: >-
+      Вернуть кассы и доступные типы касс выбранной организации без включения
+      касс других организаций.
+    capability_ids: [CAP-REF-CASH-DESK-FIND]
+
+  - id: Q021
+    category: pricing
+    type: data
+    question: "Покажи розничные цены на пальто."
+    expected_behavior: >-
+      Найти подходящую номенклатуру и вид розничной цены, затем показать
+      действующие цены с датой, валютой и единицей.
+    capability_ids: [CAP-REF-ITEM-FIND, CAP-REF-PRICE-TYPE-FIND, CAP-PRICE-CURRENT]
+
+  - id: Q022
+    category: pricing
+    type: data
+    question: "Покажи последнюю закупочную цену на пиво."
+    expected_behavior: >-
+      Найти подходящие товары, определить последнюю фактическую закупочную цену
+      и показать дату и документ-основание.
+    capability_ids: [CAP-REF-ITEM-FIND, CAP-PRICE-LAST-PURCHASE]
+
+  - id: Q023
+    category: pricing
+    type: data
+    question: "Покажи последнюю закупочную цену на пиво без НДС."
+    expected_behavior: >-
+      Показать последнюю закупочную цену без НДС, использованную ставку НДС,
+      дату и документ-основание.
+    capability_ids: [CAP-REF-ITEM-FIND, CAP-PRICE-LAST-PURCHASE, CAP-PRICE-VAT]
+
+  - id: Q024
+    category: pricing
+    type: data
+    question: "Сравни розничную и оптовую цену телевизора «Рубин»."
+    expected_behavior: >-
+      Однозначно найти товар и сопоставить два вида цен на одну дату, в одной
+      валюте и единице либо явно указать несопоставимость.
+    capability_ids: [CAP-REF-ITEM-FIND, CAP-REF-PRICE-TYPE-FIND, CAP-PRICE-COMPARE]
+
+  - id: Q025
+    category: pricing
+    type: data
+    question: "Покажи историю розничной цены на куртку за 2024 год."
+    expected_behavior: >-
+      Вернуть изменения розничной цены подходящей номенклатуры внутри заданного
+      периода в хронологическом порядке.
+    capability_ids: [CAP-COMMON-PERIOD, CAP-REF-ITEM-FIND, CAP-REF-PRICE-TYPE-FIND, CAP-PRICE-HISTORY]
+
+  - id: Q026
+    category: pricing
+    type: data
+    question: "Какие товары сейчас не имеют розничной цены?"
+    expected_behavior: >-
+      Вернуть товары без действующей розничной цены на текущий момент, отдельно
+      от товаров с нулевой ценой.
+    capability_ids: [CAP-REF-PRICE-TYPE-FIND, CAP-PRICE-MISSING]
+
+  - id: Q027
+    category: pricing
+    type: data
+    question: "Покажи товары с нулевой закупочной ценой."
+    expected_behavior: >-
+      Вернуть товары, для которых подтверждена именно нулевая закупочная цена,
+      не смешивая их с товарами без записи цены.
+    capability_ids: [CAP-REF-PRICE-TYPE-FIND, CAP-PRICE-MISSING]
+
+  - id: Q028
+    category: pricing
+    type: data
+    question: "Какая цена типа «Себестоимость» установлена для курток?"
+    expected_behavior: >-
+      Найти подходящие товары и точный вид цены, показать действующие значения,
+      включая подтвержденные нули.
+    capability_ids: [CAP-REF-ITEM-FIND, CAP-REF-PRICE-TYPE-FIND, CAP-PRICE-CURRENT]
+
+  - id: Q029
+    category: pricing
+    type: data
+    question: "Покажи действующие цены на все товары группы «Обувь»."
+    expected_behavior: >-
+      Если вид цены не указан и в базе их несколько, уточнить вид цены; после
+      уточнения показать цены товаров выбранной группы.
+    capability_ids: [CAP-CHAT-CLARIFY, CAP-REF-ITEM-GROUP, CAP-REF-PRICE-TYPE-FIND, CAP-PRICE-CURRENT]
+
+  - id: Q030
+    category: pricing
+    type: data
+    question: "Какая розничная цена была у телевизора на 1 января 2024 года?"
+    expected_behavior: >-
+      Показать цену, действовавшую на указанную дату, с идентификацией товара,
+      вида цены, валюты и единицы.
+    capability_ids: [CAP-COMMON-PERIOD, CAP-REF-ITEM-FIND, CAP-REF-PRICE-TYPE-FIND, CAP-PRICE-CURRENT]
+
+  - id: Q031
+    category: sales
+    type: data
+    question: "Покажи реализации за 2024 год."
+    expected_behavior: >-
+      Вернуть реализации внутри календарного 2024 года с ключевыми реквизитами,
+      общим количеством и понятным ограничением отображения.
+    capability_ids: [CAP-COMMON-PERIOD, CAP-SALES-SHIPMENT-LIST]
+
+  - id: Q032
+    category: sales
+    type: data
+    question: "Сколько реализаций было создано по месяцам в 2024 году?"
+    expected_behavior: >-
+      Подсчитать документы реализации отдельно по каждому месяцу 2024 года и
+      явно назвать считаемый тип документа.
+    capability_ids: [CAP-COMMON-PERIOD, CAP-SALES-SHIPMENT-LIST, CAP-COMMON-COUNT, CAP-COMMON-GROUP]
+
+  - id: Q033
+    category: sales
+    type: data
+    question: "Покажи общую сумму реализаций за 2024 год."
+    expected_behavior: >-
+      Вернуть сумму документов реализации за календарный год с валютой и
+      указанием примененного правила учета проведенных документов.
+    capability_ids: [CAP-COMMON-PERIOD, CAP-SALES-SHIPMENT-LIST, CAP-COMMON-AGGREGATE]
+
+  - id: Q034
+    category: sales
+    type: data
+    question: "Какая средняя стоимость реализации за 2024 год?"
+    expected_behavior: >-
+      Рассчитать среднюю сумму одной включенной реализации, показать количество
+      документов в знаменателе и валюту.
+    capability_ids: [CAP-COMMON-PERIOD, CAP-SALES-SHIPMENT-LIST, CAP-SALES-AVERAGE]
+
+  - id: Q035
+    category: sales
+    type: data
+    question: "Покажи самый крупный заказ клиента."
+    expected_behavior: >-
+      Вернуть заказ с максимальной сопоставимой суммой, его номер, дату, клиента,
+      валюту и сумму.
+    capability_ids: [CAP-SALES-ORDER-LIST, CAP-COMMON-RANK]
+
+  - id: Q036
+    category: sales
+    type: data
+    question: "В каком состоянии заказ клиента 0000-000005?"
+    expected_behavior: >-
+      Однозначно найти заказ по номеру и показать его фактический статус и
+      доступные показатели исполнения.
+    capability_ids: [CAP-COMMON-ENTITY, CAP-SALES-ORDER-STATUS]
+
+  - id: Q037
+    category: sales
+    type: follow_up
+    question: "Какие товары входят в этот заказ?"
+    context:
+      previous_scenario: Q036
+      retained_facts: [selected_sales_order]
+    expected_behavior: >-
+      Использовать заказ, подтвержденный в предыдущем ответе, и показать его
+      строки; не выбирать другой заказ по умолчанию.
+    capability_ids: [CAP-CHAT-CONTEXT, CAP-SALES-ORDER-LINES]
+
+  - id: Q038
+    category: sales
+    type: data
+    question: "Какой товар продавался больше всего в штуках за 2024 год?"
+    expected_behavior: >-
+      Суммировать проданное количество по товарам, выбрать максимум и назвать
+      единицу; не ранжировать по выручке или числу строк.
+    capability_ids: [CAP-COMMON-PERIOD, CAP-SALES-TURNOVER, CAP-COMMON-GROUP, CAP-COMMON-RANK]
+
+  - id: Q039
+    category: sales
+    type: data
+    question: "Какой товар принес наибольшую выручку за 2024 год?"
+    expected_behavior: >-
+      Сгруппировать выручку по товарам и вернуть товар с максимальной суммой,
+      указав валюту и период.
+    capability_ids: [CAP-COMMON-PERIOD, CAP-SALES-TURNOVER, CAP-COMMON-GROUP, CAP-COMMON-RANK]
+
+  - id: Q040
+    category: sales
+    type: data
+    question: "Покажи выручку и валовую прибыль по годам."
+    expected_behavior: >-
+      Показать по каждому доступному году выручку, себестоимость и валовую
+      прибыль, не называть выручку прибылью.
+    capability_ids: [CAP-FIN-REVENUE, CAP-FIN-COST, CAP-FIN-PROFIT, CAP-COMMON-GROUP]
+
+  - id: Q041
+    category: purchases
+    type: data
+    question: "Покажи последнее поступление товаров."
+    expected_behavior: >-
+      Выбрать фактически последнее поступление по дате и показать номер, дату,
+      поставщика и сумму документа.
+    capability_ids: [CAP-PURCHASE-RECEIPT-LIST, CAP-COMMON-RANK]
+
+  - id: Q042
+    category: purchases
+    type: follow_up
+    question: "Какая номенклатура пришла в последнем поступлении?"
+    context:
+      previous_scenario: Q041
+      retained_facts: [selected_purchase_receipt]
+    expected_behavior: >-
+      Использовать поступление из предыдущего ответа и показать все его товарные
+      строки с количеством и ценой.
+    capability_ids: [CAP-CHAT-CONTEXT, CAP-PURCHASE-RECEIPT-LINES]
+
+  - id: Q043
+    category: purchases
+    type: data
+    question: "Покажи самый первый закупленный товар."
+    expected_behavior: >-
+      Найти наиболее раннее поступление по подтвержденной дате и показать товары
+      этого документа, не ограничиваясь первой произвольной строкой.
+    capability_ids: [CAP-PURCHASE-RECEIPT-LIST, CAP-COMMON-RANK, CAP-PURCHASE-RECEIPT-LINES]
+
+  - id: Q044
+    category: purchases
+    type: data
+    question: "Сколько поступлений было в 2024 году?"
+    expected_behavior: >-
+      Подсчитать документы поступления внутри календарного года и явно указать,
+      какие документы вошли в расчет.
+    capability_ids: [CAP-COMMON-PERIOD, CAP-PURCHASE-RECEIPT-LIST, CAP-COMMON-COUNT]
+
+  - id: Q045
+    category: purchases
+    type: data
+    question: "Покажи суммы закупок по поставщикам за 2024 год."
+    expected_behavior: >-
+      Сгруппировать сумму закупок по поставщикам за период и указать валюту и
+      правило включения документов.
+    capability_ids: [CAP-COMMON-PERIOD, CAP-PURCHASE-TURNOVER, CAP-COMMON-GROUP]
+
+  - id: Q046
+    category: purchases
+    type: data
+    question: "Какие заказы поставщикам еще не выполнены?"
+    expected_behavior: >-
+      Вернуть заказы с подтвержденным незавершенным исполнением и показать
+      статус или показатель, на основании которого сделан вывод.
+    capability_ids: [CAP-PURCHASE-ORDER-LIST, CAP-PURCHASE-ORDER-STATUS]
+
+  - id: Q047
+    category: purchases
+    type: data
+    question: "Какие товары заказаны, но еще не поступили?"
+    expected_behavior: >-
+      Показать товары и ожидаемое количество по невыполненным поставкам, не
+      смешивая их с уже поступившим количеством.
+    capability_ids: [CAP-PURCHASE-EXPECTED]
+
+  - id: Q048
+    category: purchases
+    type: data
+    question: "Когда последний раз закупали телевизор «Рубин»?"
+    expected_behavior: >-
+      Найти товар и вернуть дату и документ последней подтвержденной закупки с
+      количеством и ценой, если они доступны.
+    capability_ids: [CAP-REF-ITEM-FIND, CAP-PURCHASE-RECEIPT-LIST, CAP-PURCHASE-RECEIPT-LINES, CAP-COMMON-RANK]
+
+  - id: Q049
+    category: purchases
+    type: data
+    question: "Покажи возвраты поставщикам за 2024 год."
+    expected_behavior: >-
+      Вернуть документы и основные показатели возвратов поставщикам внутри
+      календарного года.
+    capability_ids: [CAP-COMMON-PERIOD, CAP-PURCHASE-RETURN]
+
+  - id: Q050
+    category: purchases
+    type: data
+    question: "Какая закупка была самой крупной по сумме?"
+    expected_behavior: >-
+      Вернуть закупочный документ с максимальной сопоставимой суммой, указав
+      документ, дату, поставщика, сумму и валюту.
+    capability_ids: [CAP-PURCHASE-RECEIPT-LIST, CAP-COMMON-RANK]
+
+  - id: Q051
+    category: inventory
+    type: data
+    question: "Покажи остатки курток."
+    expected_behavior: >-
+      Найти все подходящие товары и показать их фактический остаток на текущий
+      момент с достаточной идентификацией номенклатуры.
+    capability_ids: [CAP-REF-ITEM-FIND, CAP-STOCK-BALANCE, CAP-STOCK-BY-ITEM]
+
+  - id: Q052
+    category: inventory
+    type: data
+    question: "Покажи остатки курток по складам."
+    expected_behavior: >-
+      Детализировать фактические остатки найденных товаров по каждому складу и
+      не потерять номенклатуру в результате.
+    capability_ids: [CAP-REF-ITEM-FIND, CAP-STOCK-BALANCE, CAP-STOCK-BY-WAREHOUSE, CAP-STOCK-BY-ITEM]
+
+  - id: Q053
+    category: inventory
+    type: data
+    question: "Сколько курток находится на Центральном складе?"
+    expected_behavior: >-
+      Найти товары и склад, показать суммарное количество и при нескольких
+      позициях дать детализацию по номенклатуре.
+    capability_ids: [CAP-REF-ITEM-FIND, CAP-REF-WAREHOUSE-FIND, CAP-STOCK-BALANCE, CAP-COMMON-AGGREGATE]
+
+  - id: Q054
+    category: inventory
+    type: data
+    question: "Покажи остатки товаров только на розничных складах."
+    expected_behavior: >-
+      Отобрать склады по фактическому признаку розничного склада и показать
+      остатки с ограничением списка и возможностью получить продолжение.
+    capability_ids: [CAP-REF-WAREHOUSE-FIND, CAP-STOCK-BALANCE, CAP-STOCK-BY-ITEM]
+
+  - id: Q055
+    category: inventory
+    type: data
+    question: "Сколько ботинок доступно и сколько зарезервировано?"
+    expected_behavior: >-
+      Найти подходящие товары и отдельно показать доступное и зарезервированное
+      количество на один момент времени.
+    capability_ids: [CAP-REF-ITEM-FIND, CAP-STOCK-AVAILABLE, CAP-STOCK-RESERVED]
+
+  - id: Q056
+    category: inventory
+    type: data
+    question: "Какого товара больше всего в розничном магазине?"
+    expected_behavior: >-
+      Если розничных складов несколько, уточнить магазин; затем ранжировать
+      товары выбранного склада по количеству остатка.
+    capability_ids: [CAP-CHAT-CLARIFY, CAP-REF-WAREHOUSE-FIND, CAP-STOCK-BALANCE, CAP-STOCK-BY-ITEM, CAP-STOCK-RANK]
+
+  - id: Q057
+    category: inventory
+    type: data
+    question: "Покажи склады с самыми большими остатками."
+    expected_behavior: >-
+      Если единица сопоставления не определена, уточнить требуемый показатель;
+      после уточнения ранжировать склады и назвать показатель.
+    capability_ids: [CAP-CHAT-CLARIFY, CAP-STOCK-BALANCE, CAP-STOCK-BY-WAREHOUSE, CAP-STOCK-RANK]
+
+  - id: Q058
+    category: inventory
+    type: data
+    question: "Какие товары закончились на Центральном складе?"
+    expected_behavior: >-
+      Найти склад и вернуть относящиеся к учитываемому ассортименту товары с
+      подтвержденным нулевым или отрицательным остатком, объяснив критерий.
+    capability_ids: [CAP-REF-WAREHOUSE-FIND, CAP-STOCK-DEFICIT]
+
+  - id: Q059
+    category: inventory
+    type: data
+    question: "Покажи остатки телевизоров на 31 декабря 2023 года."
+    expected_behavior: >-
+      Найти подходящие товары и показать остатки на конец указанной даты, явно
+      указав момент расчета.
+    capability_ids: [CAP-COMMON-PERIOD, CAP-REF-ITEM-FIND, CAP-STOCK-BALANCE, CAP-STOCK-BY-ITEM]
+
+  - id: Q060
+    category: inventory
+    type: data
+    question: "Покажи движения курток за последний месяц."
+    expected_behavior: >-
+      Найти товары, определить относительный период и показать приход, расход и
+      связанные документы движения.
+    capability_ids: [CAP-COMMON-PERIOD, CAP-REF-ITEM-FIND, CAP-STOCK-MOVEMENT]
+
+  - id: Q061
+    category: logistics
+    type: data
+    question: "Покажи количество перемещений по дням за последний месяц."
+    expected_behavior: >-
+      Определить относительный период, подсчитать документы перемещения по
+      календарным дням и явно назвать считаемый объект.
+    capability_ids: [CAP-COMMON-PERIOD, CAP-MOVE-LIST, CAP-COMMON-COUNT, CAP-COMMON-GROUP]
+
+  - id: Q062
+    category: logistics
+    type: data
+    question: "Найди перемещение с номером 0000-000010."
+    expected_behavior: >-
+      Однозначно найти документ перемещения и показать ключевые реквизиты либо
+      подтвердить отсутствие документа с таким номером.
+    capability_ids: [CAP-COMMON-ENTITY, CAP-MOVE-LIST]
+
+  - id: Q063
+    category: logistics
+    type: follow_up
+    question: "В каком состоянии это перемещение?"
+    context:
+      previous_scenario: Q062
+      retained_facts: [selected_stock_transfer]
+    expected_behavior: >-
+      Использовать найденное в предыдущем сообщении перемещение и показать его
+      фактический статус, не выполняя выбор другого документа.
+    capability_ids: [CAP-CHAT-CONTEXT, CAP-MOVE-STATUS]
+
+  - id: Q064
+    category: logistics
+    type: follow_up
+    question: "Какие товары входят в это перемещение?"
+    context:
+      previous_scenario: Q062
+      retained_facts: [selected_stock_transfer]
+    expected_behavior: >-
+      Показать строки того же перемещения с номенклатурой и количеством.
+    capability_ids: [CAP-CHAT-CONTEXT, CAP-MOVE-LINES]
+
+  - id: Q065
+    category: logistics
+    type: data
+    question: "Какие перемещения отправлялись с Центрального склада?"
+    expected_behavior: >-
+      Найти склад и вернуть перемещения, где он является именно складом
+      отправления, с понятным периодом или уточнением периода.
+    capability_ids: [CAP-CHAT-CLARIFY, CAP-REF-WAREHOUSE-FIND, CAP-MOVE-DIRECTION]
+
+  - id: Q066
+    category: logistics
+    type: data
+    question: "Какие перемещения еще не приняты складом-получателем?"
+    expected_behavior: >-
+      Вернуть документы с подтвержденным незавершенным приемом и показать
+      статус или показатель, на котором основан вывод.
+    capability_ids: [CAP-MOVE-LIST, CAP-MOVE-STATUS]
+
+  - id: Q067
+    category: logistics
+    type: data
+    question: "Покажи результаты последней инвентаризации."
+    expected_behavior: >-
+      Найти последнюю инвентаризацию по подтвержденной дате и показать склад,
+      учетное количество, фактическое количество и расхождения.
+    capability_ids: [CAP-INVENTORY-RESULT, CAP-COMMON-RANK]
+
+  - id: Q068
+    category: logistics
+    type: data
+    question: "Какие товары были списаны на внутреннее потребление в этом месяце?"
+    expected_behavior: >-
+      Определить текущий календарный месяц и показать товары, количество и
+      документы внутреннего потребления.
+    capability_ids: [CAP-COMMON-PERIOD, CAP-INTERNAL-CONSUMPTION]
+
+  - id: Q069
+    category: logistics
+    type: data
+    question: "Когда должна быть выполнена доставка по заказу 0000-000005?"
+    expected_behavior: >-
+      Найти заказ и показать плановую дату доставки и статус; если доставка для
+      заказа не оформлена, прямо сообщить об этом.
+    capability_ids: [CAP-COMMON-ENTITY, CAP-DELIVERY-STATUS, CAP-DELIVERY-DATE]
+
+  - id: Q070
+    category: logistics
+    type: data
+    question: "Покажи просроченные доставки."
+    expected_behavior: >-
+      Вернуть доставки, у которых подтвержденная плановая дата прошла, а
+      завершение не подтверждено; показать основание признания просрочки.
+    capability_ids: [CAP-DELIVERY-STATUS, CAP-DELIVERY-DATE]
+
+  - id: Q071
+    category: settlements
+    type: data
+    question: "Покажи общую дебиторскую задолженность."
+    expected_behavior: >-
+      Показать сумму задолженности клиентов на текущую дату с валютой и не
+      подменять ее суммой документов отгрузки.
+    capability_ids: [CAP-SETTLEMENT-AR, CAP-COMMON-AGGREGATE]
+
+  - id: Q072
+    category: settlements
+    type: data
+    question: "Какой клиент должен нам больше всего?"
+    expected_behavior: >-
+      Сгруппировать дебиторскую задолженность по клиенту, выбрать максимальную
+      сумму и вернуть именно клиента, а не договор или объект расчетов.
+    capability_ids: [CAP-SETTLEMENT-AR, CAP-SETTLEMENT-RANK]
+
+  - id: Q073
+    category: settlements
+    type: follow_up
+    question: "Покажи реквизиты этого клиента."
+    context:
+      previous_scenario: Q072
+      retained_facts: [selected_customer]
+    expected_behavior: >-
+      Использовать клиента из предыдущего ответа и показать его ИНН, КПП,
+      юридический адрес и доступные контакты.
+    capability_ids: [CAP-CHAT-CONTEXT, CAP-REF-PARTNER-DETAILS]
+
+  - id: Q074
+    category: settlements
+    type: data
+    question: "У какого клиента самая маленькая положительная задолженность?"
+    expected_behavior: >-
+      Исключить нулевые и отрицательные значения, выбрать минимальную
+      положительную сумму и вернуть клиента с показателем.
+    capability_ids: [CAP-SETTLEMENT-AR, CAP-SETTLEMENT-RANK]
+
+  - id: Q075
+    category: settlements
+    type: data
+    question: "Покажи общую кредиторскую задолженность."
+    expected_behavior: >-
+      Показать фактическую задолженность перед поставщиками на текущую дату с
+      валютой и не подменять ее суммой поступлений.
+    capability_ids: [CAP-SETTLEMENT-AP, CAP-COMMON-AGGREGATE]
+
+  - id: Q076
+    category: settlements
+    type: data
+    question: "Кому мы должны за последнюю поставку и сколько?"
+    expected_behavior: >-
+      Найти последнее поступление, определить его поставщика и показать
+      фактическую связанную задолженность; сумму документа назвать отдельно.
+    capability_ids: [CAP-PURCHASE-RECEIPT-LIST, CAP-COMMON-RANK, CAP-PURCHASE-RECEIPT-HEADER, CAP-SETTLEMENT-AP, CAP-SETTLEMENT-BY-DOCUMENT]
+
+  - id: Q077
+    category: settlements
+    type: data
+    question: "Кто нам должен за последнюю отгрузку и сколько?"
+    expected_behavior: >-
+      Если «сколько» допускает сумму документа и фактический долг, уточнить
+      показатель; затем вернуть клиента и выбранный показатель по той же
+      последней отгрузке.
+    capability_ids: [CAP-CHAT-CLARIFY, CAP-SALES-SHIPMENT-LIST, CAP-COMMON-RANK, CAP-SETTLEMENT-AR, CAP-SETTLEMENT-BY-DOCUMENT]
+
+  - id: Q078
+    category: settlements
+    type: data
+    question: "Покажи просроченную дебиторскую задолженность."
+    expected_behavior: >-
+      Вернуть только задолженность с подтвержденным сроком оплаты и фактом
+      просрочки; если сроки недоступны, объяснить ограничение.
+    capability_ids: [CAP-SETTLEMENT-OVERDUE]
+
+  - id: Q079
+    category: settlements
+    type: data
+    question: "Детализируй задолженность клиента «Альтаир» по документам."
+    expected_behavior: >-
+      Найти клиента и показать суммы по доступным объектам расчетов, сохранив
+      клиента как верхний уровень и не называя договор клиентом.
+    capability_ids: [CAP-REF-PARTNER-FIND, CAP-SETTLEMENT-AR, CAP-SETTLEMENT-DETAIL]
+
+  - id: Q080
+    category: settlements
+    type: data
+    question: "Покажи клиентов, у которых не было продаж последние шесть месяцев."
+    expected_behavior: >-
+      Определить период, сравнить клиентскую базу с подтвержденными продажами и
+      вернуть клиентов без продаж, объяснив критерий включения.
+    capability_ids: [CAP-COMMON-PERIOD, CAP-REF-PARTNER-FIND, CAP-CUSTOMER-NO-ACTIVITY]
+
+  - id: Q081
+    category: cash_and_finance
+    type: data
+    question: "Покажи остаток денежных средств в кассах организации."
+    expected_behavior: >-
+      Если организация не определена однозначно, уточнить ее; затем показать
+      остаток по каждой кассе и валюте на текущий момент.
+    capability_ids: [CAP-CHAT-CLARIFY, CAP-REF-CASH-DESK-FIND, CAP-CASH-BALANCE]
+
+  - id: Q082
+    category: cash_and_finance
+    type: follow_up
+    question: "Покажи остатки отдельно по кассам и автономным ККМ."
+    context:
+      previous_scenario: Q081
+      retained_facts: [selected_organization, balance_moment]
+    expected_behavior: >-
+      Сохранить организацию и момент предыдущего вопроса, включить оба типа
+      касс и показать их раздельно.
+    capability_ids: [CAP-CHAT-CONTEXT, CAP-REF-CASH-DESK-FIND, CAP-CASH-BALANCE]
+
+  - id: Q083
+    category: cash_and_finance
+    type: data
+    question: "Покажи остатки на банковских счетах."
+    expected_behavior: >-
+      Показать остаток на текущий момент по каждому банковскому счету,
+      организации и валюте.
+    capability_ids: [CAP-CASH-BANK-BALANCE]
+
+  - id: Q084
+    category: cash_and_finance
+    type: data
+    question: "Сколько наличных поступило за 2024 год?"
+    expected_behavior: >-
+      Суммировать подтвержденные поступления наличных за календарный год,
+      указать валюту и не включать банковские поступления.
+    capability_ids: [CAP-COMMON-PERIOD, CAP-CASH-RECEIPTS, CAP-COMMON-AGGREGATE]
+
+  - id: Q085
+    category: cash_and_finance
+    type: data
+    question: "Сколько наличных было израсходовано за 2024 год?"
+    expected_behavior: >-
+      Суммировать подтвержденные расходы наличных за календарный год, указать
+      валюту и не включать банковские списания.
+    capability_ids: [CAP-COMMON-PERIOD, CAP-CASH-EXPENSES, CAP-COMMON-AGGREGATE]
+
+  - id: Q086
+    category: cash_and_finance
+    type: data
+    question: "Покажи движение денежных средств по месяцам."
+    expected_behavior: >-
+      Если период не следует из контекста, уточнить его; показать приход, расход
+      и чистое движение отдельно по месяцам.
+    capability_ids: [CAP-CHAT-CLARIFY, CAP-CASH-FLOW, CAP-COMMON-GROUP]
+
+  - id: Q087
+    category: cash_and_finance
+    type: data
+    question: "Покажи выручку и прибыль за 2025 год."
+    expected_behavior: >-
+      Показать выручку, себестоимость и валовую прибыль за календарный год с
+      явными названиями каждого показателя.
+    capability_ids: [CAP-COMMON-PERIOD, CAP-FIN-REVENUE, CAP-FIN-COST, CAP-FIN-PROFIT]
+
+  - id: Q088
+    category: cash_and_finance
+    type: data
+    question: "Покажи выручку и прибыль за все годы по годам."
+    expected_behavior: >-
+      Показать сопоставимые значения выручки, себестоимости и валовой прибыли по
+      каждому году доступных данных.
+    capability_ids: [CAP-FIN-REVENUE, CAP-FIN-COST, CAP-FIN-PROFIT, CAP-FIN-TREND, CAP-COMMON-GROUP]
+
+  - id: Q089
+    category: cash_and_finance
+    type: data
+    question: "Какие товары дали отрицательную валовую прибыль?"
+    expected_behavior: >-
+      Вернуть товары с подтвержденной отрицательной валовой прибылью, показав
+      выручку, себестоимость, прибыль и примененный период.
+    capability_ids: [CAP-CHAT-CLARIFY, CAP-FIN-REVENUE, CAP-FIN-COST, CAP-FIN-PROFIT, CAP-COMMON-GROUP]
+
+  - id: Q090
+    category: cash_and_finance
+    type: data
+    question: "Покажи пять товаров с наибольшей валовой прибылью."
+    expected_behavior: >-
+      Если период не определен, уточнить его; вернуть ровно пять верхних товаров
+      с выручкой, себестоимостью и валовой прибылью.
+    capability_ids: [CAP-CHAT-CLARIFY, CAP-FIN-REVENUE, CAP-FIN-COST, CAP-FIN-PROFIT, CAP-COMMON-GROUP, CAP-COMMON-RANK]
+
+  - id: Q091
+    category: dialogue_and_failures
+    type: data
+    question: "Покажи остатки курток на розничных складах."
+    expected_behavior: >-
+      Найти подходящие товары и розничные склады, показать остаток с
+      детализацией по товару и складу и сохранить оба условия в контексте.
+    capability_ids: [CAP-REF-ITEM-FIND, CAP-REF-WAREHOUSE-FIND, CAP-STOCK-BALANCE, CAP-STOCK-BY-WAREHOUSE, CAP-STOCK-BY-ITEM]
+
+  - id: Q092
+    category: dialogue_and_failures
+    type: follow_up
+    question: "А теперь ботинок."
+    context:
+      previous_scenario: Q091
+      retained_facts: [retail_warehouses, balance_moment]
+      replaced_facts: [selected_items]
+    expected_behavior: >-
+      Заменить только товар, сохранить условие по розничным складам и момент
+      расчета и показать остатки ботинок.
+    capability_ids: [CAP-CHAT-CONTEXT, CAP-REF-ITEM-FIND, CAP-STOCK-BALANCE, CAP-STOCK-BY-WAREHOUSE, CAP-STOCK-BY-ITEM]
+
+  - id: Q093
+    category: dialogue_and_failures
+    type: follow_up
+    question: "Сделай детализацию по номенклатуре."
+    context:
+      previous_scenario: Q092
+      retained_facts: [selected_items, retail_warehouses, balance_moment]
+    expected_behavior: >-
+      Сохранить условия предыдущего вопроса и изменить только детализацию,
+      обязательно показывая номенклатуру в каждой строке результата.
+    capability_ids: [CAP-CHAT-CONTEXT, CAP-STOCK-BALANCE, CAP-STOCK-BY-ITEM]
+
+  - id: Q094
+    category: dialogue_and_failures
+    type: data
+    question: "Покажи последнее поступление."
+    expected_behavior: >-
+      Найти одно фактически последнее поступление, показать его идентифицирующие
+      реквизиты и сохранить ссылку на него в контексте.
+    capability_ids: [CAP-PURCHASE-RECEIPT-LIST, CAP-COMMON-RANK]
+
+  - id: Q095
+    category: dialogue_and_failures
+    type: follow_up
+    question: "Кто там поставщик и какая сумма?"
+    context:
+      previous_scenario: Q094
+      retained_facts: [selected_purchase_receipt]
+    expected_behavior: >-
+      Взять поставщика и сумму именно из поступления предыдущего ответа, не
+      выполнять независимый поиск другого документа.
+    capability_ids: [CAP-CHAT-CONTEXT, CAP-PURCHASE-RECEIPT-HEADER]
+
+  - id: Q096
+    category: dialogue_and_failures
+    type: data
+    question: "Покажи клиента с самой большой задолженностью."
+    expected_behavior: >-
+      Вернуть именно клиента с максимальной суммарной дебиторской задолженностью
+      и сохранить его как выбранный объект.
+    capability_ids: [CAP-SETTLEMENT-AR, CAP-SETTLEMENT-RANK]
+
+  - id: Q097
+    category: dialogue_and_failures
+    type: follow_up
+    question: "Покажи его ИНН, КПП и юридический адрес."
+    context:
+      previous_scenario: Q096
+      retained_facts: [selected_customer]
+    expected_behavior: >-
+      Показать реквизиты клиента из предыдущего ответа и не заменить его
+      договором, объектом расчетов или другим контрагентом.
+    capability_ids: [CAP-CHAT-CONTEXT, CAP-REF-PARTNER-DETAILS]
+
+  - id: Q098
+    category: dialogue_and_failures
+    type: negative
+    question: "Покажи оборот."
+    expected_behavior: >-
+      Не выбирать показатель автоматически; уточнить вид оборота, требуемый
+      показатель и период.
+    capability_ids: [CAP-CHAT-CLARIFY]
+
+  - id: Q099
+    category: dialogue_and_failures
+    type: negative
+    question: "Покажи остатки на складе."
+    expected_behavior: >-
+      Уточнить склад и способ ограничения номенклатуры либо предложить явно
+      ограниченный обзор; не запускать неограниченную выборку молча.
+    capability_ids: [CAP-CHAT-CLARIFY]
+
+  - id: Q100
+    category: dialogue_and_failures
+    type: negative
+    question: "Какая сейчас погода?"
+    expected_behavior: >-
+      Коротко сообщить, что вопрос не относится к данным и документации УТ, и
+      обозначить фактическую область ассистента.
+    capability_ids: [CAP-CHAT-OUT-OF-SCOPE]
+
+  - id: Q101
+    category: dialogue_and_failures
+    type: negative
+    question: "Проведи заказ клиента 0000-000005."
+    expected_behavior: >-
+      Отказаться от изменения данных и сообщить, что MVP работает только на
+      чтение; никакая команда изменения не должна быть отправлена в 1С.
+    capability_ids: [CAP-CHAT-READ-ONLY]
+
+  - id: Q102
+    category: dialogue_and_failures
+    type: negative
+    question: "Покажи товар с артикулом TEST-NOT-EXISTS-999999."
+    expected_behavior: >-
+      После успешного корректного поиска сообщить, что товар не найден, повторив
+      искомый артикул и не создавая вымышленную позицию.
+    capability_ids: [CAP-REF-ITEM-FIND, CAP-CHAT-NOT-FOUND]
+
+  - id: Q103
+    category: dialogue_and_failures
+    type: negative
+    question: "Покажи реализации за 2099 год."
+    expected_behavior: >-
+      После успешной корректной выборки подтвердить отсутствие данных за 2099
+      год; не трактовать пустой результат как техническую ошибку.
+    capability_ids: [CAP-COMMON-PERIOD, CAP-SALES-SHIPMENT-LIST, CAP-CHAT-NOT-FOUND]
+
+  - id: Q104
+    category: dialogue_and_failures
+    type: negative
+    question: "Покажи расчет заработной платы сотрудников."
+    expected_behavior: >-
+      Сообщить, что расчет заработной платы не входит в заявленную область MVP
+      для УТ, и не пытаться подменить его другим показателем.
+    capability_ids: [CAP-CHAT-OUT-OF-SCOPE]
+
+  - id: Q105
+    category: dialogue_and_failures
+    type: negative
+    question: "Повтори предыдущий запрос при отключенном MCP."
+    precondition: "MCP недоступен, а предыдущий запрос требует фактических данных."
+    expected_behavior: >-
+      Сообщить о недоступности источника данных и идентификатор операции, не
+      выдавать сохраненный или предполагаемый результат как актуальный.
+    capability_ids: [CAP-CHAT-DEPENDENCY-ERROR]
+
+  - id: Q106
+    category: dialogue_and_failures
+    type: negative
+    question: "Повтори предыдущий запрос при таймауте DeepSeek."
+    precondition: "DeepSeek не отвечает в пределах установленного таймаута."
+    expected_behavior: >-
+      Завершить операцию контролируемым сообщением о таймауте и идентификатором,
+      сохранить работоспособность сессии и не выдумывать ответ.
+    capability_ids: [CAP-CHAT-DEPENDENCY-ERROR]
