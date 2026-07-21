@@ -120,16 +120,34 @@ retry deadline exhaustion. Нормативный black-box contract:
 
 ## 3. Entity/context slice
 
-Расширить typed resolvers и context ledger:
+Расширить typed resolvers и context ledger единым protocol, без
+object-specific branches в core:
 
 - item, item group, partner/customer/supplier, warehouse, cash desk, price type;
 - sales order, shipment, purchase receipt/order, stock transfer;
 - characteristic, series, inventory purpose как optional entity parameters;
-- pending clarification и context replacement semantics.
+- core-derived resolver outcomes `0/1/N` и selection proof: resolver candidates,
+  display lists и line rows не становятся context автоматически;
+- persisted one-use pending clarification, связанный с исходным turn/plan и
+  exact typed choices, вместо replanning recent messages как нового вопроса;
+- opaque server-side context handles и semantic slot replacement/expiry/
+  invalidation с exact origin provenance;
+- generic typed scalar/filter slots с отдельным safe `confirmed_filter` policy:
+  retained moment/period/enum/detail preference сохраняют exact value type,
+  origin/allowed-source proof и consumer compatibility без recomputation;
+- outbound DeepSeek regression gate: только handle, semantic type,
+  presentation и origin turn; полный ref остается server-side/в diagnostics.
 
 Тесты: Q013-Q020, Q029, Q037, Q042, Q056-Q057, Q062-Q064, Q073, Q081-Q082,
 Q091-Q097, Q108. Property tests проверяют, что presentation collision не меняет UUID
-identity и wrong semantic type отклоняется.
+identity и wrong semantic/physical type отклоняется до MCP. Для Q015 здесь
+проверяется resolver/list/context component; `Q015.total` и full Q015 остаются
+`not_run` до отдельного aggregate producer согласно slice 2.
+Q091 acceptance отдельно доказывает byte-for-byte сохранение balance moment в
+Q092/Q093 без refresh от нового turn time или MCP.
+
+Нормативный black-box, migration и exit-matrix contract:
+`docs/testing/slice3_acceptance_contract.md`.
 
 ## 4. Generic operators and composition slice
 

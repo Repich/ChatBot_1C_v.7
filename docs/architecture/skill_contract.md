@@ -51,8 +51,8 @@ datetime, period, enum, entity ref/list и pagination. Entity parameter соде
     "value_type": "entity_ref",
     "required": false,
     "allowed_sources": ["session_context", "previous_step"],
-    "semantic_type": "catalog.item_characteristic",
-    "entity_types": ["catalog.item_characteristic"],
+    "semantic_type": "catalog.item.characteristic",
+    "entity_types": ["catalog.item.characteristic"],
     "normalization": "object_ref"
   },
   {
@@ -62,8 +62,8 @@ datetime, period, enum, entity ref/list и pagination. Entity parameter соде
     "value_type": "entity_ref",
     "required": false,
     "allowed_sources": ["session_context", "previous_step"],
-    "semantic_type": "catalog.item_series",
-    "entity_types": ["catalog.item_series"],
+    "semantic_type": "catalog.item.series",
+    "entity_types": ["catalog.item.series"],
     "normalization": "object_ref"
   },
   {
@@ -137,6 +137,23 @@ presentation. Потеря origin pointer является `CONTEXT_PROVENANCE_M
 Проверка по префиксам `document.*`, `catalog.*`, `ДокументСсылка.*` и подобным не
 является доказательством и также не нужна: exact physical membership уже задан
 producer binding.
+
+### 2.2. Typed resolver и context selection
+
+Resolver остается portable data-query contract с candidate cardinality `many`.
+Его strict `resolution` declaration называет identity/label/role-proof facts и
+default semantic slot; core выводит use mode `select_one|select_set|display_only`
+из validated downstream cardinality. Это единый protocol для всех entity types,
+а не application classifier.
+
+`context_export_policy` является только allowlist. Фактический export требует
+core-derived SelectionProof и sufficient outcome; все entity facts rows не
+экспортируются автоматически. Отдельный `confirmed_filter` mode допускает
+non-entity moment/period/closed enum/detail preference только с exact
+`value_type`, ContextOriginProof/FilterRetentionProof и consumer
+`allowed_sources=session_context`. Он не принимает entity ref и не ослабляет
+physical producer proof. Exact schema/versioning, 0/1/N и portability gates
+заданы в `docs/testing/slice3_acceptance_contract.md`.
 
 ## 3. Data-query skill
 

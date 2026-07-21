@@ -662,8 +662,14 @@ Deliver:
   SL05-SL07, SE01 and CF01;
 - minimal stable M07 rank needed by Q056/Q057/Q096; slice 4 completes the full
   operator suite;
-- explicit context-export allowlist per output contract; no export from empty,
-  partial or ambiguous evidence;
+- explicit context-export allowlist plus core-derived SelectionProof; resolver
+  candidates, display-only lists and ordinary entity rows never export merely
+  because they contain an entity ref; an empty resolver, partial or ambiguous
+  selection never exports, while a proved selection survives a valid empty
+  downstream result;
+- separate generic `confirmed_filter` proof for typed scalar conditions such as
+  moment/period/enum/detail; exact canonical value is retained and accepted only
+  by a compatible consumer, never recomputed in a follow-up;
 - context row stores `origin_fact_instance_id`; binding restores original Fact,
   producer step and pinned skill/column contract instead of trusting copied JSON.
 
@@ -694,7 +700,9 @@ Risks:
 Exit gate:
 
 - Q013-Q020,Q029,Q037,Q042,Q056-Q057,Q062-Q064,Q073,Q081-Q082,Q091-Q097,Q108
-  pass with exact context-edge evidence;
+  pass with exact context-edge evidence, except that Q015 closes only its
+  resolver/list/context component here while `Q015.total` and full Q015 remain
+  `not_run` until the separate aggregate producer;
 - property tests cover same presentation/different UUID, renamed
   presentation/same UUID, wrong object type, forged/missing origin provenance
   and wrong semantic type; every rejection occurs before MCP;
@@ -706,6 +714,9 @@ Exit gate:
   MCP, and returned same-identity/new-presentation rows are accepted;
 - restart/reload preserves context and pending clarification; AC-016 and AC-035
   are measured over the accepted 11 follow-ups.
+
+The normative black-box protocol, migration rules and per-scenario matrix are in
+`docs/testing/slice3_acceptance_contract.md`.
 
 ### 12.3. Slice 4 - generic operators and composition
 

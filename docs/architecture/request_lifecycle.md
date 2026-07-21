@@ -297,11 +297,22 @@ pinned catalog snapshot. Context хранит `origin_fact_instance_id`. Raw
 структурная ссылка из LLM/user slot запрещена, поэтому договор нельзя передать в
 parameter клиента даже при похожем представлении.
 
-После успешного ответа только факты, перечисленные output contract как
-context-exportable, получают opaque handle и атомарно добавляются в context
-ledger. Follow-up заменяет только явно измененный slot; остальные active filters
-сохраняются. Ответ на clarification связан с сохраненным unfinished request, а
-не планируется как независимый вопрос.
+После успешного ответа только факты, одновременно разрешенные portable
+context-export policy и core-derived proof, получают opaque handle и атомарно
+меняют context ledger. Entity требует `selected_only` и SelectionProof; наличие
+ref в candidate, list/detail/final row само по себе export не разрешает. Typed
+scalar/filter требует отдельный `confirmed_filter` и FilterRetentionProof с exact
+value type, origin parameter source, Evidence locator и compatible consumer. Для
+selected set один handle группирует exact origin facts только при `complete_set`;
+keyset page скрыто не drain-ится. Follow-up заменяет только exact declarative
+slot key; остальные active values, включая canonical moment bytes, сохраняются
+без повторного вычисления.
+
+Clarification создает persisted typed one-use state, связанный с исходным
+turn/plan/requirements и exact choices. Candidate выбирается только по этому
+state; recent messages и LLM similarity не являются resolver-ом. Полная
+0/1/N, slot и resume semantics зафиксированы в
+`docs/testing/slice3_acceptance_contract.md`.
 
 ### 3.5. Порядок исполнения criticality closure
 
