@@ -1,0 +1,123 @@
+{
+  "schema_version": "1.0.0",
+  "document_type": "evidence_bundle",
+  "trace_id": "00000000-0000-4000-8000-000000002001",
+  "request_id": "00000000-0000-4000-8000-000000002002",
+  "session_id": "00000000-0000-4000-8000-000000002003",
+  "created_at": "2030-01-01T00:00:01Z",
+  "source_boundary": "data",
+  "outcome": "success_with_rows",
+  "catalog_snapshot": {
+    "snapshot_id": "00000000-0000-4000-8000-000000002004",
+    "revision": 7,
+    "skills": [
+      {
+        "skill_id": "ut.synthetic.stock-balance",
+        "version": "1.0.0",
+        "digest": "59579c5802bef9b1632dff906272f3134b752aecf818e225a01f0499bfc3679a"
+      }
+    ]
+  },
+  "database_state_marker": {
+    "marker_id": "00000000-0000-4000-8000-000000002005",
+    "algorithm": "sha256",
+    "scope": "acceptance_observable_state",
+    "digest": "3333333333333333333333333333333333333333333333333333333333333333",
+    "captured_at": "2030-01-01T00:00:00Z",
+    "profile_version": "1.0.0",
+    "acceptance_suite_version": "q001-q116-v1",
+    "configuration_revision": "11.5.27.56",
+    "configuration_profile_digest": "4444444444444444444444444444444444444444444444444444444444444444",
+    "catalog_revision": 7,
+    "catalog_snapshot_digest": "5555555555555555555555555555555555555555555555555555555555555555",
+    "documentation_revision": "synthetic-docs-v1",
+    "documentation_manifest_digest": "6666666666666666666666666666666666666666666666666666666666666666",
+    "projection_manifest_digest": "7777777777777777777777777777777777777777777777777777777777777777"
+  },
+  "steps": [
+    {
+      "step_id": "s1",
+      "source_kind": "mcp_data",
+      "operation_ref": "skill://ut.synthetic.stock-balance/1.0.0",
+      "started_at": "2030-01-01T00:00:00Z",
+      "finished_at": "2030-01-01T00:00:01Z",
+      "attempts": 1,
+      "status": "success_with_rows",
+      "row_count": 1,
+      "truncated": false,
+      "has_more": false,
+      "produced_fact_instance_ids": [
+        "00000000-0000-4000-8000-000000002101",
+        "00000000-0000-4000-8000-000000002102",
+        "00000000-0000-4000-8000-000000002103"
+      ],
+      "error_ids": []
+    }
+  ],
+  "facts": [
+    {
+      "fact_instance_id": "00000000-0000-4000-8000-000000002101",
+      "row_id": "row_SYNTHETIC2001",
+      "fact_id": "item.ref",
+      "semantic_type": "catalog.item",
+      "value_type": "entity_ref",
+      "value": {
+        "_objectRef": true,
+        "УникальныйИдентификатор": "00000000-0000-4000-8000-000000000101",
+        "ТипОбъекта": "СправочникСсылка.Номенклатура",
+        "Представление": "Явно синтетический товар SYNTHETIC-ITEM-001"
+      },
+      "confirmation": "confirmed",
+      "step_id": "s1",
+      "source_locator": {"kind": "query_column_binding", "reference": "Номенклатура"},
+      "unit": {"mode": "not_applicable"}
+    },
+    {
+      "fact_instance_id": "00000000-0000-4000-8000-000000002102",
+      "row_id": "row_SYNTHETIC2001",
+      "fact_id": "stock.balance_quantity",
+      "semantic_type": "measure.stock_balance",
+      "value_type": "quantity",
+      "value": 7.5,
+      "confirmation": "confirmed",
+      "step_id": "s1",
+      "source_locator": {"kind": "query_column_binding", "reference": "Количество"},
+      "unit": {"mode": "resolved", "code": "SYNTHETIC_UNIT", "label_ru": "синтетическая единица"},
+      "moment": "2030-01-01T00:00:00+03:00"
+    },
+    {
+      "fact_instance_id": "00000000-0000-4000-8000-000000002103",
+      "row_id": "row_SYNTHETIC2001",
+      "fact_id": "time.moment",
+      "semantic_type": "time.moment",
+      "value_type": "datetime",
+      "value": "2030-01-01T00:00:00+03:00",
+      "confirmation": "confirmed",
+      "step_id": "s1",
+      "source_locator": {"kind": "query_column_binding", "reference": "Момент"},
+      "unit": {"mode": "not_applicable"},
+      "moment": "2030-01-01T00:00:00+03:00"
+    }
+  ],
+  "citations": [],
+  "documentation_disagreements": [],
+  "coverage": {
+    "sufficient": true,
+    "requirements": [
+      {
+        "requirement_id": "r1",
+        "semantic_type": "measure.stock_balance",
+        "status": "covered",
+        "fact_instance_ids": ["00000000-0000-4000-8000-000000002102"]
+      }
+    ]
+  },
+  "context_exports": [
+    {
+      "context_handle": "ctx_SYNTHETICITEM2001",
+      "fact_instance_id": "00000000-0000-4000-8000-000000002101",
+      "semantic_type": "catalog.item"
+    }
+  ],
+  "errors": []
+}

@@ -1,0 +1,721 @@
+schema_version: 1
+manifest_id: acceptance_observable_state_q001_q116_v1
+scope: acceptance_observable_state
+status: blocked_external
+blocked_reason: "MCP server and control database are unavailable for live baseline capture."
+acceptance_suite_version: q001-q116-v1
+target:
+  configuration_id: "УправлениеТорговлейБазовая"
+  release: "11.5.27.56"
+  compatibility_mode: "8.3.27"
+marker:
+  marker_id: null
+  captured_at: null
+  configuration_profile_digest: null
+  catalog_snapshot_digest: null
+  documentation_manifest_digest: null
+  projection_manifest_digest: null
+  digest: null
+control_query_independence:
+  owner: independent_test_suite
+  reuse_shipped_skill_query_templates: forbidden
+  copy_or_parameterize_shipped_queries: forbidden
+  derivation_sources: [requirements, business_semantics, verified_metadata]
+  compare_against: normalized_evidence
+  independent_review_required: true
+performance_policy:
+  basic_p100_max_seconds: 30
+  basic_scenarios: [Q001, Q011, Q031, Q041, Q051, Q062, Q071, Q081, Q102, Q107]
+  supported_p95_max_seconds: 90
+  supported_scenario_range: [Q001, Q116]
+inclusion_policy:
+  corpus_types: [data, follow_up]
+  additional_confirmed_empty_scenarios: [Q102, Q103]
+  excluded_failure_injection: [Q105, Q106]
+scenarios:
+  Q011:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q011"
+    control_query_id: "control.q011.v1"
+    control_query_family: reference_entities
+    oracle_methods: [exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q012:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q012"
+    control_query_id: "control.q012.v1"
+    control_query_family: reference_entities
+    oracle_methods: [exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q013:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q013"
+    control_query_id: "control.q013.v1"
+    control_query_family: reference_entities
+    oracle_methods: [exact_scalar, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q014:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q014"
+    control_query_id: "control.q014.v1"
+    control_query_family: reference_entities
+    oracle_methods: [exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q015:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q015"
+    control_query_id: "control.q015.v1"
+    control_query_family: reference_entities
+    oracle_methods: [exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q016:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q016"
+    control_query_id: "control.q016.v1"
+    control_query_family: reference_entities
+    oracle_methods: [exact_scalar, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q017:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q017"
+    control_query_id: "control.q017.v1"
+    control_query_family: reference_entities
+    oracle_methods: [exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q018:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q018"
+    control_query_id: "control.q018.v1"
+    control_query_family: reference_entities
+    oracle_methods: [exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q019:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q019"
+    control_query_id: "control.q019.v1"
+    control_query_family: reference_entities
+    oracle_methods: [exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q020:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q020"
+    control_query_id: "control.q020.v1"
+    control_query_family: reference_entities
+    oracle_methods: [exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q021:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q021"
+    control_query_id: "control.q021.v1"
+    control_query_family: price_registers
+    oracle_methods: [exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q022:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q022"
+    control_query_id: "control.q022.v1"
+    control_query_family: price_registers
+    oracle_methods: [exact_order, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q023:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q023"
+    control_query_id: "control.q023.v1"
+    control_query_family: price_registers
+    oracle_methods: [exact_order, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q024:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q024"
+    control_query_id: "control.q024.v1"
+    control_query_family: price_registers
+    oracle_methods: [exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q025:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q025"
+    control_query_id: "control.q025.v1"
+    control_query_family: price_registers
+    oracle_methods: [exact_order, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q026:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q026"
+    control_query_id: "control.q026.v1"
+    control_query_family: price_registers
+    oracle_methods: [exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q027:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q027"
+    control_query_id: "control.q027.v1"
+    control_query_family: price_registers
+    oracle_methods: [exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q028:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q028"
+    control_query_id: "control.q028.v1"
+    control_query_family: price_registers
+    oracle_methods: [exact_scalar, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q029:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q029"
+    control_query_id: "control.q029.v1"
+    control_query_family: price_registers
+    oracle_methods: [clarification, exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q030:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q030"
+    control_query_id: "control.q030.v1"
+    control_query_family: price_registers
+    oracle_methods: [exact_order, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q031:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q031"
+    control_query_id: "control.q031.v1"
+    control_query_family: sales_documents_and_measures
+    oracle_methods: [exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q032:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q032"
+    control_query_id: "control.q032.v1"
+    control_query_family: sales_documents_and_measures
+    oracle_methods: [exact_order, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q033:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q033"
+    control_query_id: "control.q033.v1"
+    control_query_family: sales_documents_and_measures
+    oracle_methods: [exact_scalar, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q034:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q034"
+    control_query_id: "control.q034.v1"
+    control_query_family: sales_documents_and_measures
+    oracle_methods: [exact_scalar, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q035:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q035"
+    control_query_id: "control.q035.v1"
+    control_query_family: sales_documents_and_measures
+    oracle_methods: [exact_order, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q036:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q036"
+    control_query_id: "control.q036.v1"
+    control_query_family: sales_documents_and_measures
+    oracle_methods: [exact_scalar, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q037:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q037"
+    control_query_id: "control.q037.v1"
+    control_query_family: sales_documents_and_measures
+    oracle_methods: [exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q038:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q038"
+    control_query_id: "control.q038.v1"
+    control_query_family: sales_documents_and_measures
+    oracle_methods: [exact_order, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q039:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q039"
+    control_query_id: "control.q039.v1"
+    control_query_family: sales_documents_and_measures
+    oracle_methods: [exact_order, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q040:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q040"
+    control_query_id: "control.q040.v1"
+    control_query_family: sales_documents_and_measures
+    oracle_methods: [exact_order, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q041:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q041"
+    control_query_id: "control.q041.v1"
+    control_query_family: purchase_documents_and_measures
+    oracle_methods: [exact_order, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q042:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q042"
+    control_query_id: "control.q042.v1"
+    control_query_family: purchase_documents_and_measures
+    oracle_methods: [exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q043:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q043"
+    control_query_id: "control.q043.v1"
+    control_query_family: purchase_documents_and_measures
+    oracle_methods: [exact_order, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q044:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q044"
+    control_query_id: "control.q044.v1"
+    control_query_family: purchase_documents_and_measures
+    oracle_methods: [exact_scalar, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q045:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q045"
+    control_query_id: "control.q045.v1"
+    control_query_family: purchase_documents_and_measures
+    oracle_methods: [exact_order, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q046:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q046"
+    control_query_id: "control.q046.v1"
+    control_query_family: purchase_documents_and_measures
+    oracle_methods: [exact_scalar, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q047:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q047"
+    control_query_id: "control.q047.v1"
+    control_query_family: purchase_documents_and_measures
+    oracle_methods: [exact_scalar, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q048:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q048"
+    control_query_id: "control.q048.v1"
+    control_query_family: purchase_documents_and_measures
+    oracle_methods: [exact_order, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q049:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q049"
+    control_query_id: "control.q049.v1"
+    control_query_family: purchase_documents_and_measures
+    oracle_methods: [exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q050:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q050"
+    control_query_id: "control.q050.v1"
+    control_query_family: purchase_documents_and_measures
+    oracle_methods: [exact_order, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q051:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q051"
+    control_query_id: "control.q051.v1"
+    control_query_family: stock_and_inventory_registers
+    oracle_methods: [exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q052:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q052"
+    control_query_id: "control.q052.v1"
+    control_query_family: stock_and_inventory_registers
+    oracle_methods: [exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q053:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q053"
+    control_query_id: "control.q053.v1"
+    control_query_family: stock_and_inventory_registers
+    oracle_methods: [exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q054:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q054"
+    control_query_id: "control.q054.v1"
+    control_query_family: stock_and_inventory_registers
+    oracle_methods: [exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q055:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q055"
+    control_query_id: "control.q055.v1"
+    control_query_family: stock_and_inventory_registers
+    oracle_methods: [exact_scalar, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q056:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q056"
+    control_query_id: "control.q056.v1"
+    control_query_family: stock_and_inventory_registers
+    oracle_methods: [clarification, exact_order, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q057:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q057"
+    control_query_id: "control.q057.v1"
+    control_query_family: stock_and_inventory_registers
+    oracle_methods: [clarification, exact_order, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q058:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q058"
+    control_query_id: "control.q058.v1"
+    control_query_family: stock_and_inventory_registers
+    oracle_methods: [exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q059:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q059"
+    control_query_id: "control.q059.v1"
+    control_query_family: stock_and_inventory_registers
+    oracle_methods: [exact_scalar, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q060:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q060"
+    control_query_id: "control.q060.v1"
+    control_query_family: stock_and_inventory_registers
+    oracle_methods: [exact_order, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q061:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q061"
+    control_query_id: "control.q061.v1"
+    control_query_family: logistics_documents_and_states
+    oracle_methods: [exact_order, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q062:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q062"
+    control_query_id: "control.q062.v1"
+    control_query_family: logistics_documents_and_states
+    oracle_methods: [exact_scalar, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q063:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q063"
+    control_query_id: "control.q063.v1"
+    control_query_family: logistics_documents_and_states
+    oracle_methods: [exact_scalar, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q064:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q064"
+    control_query_id: "control.q064.v1"
+    control_query_family: logistics_documents_and_states
+    oracle_methods: [exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q065:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q065"
+    control_query_id: "control.q065.v1"
+    control_query_family: logistics_documents_and_states
+    oracle_methods: [clarification, exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q066:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q066"
+    control_query_id: "control.q066.v1"
+    control_query_family: logistics_documents_and_states
+    oracle_methods: [exact_scalar, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q067:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q067"
+    control_query_id: "control.q067.v1"
+    control_query_family: logistics_documents_and_states
+    oracle_methods: [exact_order, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q068:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q068"
+    control_query_id: "control.q068.v1"
+    control_query_family: logistics_documents_and_states
+    oracle_methods: [exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q069:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q069"
+    control_query_id: "control.q069.v1"
+    control_query_family: logistics_documents_and_states
+    oracle_methods: [exact_scalar, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q070:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q070"
+    control_query_id: "control.q070.v1"
+    control_query_family: logistics_documents_and_states
+    oracle_methods: [exact_order, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q071:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q071"
+    control_query_id: "control.q071.v1"
+    control_query_family: settlement_registers
+    oracle_methods: [exact_scalar, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q072:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q072"
+    control_query_id: "control.q072.v1"
+    control_query_family: settlement_registers
+    oracle_methods: [exact_order, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q073:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q073"
+    control_query_id: "control.q073.v1"
+    control_query_family: settlement_registers
+    oracle_methods: [exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q074:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q074"
+    control_query_id: "control.q074.v1"
+    control_query_family: settlement_registers
+    oracle_methods: [exact_order, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q075:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q075"
+    control_query_id: "control.q075.v1"
+    control_query_family: settlement_registers
+    oracle_methods: [exact_scalar, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q076:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q076"
+    control_query_id: "control.q076.v1"
+    control_query_family: settlement_registers
+    oracle_methods: [exact_order, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q077:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q077"
+    control_query_id: "control.q077.v1"
+    control_query_family: settlement_registers
+    oracle_methods: [clarification, exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q078:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q078"
+    control_query_id: "control.q078.v1"
+    control_query_family: settlement_registers
+    oracle_methods: [exact_scalar, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q079:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q079"
+    control_query_id: "control.q079.v1"
+    control_query_family: settlement_registers
+    oracle_methods: [exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q080:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q080"
+    control_query_id: "control.q080.v1"
+    control_query_family: settlement_registers
+    oracle_methods: [exact_order, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q081:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q081"
+    control_query_id: "control.q081.v1"
+    control_query_family: cash_and_finance_registers
+    oracle_methods: [clarification, exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q082:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q082"
+    control_query_id: "control.q082.v1"
+    control_query_family: cash_and_finance_registers
+    oracle_methods: [exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q083:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q083"
+    control_query_id: "control.q083.v1"
+    control_query_family: cash_and_finance_registers
+    oracle_methods: [exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q084:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q084"
+    control_query_id: "control.q084.v1"
+    control_query_family: cash_and_finance_registers
+    oracle_methods: [exact_scalar, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q085:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q085"
+    control_query_id: "control.q085.v1"
+    control_query_family: cash_and_finance_registers
+    oracle_methods: [exact_scalar, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q086:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q086"
+    control_query_id: "control.q086.v1"
+    control_query_family: cash_and_finance_registers
+    oracle_methods: [clarification, exact_order, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q087:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q087"
+    control_query_id: "control.q087.v1"
+    control_query_family: cash_and_finance_registers
+    oracle_methods: [exact_scalar, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q088:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q088"
+    control_query_id: "control.q088.v1"
+    control_query_family: cash_and_finance_registers
+    oracle_methods: [exact_order, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q089:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q089"
+    control_query_id: "control.q089.v1"
+    control_query_family: cash_and_finance_registers
+    oracle_methods: [clarification, exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q090:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q090"
+    control_query_id: "control.q090.v1"
+    control_query_family: cash_and_finance_registers
+    oracle_methods: [clarification, exact_order, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q091:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q091"
+    control_query_id: "control.q091.v1"
+    control_query_family: context_and_empty_data
+    oracle_methods: [exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q092:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q092"
+    control_query_id: "control.q092.v1"
+    control_query_family: context_and_empty_data
+    oracle_methods: [exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q093:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q093"
+    control_query_id: "control.q093.v1"
+    control_query_family: context_and_empty_data
+    oracle_methods: [exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q094:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q094"
+    control_query_id: "control.q094.v1"
+    control_query_family: context_and_empty_data
+    oracle_methods: [exact_order, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q095:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q095"
+    control_query_id: "control.q095.v1"
+    control_query_family: context_and_empty_data
+    oracle_methods: [exact_scalar, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q096:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q096"
+    control_query_id: "control.q096.v1"
+    control_query_family: context_and_empty_data
+    oracle_methods: [exact_order, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q097:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q097"
+    control_query_id: "control.q097.v1"
+    control_query_family: context_and_empty_data
+    oracle_methods: [exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q102:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q102"
+    control_query_id: "control.q102.v1"
+    control_query_family: context_and_empty_data
+    oracle_methods: [exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q103:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q103"
+    control_query_id: "control.q103.v1"
+    control_query_family: context_and_empty_data
+    oracle_methods: [exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q108:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q108"
+    control_query_id: "control.q108.v1"
+    control_query_family: reference_entities
+    oracle_methods: [exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q109:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q109"
+    control_query_id: "control.q109.v1"
+    control_query_family: sales_documents_and_measures
+    oracle_methods: [exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q110:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q110"
+    control_query_id: "control.q110.v1"
+    control_query_family: purchase_documents_and_measures
+    oracle_methods: [exact_order, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q111:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q111"
+    control_query_id: "control.q111.v1"
+    control_query_family: sales_documents_and_measures
+    oracle_methods: [exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q112:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q112"
+    control_query_id: "control.q112.v1"
+    control_query_family: sales_documents_and_measures
+    oracle_methods: [exact_scalar, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q113:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q113"
+    control_query_id: "control.q113.v1"
+    control_query_family: sales_documents_and_measures
+    oracle_methods: [exact_set, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q114:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q114"
+    control_query_id: "control.q114.v1"
+    control_query_family: sales_documents_and_measures
+    oracle_methods: [exact_order, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q115:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q115"
+    control_query_id: "control.q115.v1"
+    control_query_family: stock_and_inventory_registers
+    oracle_methods: [exact_scalar, semantic]
+    expected_values: null
+    baseline_status: blocked_external
+  Q116:
+    corpus_ref: "tests/corpus/user_questions.yaml#Q116"
+    control_query_id: "control.q116.v1"
+    control_query_family: stock_and_inventory_registers
+    oracle_methods: [exact_scalar, semantic]
+    expected_values: null
+    baseline_status: blocked_external

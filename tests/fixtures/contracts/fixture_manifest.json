@@ -1,0 +1,92 @@
+{
+  "valid": [
+    {"file": "valid/data_skill.json", "schema": "skill.schema.json"},
+    {"file": "valid/documentation_skill.json", "schema": "skill.schema.json"},
+    {"file": "valid/skill_package.json", "schema": "skill-package.schema.json"},
+    {"file": "valid/planner_execute.json", "schema": "planner-output.schema.json"},
+    {"file": "valid/planner_clarify.json", "schema": "planner-output.schema.json"},
+    {"file": "valid/planner_refuse.json", "schema": "planner-output.schema.json"},
+    {"file": "valid/planner_capability_gap.json", "schema": "planner-output.schema.json"},
+    {"file": "valid/data_evidence_rows.json", "schema": "evidence.schema.json"},
+    {"file": "valid/data_evidence_empty.json", "schema": "evidence.schema.json"},
+    {"file": "valid/data_evidence_zero_aggregate.json", "schema": "evidence.schema.json"},
+    {"file": "valid/documentation_evidence_disagreement.json", "schema": "evidence.schema.json"}
+  ],
+  "invalid": [
+    {
+      "file": "invalid/extra_field.json",
+      "schema": "planner-output.schema.json",
+      "expected_schema_error": "additionalProperties"
+    },
+    {
+      "file": "invalid/planner_query_injection.json",
+      "schema": "planner-output.schema.json",
+      "expected_schema_error": "additionalProperties"
+    },
+    {
+      "file": "invalid/planner_code_injection.json",
+      "schema": "planner-output.schema.json",
+      "expected_schema_error": "additionalProperties"
+    },
+    {
+      "file": "invalid/planner_mcp_injection.json",
+      "schema": "planner-output.schema.json",
+      "expected_schema_error": "additionalProperties"
+    },
+    {
+      "file": "invalid/planner_unknown_decision.json",
+      "schema": "planner-output.schema.json",
+      "expected_schema_error": "enum"
+    },
+    {
+      "file": "invalid/planner_decision_result_mismatch.json",
+      "schema": "planner-output.schema.json",
+      "expected_schema_error": "const"
+    },
+    {
+      "file": "invalid/data_skill_write_tool.json",
+      "schema": "skill.schema.json",
+      "expected_schema_error": "const"
+    },
+    {
+      "file": "invalid/unresolved_query_placeholder.json",
+      "schema": "skill.schema.json",
+      "expected_semantic_error": "UNRESOLVED_QUERY_PLACEHOLDER"
+    },
+    {
+      "file": "invalid/external_documentation_source.json",
+      "schema": "skill.schema.json",
+      "expected_schema_error": "const"
+    },
+    {
+      "file": "invalid/missing_required_output_binding.json",
+      "schema": "skill.schema.json",
+      "expected_semantic_error": "REQUIRED_OUTPUT_BINDING_MISSING"
+    },
+    {
+      "file": "invalid/package_duplicate_lock_entry.json",
+      "schema": "skill-package.schema.json",
+      "expected_schema_error": "uniqueItems"
+    },
+    {
+      "file": "invalid/forged_entity_ref.json",
+      "schema": "evidence.schema.json",
+      "expected_semantic_error": "ENTITY_REF_SEMANTIC_TYPE_MISMATCH"
+    },
+    {
+      "file": "invalid/sufficient_with_missing_facts.json",
+      "schema": "evidence.schema.json",
+      "expected_semantic_error": "SUFFICIENT_COVERAGE_HAS_MISSING_REQUIREMENTS"
+    },
+    {
+      "file": "invalid/zero_confused_with_empty.json",
+      "schema": "evidence.schema.json",
+      "expected_semantic_error": "ZERO_AGGREGATE_CLASSIFIED_AS_EMPTY"
+    },
+    {
+      "file": "invalid/prohibited_concrete_value.json",
+      "schema": "skill.schema.json",
+      "expected_semantic_error": "CONCRETE_VALUE_IN_QUERY_TEMPLATE"
+    }
+  ]
+}

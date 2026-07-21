@@ -1,0 +1,85 @@
+{
+  "schema_version": "1.0.0",
+  "document_type": "planner_output",
+  "request_id": "00000000-0000-4000-8000-000000001001",
+  "session_context_version": 3,
+  "catalog_snapshot_id": "00000000-0000-4000-8000-000000001002",
+  "catalog_revision": 7,
+  "decision": "execute",
+  "interpretation": {
+    "intent_kind": "data",
+    "goal_ru": "Получить остаток явно синтетического товара.",
+    "required_facts": [
+      {
+        "requirement_id": "r1",
+        "semantic_type": "measure.stock_balance",
+        "value_type": "quantity",
+        "cardinality": "many",
+        "required": true,
+        "unit_dimension": "quantity_unit",
+        "time_semantics": "moment"
+      }
+    ],
+    "slots": [
+      {
+        "slot_id": "item",
+        "semantic_type": "catalog.item",
+        "value_type": "entity_ref",
+        "status": "resolved_context",
+        "mentions": [
+          "явно синтетический товар"
+        ],
+        "binding": {
+          "source": "context",
+          "context_handle": "ctx_SYNTHETICITEM0001",
+          "expected_semantic_type": "catalog.item"
+        }
+      }
+    ]
+  },
+  "result": {
+    "kind": "execute",
+    "plan_id": "00000000-0000-4000-8000-000000001003",
+    "steps": [
+      {
+        "step_id": "s1",
+        "kind": "skill_call",
+        "skill_id": "ut.synthetic.stock-balance",
+        "skill_version": "1.0.0",
+        "arguments": [
+          {
+            "parameter": "item",
+            "binding": {
+              "source": "context",
+              "context_handle": "ctx_SYNTHETICITEM0001",
+              "expected_semantic_type": "catalog.item"
+            }
+          },
+          {
+            "parameter": "moment",
+            "binding": {
+              "source": "system",
+              "name": "turn_time"
+            }
+          }
+        ],
+        "required_output_fact_ids": [
+          "item.ref",
+          "stock.balance_quantity",
+          "time.moment"
+        ],
+        "on_empty": "stop_not_found",
+        "mcp_tool": "execute_code",
+        "mcp_arguments": {
+          "synthetic": true
+        }
+      }
+    ],
+    "final_outputs": [
+      {
+        "step_id": "s1",
+        "fact_id": "stock.balance_quantity"
+      }
+    ]
+  }
+}

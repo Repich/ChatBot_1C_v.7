@@ -1,0 +1,15 @@
+{
+  "structuredContent": {
+    "success": true,
+    "data": [{"СинтетическийТовар": "SYNTHETIC-ITEM-001", "Количество": 7.5}],
+    "schema": {
+      "columns": [
+        {"name": "СинтетическийТовар", "types": ["Строка"]},
+        {"name": "Количество", "types": ["Число"]}
+      ]
+    },
+    "count": 1,
+    "truncated": false,
+    "has_more": false
+  }
+}

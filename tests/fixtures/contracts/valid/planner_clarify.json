@@ -1,0 +1,46 @@
+{
+  "schema_version": "1.0.0",
+  "document_type": "planner_output",
+  "request_id": "00000000-0000-4000-8000-000000001101",
+  "session_context_version": 1,
+  "catalog_snapshot_id": "00000000-0000-4000-8000-000000001102",
+  "catalog_revision": 7,
+  "decision": "clarify",
+  "interpretation": {
+    "intent_kind": "data",
+    "goal_ru": "Уточнить вид синтетического показателя.",
+    "required_facts": [
+      {
+        "requirement_id": "r1",
+        "semantic_type": "measure.synthetic_turnover",
+        "value_type": "money",
+        "cardinality": "aggregate",
+        "required": true,
+        "unit_dimension": "currency",
+        "time_semantics": "period"
+      }
+    ],
+    "slots": [
+      {
+        "slot_id": "metric",
+        "semantic_type": "metric.synthetic_kind",
+        "value_type": "enum",
+        "status": "ambiguous",
+        "mentions": ["оборот"]
+      }
+    ]
+  },
+  "result": {
+    "kind": "clarify",
+    "question_ru": "Какой синтетический оборот и за какой период требуется?",
+    "missing_requirement_ids": ["r1"],
+    "choices": [
+      {
+        "choice_id": "c1",
+        "label_ru": "Синтетический оборот продаж",
+        "slot_id": "metric",
+        "binding": {"source": "literal", "value_type": "enum", "value": "synthetic_sales"}
+      }
+    ]
+  }
+}

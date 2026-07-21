@@ -1,0 +1,178 @@
+{
+  "schema_version": "1.0.0",
+  "document_type": "skill",
+  "skill_id": "ut.synthetic.help-term",
+  "version": "1.0.0",
+  "display": {
+    "name_ru": "Синтетическое определение из справки",
+    "purpose_ru": "Ищет синтетическое определение только во встроенной справке целевого релиза.",
+    "limitations_ru": ["Не использует внешние источники."]
+  },
+  "provides": {
+    "capability_ids": ["CAP-DOC-TERM", "CAP-DOC-SOURCE"],
+    "fact_types": ["documentation.fragment", "documentation.citation"]
+  },
+  "compatibility": {
+    "configuration_id": "УправлениеТорговлейБазовая",
+    "configuration_name": "1С:Управление торговлей (базовая), редакция 11",
+    "release_range": {
+      "minimum": "11.5.27.56",
+      "maximum": "11.5.27.56",
+      "include_minimum": true,
+      "include_maximum": true
+    },
+    "compatibility_modes": ["8.3.27"],
+    "required_metadata": [],
+    "metadata_snapshot_sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "selection": {
+    "intent_kinds": ["documentation"],
+    "aliases_ru": ["синтетическое определение"],
+    "anti_examples_ru": ["фактический остаток синтетического товара"],
+    "required_context_fact_types": []
+  },
+  "parameters": [
+    {
+      "name": "search_text",
+      "title_ru": "Текст поиска",
+      "description_ru": "Явно синтетическая формулировка для поиска во встроенной справке.",
+      "value_type": "normalized_text",
+      "required": true,
+      "allowed_sources": ["user_slot"],
+      "normalization": "casefold"
+    }
+  ],
+  "operation": {
+    "kind": "documentation_retrieval",
+    "index": "ut_built_in_help",
+    "query_parameter": "search_text",
+    "retrieval": {
+      "engine": "fts5_bm25_ru_stem_v1",
+      "top_k": 8,
+      "max_chunks_per_source": 3
+    },
+    "filters": {
+      "source_kind": "built_in_help",
+      "language": "ru",
+      "metadata_kinds": ["document"],
+      "path_prefixes": ["Documents/SyntheticGuide/"]
+    },
+    "chunk_roles": ["definition", "restriction"],
+    "output_bindings": [
+      {"chunk_field": "text", "fact_id": "documentation.fragment"},
+      {"chunk_field": "citation", "fact_id": "documentation.citation"}
+    ]
+  },
+  "output_contract": {
+    "contract_id": "ut.synthetic.help-term.v1",
+    "contract_version": "1.0.0",
+    "cardinality": "many",
+    "facts": [
+      {
+        "fact_id": "documentation.fragment",
+        "semantic_type": "documentation.fragment",
+        "value_type": "document_fragment",
+        "role": "attribute",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Синтетический фрагмент",
+        "unit_contract": {"mode": "not_applicable"}
+      },
+      {
+        "fact_id": "documentation.citation",
+        "semantic_type": "documentation.citation",
+        "value_type": "source_citation",
+        "role": "provenance",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Источник синтетического фрагмента",
+        "unit_contract": {"mode": "not_applicable"}
+      }
+    ],
+    "sufficiency": {
+      "required_fact_sets": [["documentation.fragment", "documentation.citation"]],
+      "empty_semantics": "confirmed_not_found",
+      "zero_fact_ids": [],
+      "truncation_policy": "page_is_complete"
+    },
+    "renderer": {
+      "kind": "explanation",
+      "primary_fact_ids": ["documentation.fragment"],
+      "column_fact_ids": ["documentation.citation"]
+    }
+  },
+  "dependencies": {
+    "runtime_contracts": [
+      {"contract": "skill-runtime", "version_range": "^1.0.0"},
+      {"contract": "help-index", "version_range": "^1.0.0"}
+    ],
+    "skills": []
+  },
+  "examples": [
+    {
+      "question_ru": "Что означает явно синтетический термин?",
+      "applicability": "applicable",
+      "reason_ru": "Синтетический пример требует определения из справки."
+    },
+    {
+      "question_ru": "Каков остаток явно синтетического товара?",
+      "applicability": "not_applicable",
+      "reason_ru": "Вопрос требует фактических данных, а не документации."
+    }
+  ],
+  "tests": [
+    {
+      "test_id": "synthetic.help.positive",
+      "case_kind": "positive",
+      "bindings": [{"parameter": "search_text", "value": "явно синтетический термин"}],
+      "fixture": {
+        "kind": "documentation_chunks",
+        "chunks": [
+          {
+            "chunk_id": "synthetic-definition-001",
+            "title": "Явно синтетическая справка",
+            "heading": "Синтетическое определение",
+            "text": "Это явно синтетический фрагмент для контрактного теста.",
+            "source_uri": "ut-help://11.5.27.56/Documents/SyntheticGuide/Ext/Help/ru.html#definition",
+            "role": "definition"
+          }
+        ]
+      },
+      "expected": {
+        "status": "documentation_found",
+        "required_fact_ids": ["documentation.fragment", "documentation.citation"]
+      }
+    },
+    {
+      "test_id": "synthetic.help.negative-empty",
+      "case_kind": "negative",
+      "bindings": [],
+      "fixture": {"kind": "documentation_chunks", "chunks": []},
+      "expected": {"status": "documentation_empty", "required_fact_ids": []}
+    }
+  ],
+  "provenance": {
+    "author": "Synthetic Contract Fixture",
+    "created_at": "2030-01-01T00:00:00Z",
+    "source_configuration": {
+      "configuration_id": "УправлениеТорговлейБазовая",
+      "release": "11.5.27.56",
+      "compatibility_mode": "8.3.27",
+      "metadata_snapshot_sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+    },
+    "source_references": [
+      {
+        "kind": "built_in_help",
+        "uri": "ut-help://11.5.27.56/Documents/SyntheticGuide/Ext/Help/ru.html#definition"
+      },
+      {"kind": "test_evidence", "uri": "test-evidence://synthetic/contracts/documentation-skill"}
+    ],
+    "change_note_ru": "Явно синтетическая фикстура documentation-retrieval контракта."
+  },
+  "integrity": {
+    "algorithm": "sha256",
+    "canonicalization": "RFC8785",
+    "scope": "document_without_integrity",
+    "digest": "882585059b816884127964b2e5e6ccb889fb6f86f89441ff2883d38716dc1c4d"
+  }
+}

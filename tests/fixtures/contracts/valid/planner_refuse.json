@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0.0",
+  "document_type": "planner_output",
+  "request_id": "00000000-0000-4000-8000-000000001201",
+  "session_context_version": 0,
+  "catalog_snapshot_id": "00000000-0000-4000-8000-000000001202",
+  "catalog_revision": 7,
+  "decision": "refuse",
+  "interpretation": {
+    "intent_kind": "read_only_violation",
+    "goal_ru": "Изменить явно синтетический объект.",
+    "required_facts": [],
+    "slots": []
+  },
+  "result": {
+    "kind": "refuse",
+    "reason_code": "read_only_request",
+    "message_ru": "Изменение данных запрещено: ассистент работает только на чтение."
+  }
+}

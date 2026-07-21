@@ -1,0 +1,8 @@
+{
+  "success": true,
+  "data": [{"СинтетическийИтог": 0}],
+  "schema": {"columns": [{"name": "СинтетическийИтог", "types": ["Число"]}]},
+  "count": 1,
+  "truncated": false,
+  "has_more": false
+}

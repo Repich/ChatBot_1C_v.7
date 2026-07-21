@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0.0",
+  "document_type": "planner_output",
+  "request_id": "00000000-0000-4000-8000-000000001301",
+  "session_context_version": 0,
+  "catalog_snapshot_id": "00000000-0000-4000-8000-000000001302",
+  "catalog_revision": 7,
+  "decision": "capability_gap",
+  "interpretation": {
+    "intent_kind": "data",
+    "goal_ru": "Получить неподдерживаемый синтетический показатель.",
+    "required_facts": [
+      {
+        "requirement_id": "r1",
+        "semantic_type": "measure.unsupported_synthetic_value",
+        "value_type": "decimal",
+        "cardinality": "aggregate",
+        "required": true
+      }
+    ],
+    "slots": []
+  },
+  "result": {
+    "kind": "capability_gap",
+    "missing_fact_types": ["measure.unsupported_synthetic_value"],
+    "message_ru": "В текущем каталоге нет возможности получить этот синтетический показатель."
+  }
+}

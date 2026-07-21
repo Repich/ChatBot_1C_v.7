@@ -1,0 +1,8 @@
+{
+  "success": true,
+  "data": [],
+  "schema": {"columns": [{"name": "СинтетическийТовар", "types": ["Строка"]}]},
+  "count": 0,
+  "truncated": false,
+  "has_more": false
+}

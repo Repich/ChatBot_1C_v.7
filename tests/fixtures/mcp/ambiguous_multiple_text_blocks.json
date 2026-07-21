@@ -1,0 +1,6 @@
+{
+  "content": [
+    {"type": "text", "text": "{\"success\":true,\"data\":[],\"schema\":{},\"count\":0}"},
+    {"type": "text", "text": "{\"success\":false,\"error\":\"SYNTHETIC_AMBIGUITY\"}"}
+  ]
+}
