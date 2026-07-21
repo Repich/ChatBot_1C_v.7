@@ -45,8 +45,8 @@
 | FR-035 | Atomic operation + typed parameters | Skill semantic lint |
 | FR-036 | Portable URI/secret lint; business values only in parameters, typed invariant literals | AC-005 parameter/invariant negative matrix |
 | FR-037 | Closed skill/execution/invariant schemas + bounded JSON loader | Draft 2020-12, limit and semantic validation |
-| FR-038 | Single skill export from canonical document | Web/CLI export test |
-| FR-039 | Shared import use case, no app build | Two-data-dir portability |
+| FR-038 | Selected skill export is one discriminated JSON: canonical bare skill or explicit self-contained selected-root package | Web/CLI same-file export test |
+| FR-039 | One `ImportSkillDocument` use case accepts skill/package and atomically validates exact closure, no app build | Two-clean-data-dir portability |
 | FR-040 | New immutable revision + atomic snapshot swap | Next-turn hot reload test |
 | FR-041 | Schema/digest/compatibility/exact closed lock/conflict pipeline | Missing/extra lock and digest-conflict suite |
 | FR-042 | Structured validation errors with JSON pointer | API/CLI error golden tests |
@@ -119,8 +119,8 @@ Product capability ID остается requirement/test label. В колонке
 | AC-004 | Composition manifest требует test для участвующих capabilities |
 | AC-005 | Scanner блокирует secret/local/session/business-instance values, но принимает только declared invariant constants |
 | AC-006 | Explicit replace/delete создает новую revision без app update |
-| AC-007 | Single-skill web и CLI export валидируется `skill.schema.json` |
-| AC-008 | Import в чистый `APP_DATA_DIR` с compatible profile |
+| AC-007 | Exported file validates as bare `skill` or selected-root self-contained `skill_package`; web/CLI bytes identical |
+| AC-008 | The same bytes import into clean compatible `APP_DATA_DIR`: bare dependency-free or package with embedded closure |
 | AC-009 | Следующий turn pin-ит новую revision без restart |
 | AC-010 | До/после переноса сравниваются normalized facts/contracts |
 | AC-011 | Byte/depth/node/array, parse/schema/checksum failure оставляет revision неизменной |

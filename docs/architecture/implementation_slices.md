@@ -60,7 +60,8 @@ lock entry/digest conflict и молчаливый выбор disagreement posit
 - parameterized `_objectRef` из шага в шаг;
 - DeepSeek не видит query text;
 - `success_empty` и `query_error` имеют разные UI messages;
-- импорт того же package во второй чистый app data dir через web и CLI;
+- импорт ровно того же exported JSON во второй чистый app data dir через web и
+  CLI: dependency-free bare skill и selected-root self-contained package;
 - следующий вопрос видит skill без restart;
 - turn, начатый до replace, заканчивается на старом pinned snapshot.
 

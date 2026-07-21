@@ -217,10 +217,17 @@ Schema и adapter v1 принимают только `source_kind=built_in_help`
 }
 ```
 
-Identity определяется парой `ТипОбъекта + УникальныйИдентификатор`.
-`Представление` только отображается и не участвует в равенстве. Fact получает
-business semantic type (`document.sales_order`, `party.customer`), поэтому
-договор нельзя передать в parameter клиента даже при похожем представлении.
+Typed business identity определяется тройкой
+`(semantic_type, ТипОбъекта, УникальныйИдентификатор)`.
+`Представление` только отображается и не участвует в равенстве.
+
+Semantic и physical type не выводятся из application-словаря или префикса.
+Previous-step fact либо context handle восстанавливает исходный confirmed fact;
+его semantic type сверяется с parameter contract, а `ТипОбъекта` - с
+`accepted_mcp_types` exact producer column binding по сохраненному evidence и
+pinned catalog snapshot. Context хранит `origin_fact_instance_id`. Raw
+структурная ссылка из LLM/user slot запрещена, поэтому договор нельзя передать в
+parameter клиента даже при похожем представлении.
 
 После успешного ответа только факты, перечисленные output contract как
 context-exportable, получают opaque handle и атомарно добавляются в context

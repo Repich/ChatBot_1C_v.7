@@ -60,8 +60,9 @@
    параметризованы, допустимые literals имеют typed invariant declarations.
 6. Смысл результата проверяется semantic types, cardinality, unit/time и
    independent oracle, не синтаксисом/alias words.
-7. Import сверяет exact provides/output, closed dependency lock и все digests,
-   затем создает immutable revision одной transaction и atomic swap.
+7. Единый import dispatch принимает `skill`/`skill_package`, сверяет exact
+   provides/output, вычисленный или переданный closed dependency lock и все
+   digests, затем создает immutable revision одной transaction и atomic swap.
 8. Turn pin-ит snapshot; import не меняет его и не запускается как side effect.
 9. Evidence disagreement сохраняет отдельные facts/provenance и никогда не
    разрешается молча по rank, порядку или confidence.

@@ -321,9 +321,11 @@ Enter отправляет, Shift+Enter вставляет перевод стр
 | --- | --- |
 | `GET /skills` | Карточки purpose/params/output/compatibility/examples |
 | `GET /skills/{id}` | Карточка активной версии без raw template |
-| `GET /skills/{id}/export` | Portable JSON skill download |
-| `POST /skill-packages/import?mode=create` | Multipart package import |
-| `PUT /skill-packages/import?mode=replace` | Explicit replace + `If-Match` |
+| `GET /skills/{id}/export` | Canonical bare `skill` JSON; существующее поведение |
+| `GET /skills/{id}/export?closure=embedded` | Один self-contained `skill_package` JSON с выбранным skill и transitive closure |
+| `POST /skills/import?mode=create|replace` | Canonical multipart import `skill` или `skill_package`; replace требует `If-Match` |
+| `POST /skill-packages/import?mode=create` | Совместимый alias только для package import |
+| `PUT /skill-packages/import?mode=replace` | Совместимый package replace alias + `If-Match` |
 | `GET /skill-packages/export` | Export selected/all active skills |
 | `DELETE /skills/{id}` | Delete from next revision + `If-Match` |
 
@@ -331,11 +333,28 @@ Import response: `accepted`, new revision, IDs/versions/digests. Reject response
 HTTP 422/409/503 с массивом `{code, json_pointer, message_ru}` и неизменной
 revision. UI не содержит JSON editor.
 
-Перед import use case bounded loader применяет limits раздела 1, затем проверяет
-точный замкнутый `dependency_lock`: все embedded skills и их транзитивные
-dependencies присутствуют ровно один раз, лишних entries нет. Digest embedded
-entry совпадает с document integrity; external entry - с pinned active catalog.
-Та же `(skill_id, version)` с иным digest возвращает conflict до transaction.
+Canonical endpoint и CLI читают top-level `document_type` и dispatch-ят в
+`skill.schema.json` либо `skill-package.schema.json`; иной/неоднозначный
+discriminator отклоняется. Общий pre-parse hard cap равен 32 MiB, streaming
+discriminator reader сохраняет depth/node limits, после определения `skill`
+дополнительно применяется его 1 MiB limit до создания полного DTO.
+
+Bare skill не преобразуется на wire и не получает новый digest. Import use case
+атомарно строит внутренний closure из root и exact dependencies pinned active
+snapshot. Missing dependency возвращает `SKILL_DEPENDENCY_MISSING`; ничего не
+устанавливается и revision не меняется. Для package проверяется переданный
+замкнутый `dependency_lock`: embedded skills и транзитивные dependencies
+присутствуют ровно один раз, лишних entries нет. Digest embedded entry совпадает
+с document integrity; external entry - с pinned active catalog. Та же
+`(skill_id, version)` с иным digest возвращает conflict до transaction.
+
+UI выбирает bare export для skill без skill dependencies и
+`closure=embedded` для dependency-bearing skill. В обоих случаях ровно тот же
+скачанный JSON-файл принимают web и CLI второго instance. AC-007/AC-008 имеют
+два теста: dependency-free bare skill импортируется в чистый compatible
+`APP_DATA_DIR`; selected dependency-bearing skill переносится в чистый instance
+одним self-contained package-файлом. Дополнительно bare dependency-bearing skill
+без установленного closure обязан атомарно отклоняться.
 
 ### 5.3. Health и diagnostics
 
