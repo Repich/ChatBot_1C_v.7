@@ -1,7 +1,7 @@
 schema_version: 1
 corpus_id: ut_11_5_27_56_mvp
 title: "Эталонный корпус пользовательских вопросов ChatBot 1C v7"
-scenario_count: 106
+scenario_count: 116
 target:
   configuration: "1С:Управление торговлей (базовая), редакция 11"
   release: "11.5.27.56"
@@ -17,6 +17,7 @@ type_definitions:
   documentation: "Ответ подтверждается доступной документацией."
   follow_up: "Ответ должен корректно использовать контекст предыдущих сообщений."
   negative: "Ожидается уточнение, отказ, отсутствие данных или контролируемая ошибка."
+  interaction: "Проверяется прямое диалоговое поведение, не требующее данных или документации."
 
 scenarios:
   - id: Q001
@@ -1005,3 +1006,103 @@ scenarios:
       Завершить операцию контролируемым сообщением о таймауте и идентификатором,
       сохранить работоспособность сессии и не выдумывать ответ.
     capability_ids: [CAP-CHAT-DEPENDENCY-ERROR]
+
+  - id: Q107
+    category: assistant_identity
+    type: interaction
+    question: "Кто ты и что ты умеешь?"
+    expected_behavior: >-
+      Кратко представиться ассистентом для типовой 1С:Управление торговлей,
+      перечислить только фактически поддерживаемые ответы по встроенной справке
+      и данным через MCP, упомянуть режим только для чтения и не обещать
+      отсутствующие возможности.
+    capability_ids: []
+
+  - id: Q108
+    category: reference_data
+    type: follow_up
+    question: "Покажи все доступные реквизиты этой позиции."
+    sequence:
+      - "Найди номенклатуру с артикулом V100123588."
+      - "Покажи все доступные реквизиты этой позиции."
+    precondition: >-
+      На первом шаге однозначно найдена номенклатура с указанным артикулом и
+      сохранена как выбранный объект диалога.
+    expected_behavior: >-
+      Использовать именно ранее выбранную позицию и показать ее доступные
+      реквизиты с понятными названиями, не выполняя поиск другой номенклатуры.
+    capability_ids: [CAP-CHAT-CONTEXT, CAP-COMMON-ENTITY, CAP-COMMON-DETAIL]
+
+  - id: Q109
+    category: sales
+    type: data
+    question: "Покажи, что и на какую сумму покупал клиент «Альтаир» за 2024 год."
+    expected_behavior: >-
+      Найти клиента и показать историю его продаж за календарный год с
+      документами, товарами, количеством и суммами; итоговые суммы не должны
+      терять связь с выбранным клиентом.
+    capability_ids: [CAP-COMMON-PERIOD, CAP-REF-PARTNER-FIND, CAP-CUSTOMER-SALES-HISTORY]
+
+  - id: Q110
+    category: purchases
+    type: data
+    question: "Покажи трех поставщиков, у которых мы закупили больше всего по сумме за 2024 год."
+    expected_behavior: >-
+      Сопоставить суммы закупок по поставщикам за календарный год и вернуть три
+      верхних результата с поставщиком, суммой, валютой и периодом.
+    capability_ids: [CAP-COMMON-PERIOD, CAP-PURCHASE-TURNOVER, CAP-PURCHASE-SUPPLIER-RANK]
+
+  - id: Q111
+    category: sales
+    type: data
+    question: "Покажи основные реквизиты заказа клиента 0000-000005."
+    expected_behavior: >-
+      Однозначно найти заказ и показать доступные реквизиты его шапки, включая
+      номер, дату, клиента, организацию, склад, статус и сумму, не подменяя их
+      строками товаров.
+    capability_ids: [CAP-COMMON-ENTITY, CAP-SALES-ORDER-HEADER]
+
+  - id: Q112
+    category: sales
+    type: data
+    question: "Какую валовую прибыль мы получили от продаж телевизоров в 2024 году?"
+    expected_behavior: >-
+      Найти подходящую номенклатуру и показать за календарный год выручку,
+      себестоимость и валовую прибыль; не выдавать выручку за прибыль.
+    capability_ids: [CAP-COMMON-PERIOD, CAP-REF-ITEM-FIND, CAP-SALES-PROFIT]
+
+  - id: Q113
+    category: sales
+    type: data
+    question: "Покажи возвраты товаров от клиентов за 2024 год."
+    expected_behavior: >-
+      Вернуть подтвержденные возвраты от клиентов внутри календарного года с
+      документом, клиентом, товаром, количеством и суммой.
+    capability_ids: [CAP-COMMON-PERIOD, CAP-SALES-RETURN]
+
+  - id: Q114
+    category: sales
+    type: data
+    question: "Какие товары и в каком количестве были в последней реализации?"
+    expected_behavior: >-
+      Найти фактически последнюю реализацию и показать все ее товарные строки с
+      номенклатурой и количеством, не ограничиваясь реквизитами документа.
+    capability_ids: [CAP-SALES-SHIPMENT-LIST, CAP-COMMON-RANK, CAP-SALES-SHIPMENT-LINES]
+
+  - id: Q115
+    category: inventory
+    type: data
+    question: "Сколько курток было израсходовано с Центрального склада за последние 30 дней?"
+    expected_behavior: >-
+      Найти товар и склад, определить последние 30 дней и показать фактическое
+      количество расхода с единицей измерения и периодом.
+    capability_ids: [CAP-COMMON-PERIOD, CAP-REF-ITEM-FIND, CAP-REF-WAREHOUSE-FIND, CAP-STOCK-CONSUMPTION]
+
+  - id: Q116
+    category: inventory
+    type: data
+    question: "Сколько телевизоров ожидается к поступлению на Центральный склад по действующим заказам поставщикам?"
+    expected_behavior: >-
+      Найти товар и склад, показать еще не поступившее ожидаемое количество по
+      действующим основаниям и не включать уже полученный товар.
+    capability_ids: [CAP-REF-ITEM-FIND, CAP-REF-WAREHOUSE-FIND, CAP-STOCK-EXPECTED]

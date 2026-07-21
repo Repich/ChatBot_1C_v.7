@@ -1,0 +1,1125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chatbot1c.local/schemas/planner-output.schema.json",
+  "title": "Bounded DeepSeek planner output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "document_type",
+    "request_id",
+    "session_context_version",
+    "catalog_snapshot_id",
+    "catalog_revision",
+    "decision",
+    "interpretation",
+    "result"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "document_type": {
+      "const": "planner_output"
+    },
+    "request_id": {
+      "$ref": "#/$defs/uuid"
+    },
+    "session_context_version": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "catalog_snapshot_id": {
+      "$ref": "#/$defs/uuid"
+    },
+    "catalog_revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "decision": {
+      "enum": [
+        "execute",
+        "clarify",
+        "refuse",
+        "capability_gap"
+      ]
+    },
+    "interpretation": {
+      "$ref": "#/$defs/interpretation"
+    },
+    "result": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/executeResult"
+        },
+        {
+          "$ref": "#/$defs/clarifyResult"
+        },
+        {
+          "$ref": "#/$defs/refuseResult"
+        },
+        {
+          "$ref": "#/$defs/capabilityGapResult"
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "decision": {
+            "const": "execute"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/executeResult"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "decision": {
+            "const": "clarify"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/clarifyResult"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "decision": {
+            "const": "refuse"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/refuseResult"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "decision": {
+            "const": "capability_gap"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/capabilityGapResult"
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "stepId": {
+      "type": "string",
+      "pattern": "^s[1-9][0-9]{0,2}$"
+    },
+    "factId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*(?:\\.[a-z0-9_]+)+$",
+      "maxLength": 120
+    },
+    "semanticType": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*(?:\\.[a-z0-9_]+)+$",
+      "maxLength": 160
+    },
+    "valueType": {
+      "enum": [
+        "string",
+        "normalized_text",
+        "boolean",
+        "integer",
+        "decimal",
+        "date",
+        "datetime",
+        "period",
+        "enum",
+        "entity_ref",
+        "entity_ref_list",
+        "money",
+        "quantity",
+        "percentage",
+        "document_fragment",
+        "source_citation",
+        "pagination"
+      ]
+    },
+    "interpretation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "intent_kind",
+        "goal_ru",
+        "required_facts",
+        "slots"
+      ],
+      "properties": {
+        "intent_kind": {
+          "enum": [
+            "data",
+            "documentation",
+            "mixed",
+            "product_meta",
+            "read_only_violation",
+            "out_of_scope"
+          ]
+        },
+        "goal_ru": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 1000
+        },
+        "required_facts": {
+          "type": "array",
+          "maxItems": 40,
+          "items": {
+            "$ref": "#/$defs/factRequirement"
+          }
+        },
+        "slots": {
+          "type": "array",
+          "maxItems": 40,
+          "items": {
+            "$ref": "#/$defs/slot"
+          }
+        }
+      }
+    },
+    "factRequirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requirement_id",
+        "semantic_type",
+        "value_type",
+        "cardinality",
+        "required"
+      ],
+      "properties": {
+        "requirement_id": {
+          "type": "string",
+          "pattern": "^r[1-9][0-9]{0,2}$"
+        },
+        "semantic_type": {
+          "$ref": "#/$defs/semanticType"
+        },
+        "value_type": {
+          "$ref": "#/$defs/valueType"
+        },
+        "cardinality": {
+          "enum": [
+            "one",
+            "zero_or_one",
+            "many",
+            "aggregate"
+          ]
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "unit_dimension": {
+          "enum": [
+            "none",
+            "currency",
+            "quantity_unit",
+            "percentage"
+          ]
+        },
+        "time_semantics": {
+          "enum": [
+            "none",
+            "moment",
+            "period"
+          ]
+        }
+      }
+    },
+    "slot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "slot_id",
+        "semantic_type",
+        "value_type",
+        "status",
+        "mentions"
+      ],
+      "properties": {
+        "slot_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{1,63}$"
+        },
+        "semantic_type": {
+          "$ref": "#/$defs/semanticType"
+        },
+        "value_type": {
+          "$ref": "#/$defs/valueType"
+        },
+        "status": {
+          "enum": [
+            "resolved_literal",
+            "resolved_context",
+            "needs_resolution",
+            "missing",
+            "ambiguous"
+          ]
+        },
+        "mentions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "maxItems": 20
+        },
+        "binding": {
+          "$ref": "#/$defs/binding"
+        }
+      }
+    },
+    "executeResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "plan_id",
+        "steps",
+        "final_outputs"
+      ],
+      "properties": {
+        "kind": {
+          "const": "execute"
+        },
+        "plan_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {
+            "$ref": "#/$defs/planStep"
+          }
+        },
+        "final_outputs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 40,
+          "items": {
+            "$ref": "#/$defs/stepFactRef"
+          }
+        }
+      }
+    },
+    "planStep": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/skillCall"
+        },
+        {
+          "$ref": "#/$defs/normalizePeriodOperator"
+        },
+        {
+          "$ref": "#/$defs/countOperator"
+        },
+        {
+          "$ref": "#/$defs/aggregateOperator"
+        },
+        {
+          "$ref": "#/$defs/rankOperator"
+        },
+        {
+          "$ref": "#/$defs/filterOperator"
+        },
+        {
+          "$ref": "#/$defs/joinOperator"
+        },
+        {
+          "$ref": "#/$defs/calculateOperator"
+        }
+      ]
+    },
+    "skillCall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step_id",
+        "kind",
+        "skill_id",
+        "skill_version",
+        "arguments",
+        "required_output_fact_ids",
+        "on_empty"
+      ],
+      "properties": {
+        "step_id": {
+          "$ref": "#/$defs/stepId"
+        },
+        "kind": {
+          "const": "skill_call"
+        },
+        "skill_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)+$",
+          "maxLength": 120
+        },
+        "skill_version": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+        },
+        "arguments": {
+          "type": "array",
+          "maxItems": 40,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "parameter",
+              "binding"
+            ],
+            "properties": {
+              "parameter": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]{0,63}$"
+              },
+              "binding": {
+                "$ref": "#/$defs/binding"
+              }
+            }
+          }
+        },
+        "required_output_fact_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/factId"
+          }
+        },
+        "on_empty": {
+          "enum": [
+            "stop_not_found",
+            "continue_as_empty_set",
+            "continue_as_zero_only_if_contract_allows"
+          ]
+        }
+      }
+    },
+    "operatorBaseProperties": {
+      "type": "object"
+    },
+    "normalizePeriodOperator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step_id",
+        "kind",
+        "operator",
+        "expression",
+        "timezone",
+        "result_fact_id"
+      ],
+      "properties": {
+        "step_id": {
+          "$ref": "#/$defs/stepId"
+        },
+        "kind": {
+          "const": "operator_call"
+        },
+        "operator": {
+          "const": "normalize_period"
+        },
+        "expression": {
+          "$ref": "#/$defs/binding"
+        },
+        "timezone": {
+          "const": "Europe/Moscow"
+        },
+        "result_fact_id": {
+          "$ref": "#/$defs/factId"
+        }
+      }
+    },
+    "countOperator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step_id",
+        "kind",
+        "operator",
+        "input_step_id",
+        "distinct_by_fact_ids",
+        "result_fact_id"
+      ],
+      "properties": {
+        "step_id": {
+          "$ref": "#/$defs/stepId"
+        },
+        "kind": {
+          "const": "operator_call"
+        },
+        "operator": {
+          "const": "count"
+        },
+        "input_step_id": {
+          "$ref": "#/$defs/stepId"
+        },
+        "distinct_by_fact_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/factId"
+          }
+        },
+        "result_fact_id": {
+          "$ref": "#/$defs/factId"
+        }
+      }
+    },
+    "aggregateOperator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step_id",
+        "kind",
+        "operator",
+        "input_step_id",
+        "function",
+        "measure_fact_id",
+        "group_by_fact_ids",
+        "result_fact_id"
+      ],
+      "properties": {
+        "step_id": {
+          "$ref": "#/$defs/stepId"
+        },
+        "kind": {
+          "const": "operator_call"
+        },
+        "operator": {
+          "const": "aggregate"
+        },
+        "input_step_id": {
+          "$ref": "#/$defs/stepId"
+        },
+        "function": {
+          "enum": [
+            "sum",
+            "average",
+            "minimum",
+            "maximum"
+          ]
+        },
+        "measure_fact_id": {
+          "$ref": "#/$defs/factId"
+        },
+        "group_by_fact_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/factId"
+          }
+        },
+        "result_fact_id": {
+          "$ref": "#/$defs/factId"
+        }
+      }
+    },
+    "rankOperator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step_id",
+        "kind",
+        "operator",
+        "input_step_id",
+        "sort_fact_id",
+        "direction",
+        "limit",
+        "ties"
+      ],
+      "properties": {
+        "step_id": {
+          "$ref": "#/$defs/stepId"
+        },
+        "kind": {
+          "const": "operator_call"
+        },
+        "operator": {
+          "const": "rank"
+        },
+        "input_step_id": {
+          "$ref": "#/$defs/stepId"
+        },
+        "sort_fact_id": {
+          "$ref": "#/$defs/factId"
+        },
+        "direction": {
+          "enum": [
+            "ascending",
+            "descending"
+          ]
+        },
+        "limit": {
+          "$ref": "#/$defs/binding"
+        },
+        "ties": {
+          "enum": [
+            "stable_first",
+            "include_all"
+          ]
+        }
+      }
+    },
+    "filterOperator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step_id",
+        "kind",
+        "operator",
+        "input_step_id",
+        "fact_id",
+        "predicate"
+      ],
+      "properties": {
+        "step_id": {
+          "$ref": "#/$defs/stepId"
+        },
+        "kind": {
+          "const": "operator_call"
+        },
+        "operator": {
+          "const": "filter"
+        },
+        "input_step_id": {
+          "$ref": "#/$defs/stepId"
+        },
+        "fact_id": {
+          "$ref": "#/$defs/factId"
+        },
+        "predicate": {
+          "enum": [
+            "equal",
+            "not_equal",
+            "greater_than",
+            "greater_or_equal",
+            "less_than",
+            "less_or_equal",
+            "is_zero",
+            "is_positive",
+            "is_negative",
+            "is_null",
+            "is_not_null"
+          ]
+        },
+        "operand": {
+          "$ref": "#/$defs/binding"
+        }
+      }
+    },
+    "joinOperator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step_id",
+        "kind",
+        "operator",
+        "left_step_id",
+        "right_step_id",
+        "join_type",
+        "keys"
+      ],
+      "properties": {
+        "step_id": {
+          "$ref": "#/$defs/stepId"
+        },
+        "kind": {
+          "const": "operator_call"
+        },
+        "operator": {
+          "const": "join"
+        },
+        "left_step_id": {
+          "$ref": "#/$defs/stepId"
+        },
+        "right_step_id": {
+          "$ref": "#/$defs/stepId"
+        },
+        "join_type": {
+          "enum": [
+            "inner",
+            "left",
+            "full"
+          ]
+        },
+        "keys": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "left_fact_id",
+              "right_fact_id"
+            ],
+            "properties": {
+              "left_fact_id": {
+                "$ref": "#/$defs/factId"
+              },
+              "right_fact_id": {
+                "$ref": "#/$defs/factId"
+              }
+            }
+          }
+        }
+      }
+    },
+    "calculateOperator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step_id",
+        "kind",
+        "operator",
+        "input_step_id",
+        "calculation",
+        "operands",
+        "result_fact_id",
+        "result_semantic_type"
+      ],
+      "properties": {
+        "step_id": {
+          "$ref": "#/$defs/stepId"
+        },
+        "kind": {
+          "const": "operator_call"
+        },
+        "operator": {
+          "const": "calculate"
+        },
+        "input_step_id": {
+          "$ref": "#/$defs/stepId"
+        },
+        "calculation": {
+          "enum": [
+            "add",
+            "subtract",
+            "multiply",
+            "divide",
+            "percentage_change"
+          ]
+        },
+        "operands": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 10,
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "source",
+                  "fact_id"
+                ],
+                "properties": {
+                  "source": {
+                    "const": "input_fact"
+                  },
+                  "fact_id": {
+                    "$ref": "#/$defs/factId"
+                  }
+                }
+              },
+              {
+                "$ref": "#/$defs/literalBinding"
+              }
+            ]
+          }
+        },
+        "result_fact_id": {
+          "$ref": "#/$defs/factId"
+        },
+        "result_semantic_type": {
+          "$ref": "#/$defs/semanticType"
+        }
+      }
+    },
+    "stepFactRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step_id",
+        "fact_id"
+      ],
+      "properties": {
+        "step_id": {
+          "$ref": "#/$defs/stepId"
+        },
+        "fact_id": {
+          "$ref": "#/$defs/factId"
+        }
+      }
+    },
+    "binding": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/literalBinding"
+        },
+        {
+          "$ref": "#/$defs/slotBinding"
+        },
+        {
+          "$ref": "#/$defs/contextBinding"
+        },
+        {
+          "$ref": "#/$defs/stepBinding"
+        },
+        {
+          "$ref": "#/$defs/systemBinding"
+        }
+      ]
+    },
+    "literalBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "value_type",
+        "value"
+      ],
+      "properties": {
+        "source": {
+          "const": "literal"
+        },
+        "value_type": {
+          "enum": [
+            "string",
+            "normalized_text",
+            "boolean",
+            "integer",
+            "decimal",
+            "date",
+            "datetime",
+            "period",
+            "enum",
+            "pagination"
+          ]
+        },
+        "value": {
+          "oneOf": [
+            {
+              "type": "string",
+              "maxLength": 2000
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number",
+              "not": {
+                "type": "integer"
+              }
+            },
+            {
+              "$ref": "#/$defs/periodValue"
+            },
+            {
+              "$ref": "#/$defs/paginationValue"
+            }
+          ]
+        }
+      }
+    },
+    "slotBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "slot_id"
+      ],
+      "properties": {
+        "source": {
+          "const": "slot"
+        },
+        "slot_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{1,63}$"
+        }
+      }
+    },
+    "contextBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "context_handle",
+        "expected_semantic_type"
+      ],
+      "properties": {
+        "source": {
+          "const": "context"
+        },
+        "context_handle": {
+          "type": "string",
+          "pattern": "^ctx_[A-Za-z0-9_-]{16,80}$"
+        },
+        "expected_semantic_type": {
+          "$ref": "#/$defs/semanticType"
+        }
+      }
+    },
+    "stepBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "step_id",
+        "fact_id",
+        "cardinality"
+      ],
+      "properties": {
+        "source": {
+          "const": "step"
+        },
+        "step_id": {
+          "$ref": "#/$defs/stepId"
+        },
+        "fact_id": {
+          "$ref": "#/$defs/factId"
+        },
+        "cardinality": {
+          "enum": [
+            "one",
+            "many"
+          ]
+        }
+      }
+    },
+    "systemBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "name"
+      ],
+      "properties": {
+        "source": {
+          "const": "system"
+        },
+        "name": {
+          "enum": [
+            "turn_time",
+            "default_list_limit",
+            "page_cursor",
+            "database_state_marker"
+          ]
+        }
+      }
+    },
+    "periodValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "start",
+        "end_exclusive",
+        "timezone",
+        "precision"
+      ],
+      "properties": {
+        "start": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "end_exclusive": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "timezone": {
+          "const": "Europe/Moscow"
+        },
+        "precision": {
+          "enum": [
+            "day",
+            "month",
+            "quarter",
+            "year",
+            "instant"
+          ]
+        }
+      }
+    },
+    "paginationValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "limit"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "first_page",
+            "continue",
+            "full"
+          ]
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "cursor_handle": {
+          "type": "string",
+          "pattern": "^page_[A-Za-z0-9_-]{16,100}$"
+        }
+      }
+    },
+    "clarifyResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "question_ru",
+        "missing_requirement_ids",
+        "choices"
+      ],
+      "properties": {
+        "kind": {
+          "const": "clarify"
+        },
+        "question_ru": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 500
+        },
+        "missing_requirement_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^r[1-9][0-9]{0,2}$"
+          }
+        },
+        "choices": {
+          "type": "array",
+          "maxItems": 5,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "choice_id",
+              "label_ru",
+              "slot_id",
+              "binding"
+            ],
+            "properties": {
+              "choice_id": {
+                "type": "string",
+                "pattern": "^c[1-9][0-9]{0,2}$"
+              },
+              "label_ru": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160
+              },
+              "slot_id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]{1,63}$"
+              },
+              "binding": {
+                "$ref": "#/$defs/binding"
+              }
+            }
+          }
+        }
+      }
+    },
+    "refuseResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "reason_code",
+        "message_ru"
+      ],
+      "properties": {
+        "kind": {
+          "const": "refuse"
+        },
+        "reason_code": {
+          "enum": [
+            "read_only_request",
+            "out_of_scope"
+          ]
+        },
+        "message_ru": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 500
+        }
+      }
+    },
+    "capabilityGapResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "missing_fact_types",
+        "message_ru"
+      ],
+      "properties": {
+        "kind": {
+          "const": "capability_gap"
+        },
+        "missing_fact_types": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/semanticType"
+          }
+        },
+        "message_ru": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 500
+        }
+      }
+    }
+  }
+}

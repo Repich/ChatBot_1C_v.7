@@ -8,10 +8,17 @@
 документация, файловая выгрузка типовой УТ и доступный MCP используются только
 как источники требований и тестовых данных.
 
-Текущий этап: планирование и бизнес-анализ.
+Текущий этап: архитектура принята, начинается проектирование испытаний и
+реализация минимального вертикального среза.
 
 Документы проекта:
 
 - [план проекта](docs/project_plan.md);
+- [продуктовые требования](docs/requirements/product_requirements.md);
+- [каталог возможностей](docs/requirements/skill_catalog.md);
+- [критерии приемки](docs/requirements/acceptance_criteria.md);
+- [архитектура](docs/architecture/architecture.md);
+- [контракт переносимого навыка](docs/architecture/skill_contract.md);
+- [порядок реализации](docs/architecture/implementation_slices.md);
 - [исходные допущения](docs/assumptions.md);
 - [реестр исходных источников](docs/source_inventory.md).

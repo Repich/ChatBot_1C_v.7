@@ -1,0 +1,215 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chatbot1c.local/schemas/skill-package.schema.json",
+  "title": "ChatBot 1C atomic skill package",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "document_type",
+    "package_id",
+    "version",
+    "display",
+    "target",
+    "skills",
+    "dependency_lock",
+    "provenance",
+    "integrity"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "document_type": {
+      "const": "skill_package"
+    },
+    "package_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)+$",
+      "minLength": 3,
+      "maxLength": 120
+    },
+    "version": {
+      "$ref": "#/$defs/semver"
+    },
+    "display": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name_ru",
+        "description_ru"
+      ],
+      "properties": {
+        "name_ru": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "description_ru": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 1000
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "configuration_id",
+        "configuration_name",
+        "release",
+        "compatibility_mode"
+      ],
+      "properties": {
+        "configuration_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "configuration_name": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 300
+        },
+        "release": {
+          "$ref": "#/$defs/fourPartVersion"
+        },
+        "compatibility_mode": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+        }
+      }
+    },
+    "skills": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 500,
+      "items": {
+        "$ref": "skill.schema.json"
+      }
+    },
+    "dependency_lock": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "skill_id",
+          "version",
+          "digest"
+        ],
+        "properties": {
+          "skill_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)+$",
+            "maxLength": 120
+          },
+          "version": {
+            "$ref": "#/$defs/semver"
+          },
+          "digest": {
+            "$ref": "#/$defs/sha256"
+          }
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "author",
+        "created_at",
+        "release_note_ru",
+        "source_references"
+      ],
+      "properties": {
+        "author": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 160
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "release_note_ru": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 2000
+        },
+        "source_references": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "uri"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "configuration_metadata",
+                  "configuration_source",
+                  "built_in_help",
+                  "mcp_contract",
+                  "test_evidence"
+                ]
+              },
+              "uri": {
+                "type": "string",
+                "pattern": "^(ut-config|ut-help|mcp-contract|test-evidence)://",
+                "maxLength": 500
+              },
+              "sha256": {
+                "$ref": "#/$defs/sha256"
+              }
+            }
+          }
+        }
+      }
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "algorithm",
+        "canonicalization",
+        "scope",
+        "digest"
+      ],
+      "properties": {
+        "algorithm": {
+          "const": "sha256"
+        },
+        "canonicalization": {
+          "const": "RFC8785"
+        },
+        "scope": {
+          "const": "document_without_integrity"
+        },
+        "digest": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "semver": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+    },
+    "fourPartVersion": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    }
+  }
+}
