@@ -229,14 +229,17 @@ scan и independent `acceptance_observable_state` marker/baseline tooling.
 
 ## 8. Stabilization and Windows
 
-1. Запустить все 116 сценариев, недетерминированные повторить не менее трех раз.
-2. Сверить data evidence с независимыми control queries при том же marker.
-3. Проверить 30/90-second SLO и failure injection.
-4. Выполнить package replace/delete при активных turns.
-5. Проверить crash recovery catalog swap/turn persistence.
-6. После macOS acceptance выполнить Windows smoke: startup, SQLite/FTS5,
+1. Поставить минимальный local MCP proxy по
+   [ADR-0005](../adr/0005-local-mcp-proxy.md) с fixture poller, health/readiness,
+   macOS/Windows scripts и отдельным live gate обработки 1С.
+2. Запустить все 116 сценариев, недетерминированные повторить не менее трех раз.
+3. Сверить data evidence с независимыми control queries при том же marker.
+4. Проверить 30/90-second SLO и failure injection.
+5. Выполнить package replace/delete при активных turns.
+6. Проверить crash recovery catalog swap/turn persistence.
+7. После macOS acceptance выполнить Windows smoke: startup, SQLite/FTS5,
    DeepSeek, MCP, chat, diagnostics, web+CLI portability.
-7. Собрать application release, отдельный skill package, schemas, checksums,
+8. Собрать application release, отдельный skill package, schemas, checksums,
    instructions и acceptance report.
 
 ## 9. Порядок разработки внутри каждого среза

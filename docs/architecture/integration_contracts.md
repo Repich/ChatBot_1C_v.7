@@ -30,6 +30,9 @@ diagnostic storage не сохраняет неограниченный payload.
 Основной transport: MCP Streamable HTTP по `MCP_URL`, default
 `http://127.0.0.1:6003/mcp`, optional `?channel=<id>`. Используется MCP client,
 а не собственный JSON-RPC. На startup выполняются `initialize` и `tools/list`.
+Для proxy-режима обработки 1С этот endpoint предоставляет локальный bridge по
+[ADR-0005](../adr/0005-local-mcp-proxy.md); один только URL без запущенного
+bridge не является доступным MCP.
 
 Application port публикует ровно два метода:
 
