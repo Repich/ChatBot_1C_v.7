@@ -1,0 +1,840 @@
+{
+  "schema_version": "1.1.0",
+  "document_type": "skill",
+  "skill_id": "ut115.purchase.receipt-list",
+  "version": "1.0.0",
+  "display": {
+    "name_ru": "Список поступлений",
+    "purpose_ru": "Возвращает resolver-capable список документов с typed filters.",
+    "limitations_ru": [
+      "Не выбирает первый результат без доказанного SelectionProof."
+    ]
+  },
+  "provides": {
+    "capability_ids": [
+      "CAP-REF-UT115-PURCHASE-RECEIPT-LIST"
+    ],
+    "fact_types": [
+      "currency.code",
+      "document.number",
+      "document.purchase_receipt",
+      "measure.document_amount",
+      "party.organization",
+      "party.organization.name",
+      "party.partner.name",
+      "party.supplier",
+      "time.document_moment"
+    ]
+  },
+  "compatibility": {
+    "configuration_id": "УправлениеТорговлейБазовая",
+    "configuration_name": "1С:Управление торговлей (базовая), редакция 11",
+    "release_range": {
+      "minimum": "11.5.27.56",
+      "maximum": "11.5.27.56",
+      "include_minimum": true,
+      "include_maximum": true
+    },
+    "compatibility_modes": [
+      "8.3.27"
+    ],
+    "required_metadata": [
+      {
+        "object_name": "Документ.ПриобретениеТоваровУслуг",
+        "attributes": [
+          "Ссылка",
+          "Номер",
+          "Дата",
+          "Партнер",
+          "Организация",
+          "СуммаДокумента",
+          "Валюта"
+        ]
+      }
+    ],
+    "metadata_snapshot_sha256": "f839987386ff03c7bb67b69c53b7ec4309760639f622a9cc8035e801e005acf7"
+  },
+  "selection": {
+    "intent_kinds": [
+      "data"
+    ],
+    "aliases_ru": [
+      "список поступлений"
+    ],
+    "anti_examples_ru": [
+      "изменить или удалить найденный объект"
+    ],
+    "required_context_fact_types": [
+      "party.organization",
+      "party.supplier"
+    ]
+  },
+  "parameters": [
+    {
+      "name": "period",
+      "title_ru": "Период",
+      "description_ru": "Проверенный параметр: период.",
+      "value_type": "period",
+      "required": true,
+      "allowed_sources": [
+        "user_slot",
+        "previous_step"
+      ],
+      "normalization": "normalize_period",
+      "context_slot_keys": []
+    },
+    {
+      "name": "document_number",
+      "title_ru": "Номер документа",
+      "description_ru": "Проверенный параметр: номер документа.",
+      "value_type": "string",
+      "required": false,
+      "allowed_sources": [
+        "user_slot",
+        "system"
+      ],
+      "normalization": "trim",
+      "context_slot_keys": [],
+      "default": ""
+    },
+    {
+      "name": "supplier",
+      "title_ru": "Supplier",
+      "description_ru": "Проверенный параметр: supplier.",
+      "value_type": "entity_ref",
+      "required": false,
+      "allowed_sources": [
+        "previous_step",
+        "session_context"
+      ],
+      "normalization": "object_ref",
+      "context_slot_keys": [
+        "selection.supplier"
+      ],
+      "semantic_type": "party.supplier",
+      "entity_types": [
+        "party.supplier"
+      ]
+    },
+    {
+      "name": "organization",
+      "title_ru": "Организация",
+      "description_ru": "Проверенный параметр: организация.",
+      "value_type": "entity_ref",
+      "required": false,
+      "allowed_sources": [
+        "previous_step",
+        "session_context"
+      ],
+      "normalization": "object_ref",
+      "context_slot_keys": [
+        "selection.organization"
+      ],
+      "semantic_type": "party.organization",
+      "entity_types": [
+        "party.organization"
+      ]
+    }
+  ],
+  "operation": {
+    "kind": "data_query",
+    "tool": "execute_query",
+    "read_only": true,
+    "query_template": {
+      "template_id": "ut115.purchase.receipt-list.v1",
+      "language": "1c-query",
+      "text": "ВЫБРАТЬ\n  Документ.Ссылка КАК Поступление,\n  Документ.Номер КАК Номер,\n  Документ.Дата КАК Дата,\n  Документ.Партнер КАК Партнер,\n  ПРЕДСТАВЛЕНИЕ(Документ.Партнер) КАК ПартнерНаименование,\n  Документ.Организация КАК Организация,\n  ПРЕДСТАВЛЕНИЕ(Документ.Организация) КАК ОрганизацияНаименование,\n  Документ.СуммаДокумента КАК СуммаДокумента,\n  Документ.Валюта.Код КАК Валюта\nИЗ Документ.ПриобретениеТоваровУслуг КАК Документ\nГДЕ Документ.Дата >= &НачалоПериода\n  И Документ.Дата < &КонецПериода\n  И (&Номер = \"\" ИЛИ Документ.Номер = &Номер)\n  И (&Партнер ЕСТЬ NULL ИЛИ Документ.Партнер = &Партнер)\n  И (&Организация ЕСТЬ NULL ИЛИ Документ.Организация = &Организация)\n  И (НЕ &ЕстьКурсор\n    ИЛИ Документ.Дата < &ДатаКурсора\n    ИЛИ (Документ.Дата = &ДатаКурсора\n      И Документ.Ссылка > &СсылкаКурсора))\nУПОРЯДОЧИТЬ ПО Документ.Дата УБЫВ, Документ.Ссылка",
+      "execution": {
+        "kind": "single_select",
+        "statement_count": 1,
+        "final_statement": 1
+      },
+      "invariant_constants": [
+        {
+          "kind": "empty_literal",
+          "statement": 1,
+          "value": "",
+          "role": "absence_filter",
+          "occurrences": 1
+        },
+        {
+          "kind": "null_literal",
+          "statement": 1,
+          "value": "NULL",
+          "role": "absence_filter",
+          "occurrences": 2
+        }
+      ],
+      "include_schema": true,
+      "mcp_limit": {
+        "default": 20,
+        "maximum": 1000
+      }
+    },
+    "parameter_bindings": [
+      {
+        "parameter": "period",
+        "query_parameter": "НачалоПериода",
+        "encoding": "period_start"
+      },
+      {
+        "parameter": "period",
+        "query_parameter": "КонецПериода",
+        "encoding": "period_end_exclusive"
+      },
+      {
+        "parameter": "document_number",
+        "query_parameter": "Номер",
+        "encoding": "string"
+      },
+      {
+        "parameter": "supplier",
+        "query_parameter": "Партнер",
+        "encoding": "object_ref"
+      },
+      {
+        "parameter": "organization",
+        "query_parameter": "Организация",
+        "encoding": "object_ref"
+      }
+    ],
+    "column_bindings": [
+      {
+        "column": "Поступление",
+        "fact_id": "receipt.ref",
+        "accepted_mcp_types": [
+          "ДокументСсылка.ПриобретениеТоваровУслуг"
+        ],
+        "converter": "object_ref"
+      },
+      {
+        "column": "Номер",
+        "fact_id": "receipt.number",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "Дата",
+        "fact_id": "receipt.date",
+        "accepted_mcp_types": [
+          "Дата"
+        ],
+        "converter": "datetime"
+      },
+      {
+        "column": "Партнер",
+        "fact_id": "receipt.supplier",
+        "accepted_mcp_types": [
+          "СправочникСсылка.Партнеры"
+        ],
+        "converter": "object_ref"
+      },
+      {
+        "column": "ПартнерНаименование",
+        "fact_id": "receipt.supplier_name",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "Организация",
+        "fact_id": "receipt.organization",
+        "accepted_mcp_types": [
+          "СправочникСсылка.Организации"
+        ],
+        "converter": "object_ref"
+      },
+      {
+        "column": "ОрганизацияНаименование",
+        "fact_id": "receipt.organization_name",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "СуммаДокумента",
+        "fact_id": "receipt.amount",
+        "accepted_mcp_types": [
+          "Число"
+        ],
+        "converter": "decimal"
+      },
+      {
+        "column": "Валюта",
+        "fact_id": "receipt.currency",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      }
+    ],
+    "pagination": {
+      "strategy": "keyset",
+      "has_cursor_query_parameter": "ЕстьКурсор",
+      "sort": [
+        {
+          "fact_id": "receipt.date",
+          "direction": "desc"
+        },
+        {
+          "fact_id": "receipt.ref",
+          "direction": "asc"
+        }
+      ],
+      "cursor_bindings": [
+        {
+          "fact_id": "receipt.date",
+          "query_parameter": "ДатаКурсора",
+          "encoding": "datetime"
+        },
+        {
+          "fact_id": "receipt.ref",
+          "query_parameter": "СсылкаКурсора",
+          "encoding": "object_ref"
+        }
+      ]
+    }
+  },
+  "output_contract": {
+    "contract_id": "ut115.purchase.receipt-list.v1",
+    "contract_version": "1.1.0",
+    "cardinality": "many",
+    "facts": [
+      {
+        "fact_id": "receipt.ref",
+        "semantic_type": "document.purchase_receipt",
+        "value_type": "entity_ref",
+        "role": "entity",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Список поступлений",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "receipt.number",
+        "semantic_type": "document.number",
+        "value_type": "string",
+        "role": "attribute",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Номер",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "receipt.date",
+        "semantic_type": "time.document_moment",
+        "value_type": "datetime",
+        "role": "time",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Дата",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "receipt.supplier",
+        "semantic_type": "party.supplier",
+        "value_type": "entity_ref",
+        "role": "dimension",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Supplier",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "receipt.supplier_name",
+        "semantic_type": "party.partner.name",
+        "value_type": "string",
+        "role": "dimension",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Партнер",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "receipt.organization",
+        "semantic_type": "party.organization",
+        "value_type": "entity_ref",
+        "role": "dimension",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Организация",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "receipt.organization_name",
+        "semantic_type": "party.organization.name",
+        "value_type": "string",
+        "role": "dimension",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Организация",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "receipt.amount",
+        "semantic_type": "measure.document_amount",
+        "value_type": "money",
+        "role": "measure",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Сумма",
+        "unit_contract": {
+          "mode": "from_fact",
+          "fact_id": "receipt.currency"
+        }
+      },
+      {
+        "fact_id": "receipt.currency",
+        "semantic_type": "currency.code",
+        "value_type": "string",
+        "role": "dimension",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Валюта",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      }
+    ],
+    "sufficiency": {
+      "required_fact_sets": [
+        [
+          "receipt.ref",
+          "receipt.number",
+          "receipt.date",
+          "receipt.supplier",
+          "receipt.supplier_name",
+          "receipt.organization",
+          "receipt.organization_name",
+          "receipt.amount",
+          "receipt.currency"
+        ]
+      ],
+      "empty_semantics": "confirmed_not_found",
+      "zero_fact_ids": [],
+      "truncation_policy": "page_is_complete"
+    },
+    "renderer": {
+      "kind": "table",
+      "primary_fact_ids": [
+        "receipt.currency"
+      ],
+      "column_fact_ids": [
+        "receipt.ref",
+        "receipt.number",
+        "receipt.date",
+        "receipt.supplier",
+        "receipt.supplier_name",
+        "receipt.organization",
+        "receipt.organization_name",
+        "receipt.amount",
+        "receipt.currency"
+      ]
+    },
+    "row_identity_fact_ids": [
+      "receipt.ref"
+    ],
+    "resolution": {
+      "protocol": "typed_entity_resolver_v1",
+      "identity_fact_id": "receipt.ref",
+      "candidate_label_fact_ids": [
+        "receipt.number",
+        "receipt.date"
+      ],
+      "role_proof_fact_ids": [],
+      "default_slot_key": "selection.purchase_receipt"
+    },
+    "context_export_policy": [
+      {
+        "fact_id": "receipt.ref",
+        "slot_key": "selection.purchase_receipt",
+        "mode": "selected_only",
+        "lifetime": {
+          "mode": "session"
+        },
+        "max_members": 100
+      }
+    ]
+  },
+  "result_constraints": [],
+  "dependencies": {
+    "runtime_contracts": [
+      {
+        "contract": "skill-runtime",
+        "version_range": "^1.0.0"
+      },
+      {
+        "contract": "mcp.execute_query",
+        "version_range": "^1.0.0"
+      }
+    ],
+    "skills": [
+      {
+        "skill_id": "ut115.ref.supplier.resolve-name-contains",
+        "version_range": "=1.0.0",
+        "required_fact_types": [
+          "party.supplier"
+        ]
+      },
+      {
+        "skill_id": "ut115.ref.organization.resolve-name-contains",
+        "version_range": "=1.0.0",
+        "required_fact_types": [
+          "party.organization"
+        ]
+      }
+    ]
+  },
+  "examples": [
+    {
+      "question_ru": "список поступлений?",
+      "applicability": "applicable",
+      "reason_ru": "Вопрос соответствует точному typed-контракту навыка."
+    },
+    {
+      "question_ru": "изменить найденный объект?",
+      "applicability": "not_applicable",
+      "reason_ru": "Навык выполняет только чтение данных."
+    }
+  ],
+  "tests": [
+    {
+      "test_id": "ut.purchase.receipt-list.positive",
+      "case_kind": "positive",
+      "bindings": [
+        {
+          "parameter": "period",
+          "value": {
+            "start": "2026-01-01",
+            "end_exclusive": "2027-01-01"
+          }
+        },
+        {
+          "parameter": "document_number",
+          "value": ""
+        },
+        {
+          "parameter": "supplier",
+          "value": {
+            "_objectRef": true,
+            "УникальныйИдентификатор": "00000000-0000-4000-8000-000000003003",
+            "ТипОбъекта": "СправочникСсылка.Партнеры",
+            "Представление": "Поставщик"
+          }
+        },
+        {
+          "parameter": "organization",
+          "value": {
+            "_objectRef": true,
+            "УникальныйИдентификатор": "00000000-0000-4000-8000-000000003001",
+            "ТипОбъекта": "СправочникСсылка.Организации",
+            "Представление": "Торговый дом"
+          }
+        }
+      ],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": true,
+          "data": [
+            {
+              "Поступление": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000003300",
+                "ТипОбъекта": "ДокументСсылка.ПриобретениеТоваровУслуг",
+                "Представление": "Список поступлений"
+              },
+              "Номер": "0000-000001",
+              "Дата": "2026-01-15T12:00:00Z",
+              "Партнер": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000003003",
+                "ТипОбъекта": "СправочникСсылка.Партнеры",
+                "Представление": "Поставщик"
+              },
+              "ПартнерНаименование": "Supplier",
+              "Организация": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000003001",
+                "ТипОбъекта": "СправочникСсылка.Организации",
+                "Представление": "Торговый дом"
+              },
+              "ОрганизацияНаименование": "Торговый дом",
+              "СуммаДокумента": 1000.0,
+              "Валюта": "RUB"
+            }
+          ],
+          "schema": {
+            "columns": [
+              {
+                "name": "Поступление",
+                "types": [
+                  "ДокументСсылка.ПриобретениеТоваровУслуг"
+                ]
+              },
+              {
+                "name": "Номер",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Дата",
+                "types": [
+                  "Дата"
+                ]
+              },
+              {
+                "name": "Партнер",
+                "types": [
+                  "СправочникСсылка.Партнеры"
+                ]
+              },
+              {
+                "name": "ПартнерНаименование",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Организация",
+                "types": [
+                  "СправочникСсылка.Организации"
+                ]
+              },
+              {
+                "name": "ОрганизацияНаименование",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "СуммаДокумента",
+                "types": [
+                  "Число"
+                ]
+              },
+              {
+                "name": "Валюта",
+                "types": [
+                  "Строка"
+                ]
+              }
+            ]
+          },
+          "count": 1
+        }
+      },
+      "expected": {
+        "status": "success_with_rows",
+        "required_fact_ids": [
+          "receipt.ref",
+          "receipt.number",
+          "receipt.date",
+          "receipt.supplier",
+          "receipt.supplier_name",
+          "receipt.organization",
+          "receipt.organization_name",
+          "receipt.amount",
+          "receipt.currency"
+        ]
+      }
+    },
+    {
+      "test_id": "ut.purchase.receipt-list.empty",
+      "case_kind": "negative",
+      "bindings": [
+        {
+          "parameter": "period",
+          "value": {
+            "start": "2026-01-01",
+            "end_exclusive": "2027-01-01"
+          }
+        },
+        {
+          "parameter": "document_number",
+          "value": ""
+        },
+        {
+          "parameter": "supplier",
+          "value": {
+            "_objectRef": true,
+            "УникальныйИдентификатор": "00000000-0000-4000-8000-000000003003",
+            "ТипОбъекта": "СправочникСсылка.Партнеры",
+            "Представление": "Поставщик"
+          }
+        },
+        {
+          "parameter": "organization",
+          "value": {
+            "_objectRef": true,
+            "УникальныйИдентификатор": "00000000-0000-4000-8000-000000003001",
+            "ТипОбъекта": "СправочникСсылка.Организации",
+            "Представление": "Торговый дом"
+          }
+        }
+      ],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": true,
+          "data": [],
+          "schema": {
+            "columns": [
+              {
+                "name": "Поступление",
+                "types": [
+                  "ДокументСсылка.ПриобретениеТоваровУслуг"
+                ]
+              },
+              {
+                "name": "Номер",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Дата",
+                "types": [
+                  "Дата"
+                ]
+              },
+              {
+                "name": "Партнер",
+                "types": [
+                  "СправочникСсылка.Партнеры"
+                ]
+              },
+              {
+                "name": "ПартнерНаименование",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Организация",
+                "types": [
+                  "СправочникСсылка.Организации"
+                ]
+              },
+              {
+                "name": "ОрганизацияНаименование",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "СуммаДокумента",
+                "types": [
+                  "Число"
+                ]
+              },
+              {
+                "name": "Валюта",
+                "types": [
+                  "Строка"
+                ]
+              }
+            ]
+          },
+          "count": 0
+        }
+      },
+      "expected": {
+        "status": "success_empty",
+        "required_fact_ids": []
+      }
+    },
+    {
+      "test_id": "ut.purchase.receipt-list.malformed",
+      "case_kind": "negative",
+      "bindings": [
+        {
+          "parameter": "period",
+          "value": {
+            "start": "2026-01-01",
+            "end_exclusive": "2027-01-01"
+          }
+        },
+        {
+          "parameter": "document_number",
+          "value": ""
+        },
+        {
+          "parameter": "supplier",
+          "value": {
+            "_objectRef": true,
+            "УникальныйИдентификатор": "00000000-0000-4000-8000-000000003003",
+            "ТипОбъекта": "СправочникСсылка.Партнеры",
+            "Представление": "Поставщик"
+          }
+        },
+        {
+          "parameter": "organization",
+          "value": {
+            "_objectRef": true,
+            "УникальныйИдентификатор": "00000000-0000-4000-8000-000000003001",
+            "ТипОбъекта": "СправочникСсылка.Организации",
+            "Представление": "Торговый дом"
+          }
+        }
+      ],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": false,
+          "error": "MCP_SCHEMA_MISMATCH: incompatible identity column type"
+        }
+      },
+      "expected": {
+        "status": "query_error",
+        "required_fact_ids": [],
+        "error_code": "MCP_SCHEMA_MISMATCH"
+      }
+    }
+  ],
+  "provenance": {
+    "author": "ChatBot 1C slice 3B",
+    "created_at": "2026-07-22T00:00:00Z",
+    "reviewed_by": "Metadata-proven resolver catalog",
+    "reviewed_at": "2026-07-22T00:00:00Z",
+    "source_configuration": {
+      "configuration_id": "УправлениеТорговлейБазовая",
+      "release": "11.5.27.56",
+      "compatibility_mode": "8.3.27",
+      "metadata_snapshot_sha256": "f839987386ff03c7bb67b69c53b7ec4309760639f622a9cc8035e801e005acf7"
+    },
+    "source_references": [
+      {
+        "kind": "configuration_metadata",
+        "uri": "ut-config://11.5.27.56/Documents/ПриобретениеТоваровУслуг.xml",
+        "sha256": "f839987386ff03c7bb67b69c53b7ec4309760639f622a9cc8035e801e005acf7"
+      }
+    ],
+    "change_note_ru": "Production typed resolver/consumer contract без object-specific core logic."
+  },
+  "integrity": {
+    "algorithm": "sha256",
+    "canonicalization": "RFC8785",
+    "scope": "document_without_integrity",
+    "digest": "2f63aadc6df8e08b2917b6586bbca06e0ceed06bca07610c076bb3dd8f98c5a4"
+  }
+}

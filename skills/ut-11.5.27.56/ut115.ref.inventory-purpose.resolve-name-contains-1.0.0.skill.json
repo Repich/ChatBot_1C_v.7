@@ -1,0 +1,566 @@
+{
+  "schema_version": "1.1.0",
+  "document_type": "skill",
+  "skill_id": "ut115.ref.inventory-purpose.resolve-name-contains",
+  "version": "1.0.0",
+  "display": {
+    "name_ru": "Поиск назначения запасов",
+    "purpose_ru": "Разрешает exact сущность поиск назначения запасов по проверенным metadata.",
+    "limitations_ru": [
+      "Не выбирает первый результат без доказанного SelectionProof."
+    ]
+  },
+  "provides": {
+    "capability_ids": [
+      "CAP-REF-UT115-REF-INVENTORY-PURPOSE-RESOLVE-NAME-CONTAINS"
+    ],
+    "fact_types": [
+      "business.direction.name",
+      "document.order.presentation",
+      "inventory.purpose",
+      "inventory.purpose.name",
+      "inventory.purpose.type",
+      "party.contract.presentation",
+      "party.partner.name"
+    ]
+  },
+  "compatibility": {
+    "configuration_id": "УправлениеТорговлейБазовая",
+    "configuration_name": "1С:Управление торговлей (базовая), редакция 11",
+    "release_range": {
+      "minimum": "11.5.27.56",
+      "maximum": "11.5.27.56",
+      "include_minimum": true,
+      "include_maximum": true
+    },
+    "compatibility_modes": [
+      "8.3.27"
+    ],
+    "required_metadata": [
+      {
+        "object_name": "Справочник.Назначения",
+        "attributes": [
+          "Ссылка",
+          "Наименование",
+          "ТипНазначения",
+          "Партнер",
+          "Договор",
+          "Заказ",
+          "НаправлениеДеятельности"
+        ]
+      }
+    ],
+    "metadata_snapshot_sha256": "2c93b290c09cbf111ecf02ac2c88350f2d94688c6fb7fcc48c2a0bf2b763b0c3"
+  },
+  "selection": {
+    "intent_kinds": [
+      "data"
+    ],
+    "aliases_ru": [
+      "найди назначение запасов"
+    ],
+    "anti_examples_ru": [
+      "изменить или удалить найденный объект"
+    ],
+    "required_context_fact_types": []
+  },
+  "parameters": [
+    {
+      "name": "purpose_text",
+      "title_ru": "Назначение",
+      "description_ru": "Проверенный параметр: назначение.",
+      "value_type": "normalized_text",
+      "required": true,
+      "allowed_sources": [
+        "user_slot"
+      ],
+      "normalization": "like_contains",
+      "context_slot_keys": []
+    }
+  ],
+  "operation": {
+    "kind": "data_query",
+    "tool": "execute_query",
+    "read_only": true,
+    "query_template": {
+      "template_id": "ut115.ref.inventory-purpose.resolve-name-contains.v1",
+      "language": "1c-query",
+      "text": "ВЫБРАТЬ\n  Назначения.Ссылка КАК Назначение,\n  Назначения.Наименование КАК Наименование,\n  ПРЕДСТАВЛЕНИЕ(Назначения.ТипНазначения) КАК ТипНазначения,\n  ПРЕДСТАВЛЕНИЕ(Назначения.Партнер) КАК Партнер,\n  ПРЕДСТАВЛЕНИЕ(Назначения.Договор) КАК Договор,\n  ПРЕДСТАВЛЕНИЕ(Назначения.Заказ) КАК Заказ,\n  ПРЕДСТАВЛЕНИЕ(Назначения.НаправлениеДеятельности) КАК Направление\nИЗ Справочник.Назначения КАК Назначения\nГДЕ Назначения.Наименование ПОДОБНО &Шаблон СПЕЦСИМВОЛ \"~\"\n  И (НЕ &ЕстьКурсор\n    ИЛИ Назначения.Наименование > &ИмяКурсора\n    ИЛИ (Назначения.Наименование = &ИмяКурсора\n      И Назначения.Ссылка > &СсылкаКурсора))\nУПОРЯДОЧИТЬ ПО Назначения.Наименование, Назначения.Ссылка",
+      "execution": {
+        "kind": "single_select",
+        "statement_count": 1,
+        "final_statement": 1
+      },
+      "invariant_constants": [],
+      "include_schema": true,
+      "mcp_limit": {
+        "default": 20,
+        "maximum": 1000
+      }
+    },
+    "parameter_bindings": [
+      {
+        "parameter": "purpose_text",
+        "query_parameter": "Шаблон",
+        "encoding": "like_contains"
+      }
+    ],
+    "column_bindings": [
+      {
+        "column": "Назначение",
+        "fact_id": "purpose.ref",
+        "accepted_mcp_types": [
+          "СправочникСсылка.Назначения"
+        ],
+        "converter": "object_ref"
+      },
+      {
+        "column": "Наименование",
+        "fact_id": "purpose.name",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "ТипНазначения",
+        "fact_id": "purpose.type",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "Партнер",
+        "fact_id": "purpose.partner_name",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "Договор",
+        "fact_id": "purpose.contract_presentation",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "Заказ",
+        "fact_id": "purpose.order_presentation",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "Направление",
+        "fact_id": "purpose.business_direction_name",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      }
+    ],
+    "pagination": {
+      "strategy": "keyset",
+      "has_cursor_query_parameter": "ЕстьКурсор",
+      "sort": [
+        {
+          "fact_id": "purpose.name",
+          "direction": "asc"
+        },
+        {
+          "fact_id": "purpose.ref",
+          "direction": "asc"
+        }
+      ],
+      "cursor_bindings": [
+        {
+          "fact_id": "purpose.name",
+          "query_parameter": "ИмяКурсора",
+          "encoding": "string"
+        },
+        {
+          "fact_id": "purpose.ref",
+          "query_parameter": "СсылкаКурсора",
+          "encoding": "object_ref"
+        }
+      ]
+    }
+  },
+  "output_contract": {
+    "contract_id": "ut115.ref.inventory-purpose.resolve-name-contains.v1",
+    "contract_version": "1.1.0",
+    "cardinality": "many",
+    "facts": [
+      {
+        "fact_id": "purpose.ref",
+        "semantic_type": "inventory.purpose",
+        "value_type": "entity_ref",
+        "role": "entity",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Поиск назначения запасов",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "purpose.name",
+        "semantic_type": "inventory.purpose.name",
+        "value_type": "string",
+        "role": "attribute",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Наименование",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "purpose.type",
+        "semantic_type": "inventory.purpose.type",
+        "value_type": "string",
+        "role": "attribute",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Тип назначения",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "purpose.partner_name",
+        "semantic_type": "party.partner.name",
+        "value_type": "string",
+        "role": "dimension",
+        "required": false,
+        "nullable": true,
+        "title_ru": "Партнер",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "purpose.contract_presentation",
+        "semantic_type": "party.contract.presentation",
+        "value_type": "string",
+        "role": "dimension",
+        "required": false,
+        "nullable": true,
+        "title_ru": "Договор",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "purpose.order_presentation",
+        "semantic_type": "document.order.presentation",
+        "value_type": "string",
+        "role": "dimension",
+        "required": false,
+        "nullable": true,
+        "title_ru": "Заказ",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "purpose.business_direction_name",
+        "semantic_type": "business.direction.name",
+        "value_type": "string",
+        "role": "dimension",
+        "required": false,
+        "nullable": true,
+        "title_ru": "Направление",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      }
+    ],
+    "sufficiency": {
+      "required_fact_sets": [
+        [
+          "purpose.ref",
+          "purpose.name",
+          "purpose.type"
+        ]
+      ],
+      "empty_semantics": "confirmed_not_found",
+      "zero_fact_ids": [],
+      "truncation_policy": "page_is_complete"
+    },
+    "renderer": {
+      "kind": "table",
+      "primary_fact_ids": [
+        "purpose.type"
+      ],
+      "column_fact_ids": [
+        "purpose.ref",
+        "purpose.name",
+        "purpose.type",
+        "purpose.partner_name",
+        "purpose.contract_presentation",
+        "purpose.order_presentation",
+        "purpose.business_direction_name"
+      ]
+    },
+    "row_identity_fact_ids": [
+      "purpose.ref"
+    ],
+    "resolution": {
+      "protocol": "typed_entity_resolver_v1",
+      "identity_fact_id": "purpose.ref",
+      "candidate_label_fact_ids": [
+        "purpose.name",
+        "purpose.type"
+      ],
+      "role_proof_fact_ids": [],
+      "default_slot_key": "selection.inventory_purpose"
+    },
+    "context_export_policy": [
+      {
+        "fact_id": "purpose.ref",
+        "slot_key": "selection.inventory_purpose",
+        "mode": "selected_only",
+        "lifetime": {
+          "mode": "session"
+        },
+        "max_members": 100
+      }
+    ]
+  },
+  "result_constraints": [],
+  "dependencies": {
+    "runtime_contracts": [
+      {
+        "contract": "skill-runtime",
+        "version_range": "^1.0.0"
+      },
+      {
+        "contract": "mcp.execute_query",
+        "version_range": "^1.0.0"
+      }
+    ],
+    "skills": []
+  },
+  "examples": [
+    {
+      "question_ru": "найди назначение запасов?",
+      "applicability": "applicable",
+      "reason_ru": "Вопрос соответствует точному typed-контракту навыка."
+    },
+    {
+      "question_ru": "изменить найденный объект?",
+      "applicability": "not_applicable",
+      "reason_ru": "Навык выполняет только чтение данных."
+    }
+  ],
+  "tests": [
+    {
+      "test_id": "ut.ref.inventory-purpose.resolve-name-contains.positive",
+      "case_kind": "positive",
+      "bindings": [
+        {
+          "parameter": "purpose_text",
+          "value": "Заказ"
+        }
+      ],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": true,
+          "data": [
+            {
+              "Назначение": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000002001",
+                "ТипОбъекта": "СправочникСсылка.Назначения",
+                "Представление": "Заказ клиента"
+              },
+              "Наименование": "Заказ клиента",
+              "ТипНазначения": "Заказ",
+              "Партнер": "Клиент",
+              "Договор": "Договор",
+              "Заказ": "Заказ 1",
+              "Направление": "Розница"
+            }
+          ],
+          "schema": {
+            "columns": [
+              {
+                "name": "Назначение",
+                "types": [
+                  "СправочникСсылка.Назначения"
+                ]
+              },
+              {
+                "name": "Наименование",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "ТипНазначения",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Партнер",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Договор",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Заказ",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Направление",
+                "types": [
+                  "Строка"
+                ]
+              }
+            ]
+          },
+          "count": 1
+        }
+      },
+      "expected": {
+        "status": "success_with_rows",
+        "required_fact_ids": [
+          "purpose.ref",
+          "purpose.name",
+          "purpose.type"
+        ]
+      }
+    },
+    {
+      "test_id": "ut.ref.inventory-purpose.resolve-name-contains.empty",
+      "case_kind": "negative",
+      "bindings": [
+        {
+          "parameter": "purpose_text",
+          "value": "Заказ"
+        }
+      ],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": true,
+          "data": [],
+          "schema": {
+            "columns": [
+              {
+                "name": "Назначение",
+                "types": [
+                  "СправочникСсылка.Назначения"
+                ]
+              },
+              {
+                "name": "Наименование",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "ТипНазначения",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Партнер",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Договор",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Заказ",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Направление",
+                "types": [
+                  "Строка"
+                ]
+              }
+            ]
+          },
+          "count": 0
+        }
+      },
+      "expected": {
+        "status": "success_empty",
+        "required_fact_ids": []
+      }
+    },
+    {
+      "test_id": "ut.ref.inventory-purpose.resolve-name-contains.malformed",
+      "case_kind": "negative",
+      "bindings": [
+        {
+          "parameter": "purpose_text",
+          "value": "Заказ"
+        }
+      ],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": false,
+          "error": "MCP_SCHEMA_MISMATCH: incompatible identity column type"
+        }
+      },
+      "expected": {
+        "status": "query_error",
+        "required_fact_ids": [],
+        "error_code": "MCP_SCHEMA_MISMATCH"
+      }
+    }
+  ],
+  "provenance": {
+    "author": "ChatBot 1C slice 3B",
+    "created_at": "2026-07-22T00:00:00Z",
+    "reviewed_by": "Metadata-proven resolver catalog",
+    "reviewed_at": "2026-07-22T00:00:00Z",
+    "source_configuration": {
+      "configuration_id": "УправлениеТорговлейБазовая",
+      "release": "11.5.27.56",
+      "compatibility_mode": "8.3.27",
+      "metadata_snapshot_sha256": "2c93b290c09cbf111ecf02ac2c88350f2d94688c6fb7fcc48c2a0bf2b763b0c3"
+    },
+    "source_references": [
+      {
+        "kind": "configuration_metadata",
+        "uri": "ut-config://11.5.27.56/Catalogs/Назначения.xml",
+        "sha256": "2c93b290c09cbf111ecf02ac2c88350f2d94688c6fb7fcc48c2a0bf2b763b0c3"
+      }
+    ],
+    "change_note_ru": "Production typed resolver/consumer contract без object-specific core logic."
+  },
+  "integrity": {
+    "algorithm": "sha256",
+    "canonicalization": "RFC8785",
+    "scope": "document_without_integrity",
+    "digest": "84071f7fcb4878d9f25ec7688b137873a09e0ea8a00d92f390d248c252579850"
+  }
+}

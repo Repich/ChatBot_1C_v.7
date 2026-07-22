@@ -26,6 +26,22 @@ APPLICATION_RESOURCES = {
         "chatbot1c/builtin_skills/ut-11.5.27.56/"
         "ut.starter.slice-two.package.json"
     ),
+    (
+        "chatbot1c/builtin_skills/ut-11.5.27.56/"
+        "ut.starter.slice-three.package.json"
+    ),
+    (
+        "chatbot1c/builtin_skills/ut-11.5.27.56/"
+        "ut115-reference-1.1.0.package.json"
+    ),
+    (
+        "chatbot1c/builtin_skills/ut-11.5.27.56/"
+        "ut115-reference-existing-upgrade-1.1.0.package.json"
+    ),
+    (
+        "chatbot1c/builtin_skills/ut-11.5.27.56/"
+        "ut115-reference-slice3-additions-1.0.0.package.json"
+    ),
 }
 
 
@@ -123,7 +139,7 @@ with TemporaryDirectory() as data_dir:
         assert client.get("/").status_code == 200
         assert client.get("/static/app.css").status_code == 200
         catalog = client.get("/api/v1/skills").json()
-        assert len(catalog["skills"]) == 10
+        assert len(catalog["skills"]) == 39
 print(",".join(repository.names))
 """
     result = _run([str(python), "-I", "-c", probe], clean_cwd)

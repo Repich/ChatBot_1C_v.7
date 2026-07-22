@@ -282,7 +282,7 @@ def _starter_package_bytes(settings: Settings) -> bytes:
         return settings.starter_package_path.expanduser().read_bytes()
     relative = Path(
         "ut-11.5.27.56",
-        "ut.starter.slice-two.package.json",
+        "ut.starter.slice-three.package.json",
     )
     packaged = files("chatbot1c").joinpath("builtin_skills", *relative.parts)
     if packaged.is_file():

@@ -1,0 +1,681 @@
+{
+  "schema_version": "1.1.0",
+  "document_type": "skill",
+  "skill_id": "ut115.ref.price-type.resolve",
+  "version": "1.0.0",
+  "display": {
+    "name_ru": "Поиск вида цены",
+    "purpose_ru": "Разрешает exact сущность поиск вида цены по проверенным metadata.",
+    "limitations_ru": [
+      "Не выбирает первый результат без доказанного SelectionProof."
+    ]
+  },
+  "provides": {
+    "capability_ids": [
+      "CAP-REF-UT115-REF-PRICE-TYPE-RESOLVE"
+    ],
+    "fact_types": [
+      "catalog.price_type",
+      "catalog.price_type.for_retail",
+      "catalog.price_type.for_wholesale",
+      "catalog.price_type.includes_vat",
+      "catalog.price_type.name",
+      "catalog.price_type.purpose",
+      "currency.code",
+      "currency.ref"
+    ]
+  },
+  "compatibility": {
+    "configuration_id": "УправлениеТорговлейБазовая",
+    "configuration_name": "1С:Управление торговлей (базовая), редакция 11",
+    "release_range": {
+      "minimum": "11.5.27.56",
+      "maximum": "11.5.27.56",
+      "include_minimum": true,
+      "include_maximum": true
+    },
+    "compatibility_modes": [
+      "8.3.27"
+    ],
+    "required_metadata": [
+      {
+        "object_name": "Справочник.ВидыЦен",
+        "attributes": [
+          "Ссылка",
+          "Наименование",
+          "Назначение",
+          "ВалютаЦены",
+          "ЦенаВключаетНДС",
+          "ИспользоватьПриРозничнойПродаже",
+          "ИспользоватьПриОптовойПродаже"
+        ]
+      }
+    ],
+    "metadata_snapshot_sha256": "4d1c064b6ba10a78748481fbac192cc5d735ed251319f38fe4665dcd5ef32c1f"
+  },
+  "selection": {
+    "intent_kinds": [
+      "data"
+    ],
+    "aliases_ru": [
+      "найди вид цены"
+    ],
+    "anti_examples_ru": [
+      "изменить или удалить найденный объект"
+    ],
+    "required_context_fact_types": []
+  },
+  "parameters": [
+    {
+      "name": "name_fragment",
+      "title_ru": "Наименование вида цены",
+      "description_ru": "Проверенный параметр: наименование вида цены.",
+      "value_type": "normalized_text",
+      "required": false,
+      "allowed_sources": [
+        "user_slot",
+        "system"
+      ],
+      "normalization": "like_contains",
+      "context_slot_keys": [],
+      "default": ""
+    },
+    {
+      "name": "retail_use_only",
+      "title_ru": "Для розницы",
+      "description_ru": "Проверенный параметр: для розницы.",
+      "value_type": "boolean",
+      "required": false,
+      "allowed_sources": [
+        "user_slot",
+        "system"
+      ],
+      "normalization": "none",
+      "context_slot_keys": [],
+      "default": false
+    },
+    {
+      "name": "wholesale_use_only",
+      "title_ru": "Для опта",
+      "description_ru": "Проверенный параметр: для опта.",
+      "value_type": "boolean",
+      "required": false,
+      "allowed_sources": [
+        "user_slot",
+        "system"
+      ],
+      "normalization": "none",
+      "context_slot_keys": [],
+      "default": false
+    }
+  ],
+  "operation": {
+    "kind": "data_query",
+    "tool": "execute_query",
+    "read_only": true,
+    "query_template": {
+      "template_id": "ut115.ref.price-type.resolve.v1",
+      "language": "1c-query",
+      "text": "ВЫБРАТЬ\n  ВидыЦен.Ссылка КАК ВидЦены,\n  ВидыЦен.Наименование КАК Наименование,\n  ПРЕДСТАВЛЕНИЕ(ВидыЦен.Назначение) КАК Назначение,\n  ВидыЦен.ВалютаЦены КАК Валюта,\n  ВидыЦен.ВалютаЦены.Код КАК КодВалюты,\n  ВидыЦен.ЦенаВключаетНДС КАК ЦенаВключаетНДС,\n  ВидыЦен.ИспользоватьПриРозничнойПродаже КАК ДляРозницы,\n  ВидыЦен.ИспользоватьПриОптовойПродаже КАК ДляОпта\nИЗ Справочник.ВидыЦен КАК ВидыЦен\nГДЕ ВидыЦен.Наименование ПОДОБНО &Шаблон СПЕЦСИМВОЛ \"~\"\n  И (НЕ &ТолькоРозничные ИЛИ ВидыЦен.ИспользоватьПриРозничнойПродаже)\n  И (НЕ &ТолькоОптовые ИЛИ ВидыЦен.ИспользоватьПриОптовойПродаже)\n  И (НЕ &ЕстьКурсор\n    ИЛИ ВидыЦен.Наименование > &ИмяКурсора\n    ИЛИ (ВидыЦен.Наименование = &ИмяКурсора\n      И ВидыЦен.Ссылка > &СсылкаКурсора))\nУПОРЯДОЧИТЬ ПО ВидыЦен.Наименование, ВидыЦен.Ссылка",
+      "execution": {
+        "kind": "single_select",
+        "statement_count": 1,
+        "final_statement": 1
+      },
+      "invariant_constants": [],
+      "include_schema": true,
+      "mcp_limit": {
+        "default": 20,
+        "maximum": 1000
+      }
+    },
+    "parameter_bindings": [
+      {
+        "parameter": "name_fragment",
+        "query_parameter": "Шаблон",
+        "encoding": "like_contains"
+      },
+      {
+        "parameter": "retail_use_only",
+        "query_parameter": "ТолькоРозничные",
+        "encoding": "boolean"
+      },
+      {
+        "parameter": "wholesale_use_only",
+        "query_parameter": "ТолькоОптовые",
+        "encoding": "boolean"
+      }
+    ],
+    "column_bindings": [
+      {
+        "column": "ВидЦены",
+        "fact_id": "price_type.ref",
+        "accepted_mcp_types": [
+          "СправочникСсылка.ВидыЦен"
+        ],
+        "converter": "object_ref"
+      },
+      {
+        "column": "Наименование",
+        "fact_id": "price_type.name",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "Назначение",
+        "fact_id": "price_type.purpose",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "Валюта",
+        "fact_id": "price_type.currency",
+        "accepted_mcp_types": [
+          "СправочникСсылка.Валюты"
+        ],
+        "converter": "object_ref"
+      },
+      {
+        "column": "КодВалюты",
+        "fact_id": "price_type.currency_code",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "ЦенаВключаетНДС",
+        "fact_id": "price_type.includes_vat",
+        "accepted_mcp_types": [
+          "Булево"
+        ],
+        "converter": "boolean"
+      },
+      {
+        "column": "ДляРозницы",
+        "fact_id": "price_type.for_retail",
+        "accepted_mcp_types": [
+          "Булево"
+        ],
+        "converter": "boolean"
+      },
+      {
+        "column": "ДляОпта",
+        "fact_id": "price_type.for_wholesale",
+        "accepted_mcp_types": [
+          "Булево"
+        ],
+        "converter": "boolean"
+      }
+    ],
+    "pagination": {
+      "strategy": "keyset",
+      "has_cursor_query_parameter": "ЕстьКурсор",
+      "sort": [
+        {
+          "fact_id": "price_type.name",
+          "direction": "asc"
+        },
+        {
+          "fact_id": "price_type.ref",
+          "direction": "asc"
+        }
+      ],
+      "cursor_bindings": [
+        {
+          "fact_id": "price_type.name",
+          "query_parameter": "ИмяКурсора",
+          "encoding": "string"
+        },
+        {
+          "fact_id": "price_type.ref",
+          "query_parameter": "СсылкаКурсора",
+          "encoding": "object_ref"
+        }
+      ]
+    }
+  },
+  "output_contract": {
+    "contract_id": "ut115.ref.price-type.resolve.v1",
+    "contract_version": "1.1.0",
+    "cardinality": "many",
+    "facts": [
+      {
+        "fact_id": "price_type.ref",
+        "semantic_type": "catalog.price_type",
+        "value_type": "entity_ref",
+        "role": "entity",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Поиск вида цены",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "price_type.name",
+        "semantic_type": "catalog.price_type.name",
+        "value_type": "string",
+        "role": "attribute",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Наименование",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "price_type.purpose",
+        "semantic_type": "catalog.price_type.purpose",
+        "value_type": "string",
+        "role": "attribute",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Назначение",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "price_type.currency",
+        "semantic_type": "currency.ref",
+        "value_type": "entity_ref",
+        "role": "dimension",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Валюта",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "price_type.currency_code",
+        "semantic_type": "currency.code",
+        "value_type": "string",
+        "role": "dimension",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Код валюты",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "price_type.includes_vat",
+        "semantic_type": "catalog.price_type.includes_vat",
+        "value_type": "boolean",
+        "role": "attribute",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Цена включает НДС",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "price_type.for_retail",
+        "semantic_type": "catalog.price_type.for_retail",
+        "value_type": "boolean",
+        "role": "attribute",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Для розницы",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "price_type.for_wholesale",
+        "semantic_type": "catalog.price_type.for_wholesale",
+        "value_type": "boolean",
+        "role": "attribute",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Для опта",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      }
+    ],
+    "sufficiency": {
+      "required_fact_sets": [
+        [
+          "price_type.ref",
+          "price_type.name",
+          "price_type.purpose",
+          "price_type.currency",
+          "price_type.currency_code",
+          "price_type.includes_vat",
+          "price_type.for_retail",
+          "price_type.for_wholesale"
+        ]
+      ],
+      "empty_semantics": "confirmed_not_found",
+      "zero_fact_ids": [],
+      "truncation_policy": "page_is_complete"
+    },
+    "renderer": {
+      "kind": "table",
+      "primary_fact_ids": [
+        "price_type.for_wholesale"
+      ],
+      "column_fact_ids": [
+        "price_type.ref",
+        "price_type.name",
+        "price_type.purpose",
+        "price_type.currency",
+        "price_type.currency_code",
+        "price_type.includes_vat",
+        "price_type.for_retail",
+        "price_type.for_wholesale"
+      ]
+    },
+    "row_identity_fact_ids": [
+      "price_type.ref"
+    ],
+    "resolution": {
+      "protocol": "typed_entity_resolver_v1",
+      "identity_fact_id": "price_type.ref",
+      "candidate_label_fact_ids": [
+        "price_type.name",
+        "price_type.purpose",
+        "price_type.currency_code"
+      ],
+      "role_proof_fact_ids": [],
+      "default_slot_key": "selection.price_type"
+    },
+    "context_export_policy": [
+      {
+        "fact_id": "price_type.ref",
+        "slot_key": "selection.price_type",
+        "mode": "selected_only",
+        "lifetime": {
+          "mode": "session"
+        },
+        "max_members": 100
+      }
+    ]
+  },
+  "result_constraints": [],
+  "dependencies": {
+    "runtime_contracts": [
+      {
+        "contract": "skill-runtime",
+        "version_range": "^1.0.0"
+      },
+      {
+        "contract": "mcp.execute_query",
+        "version_range": "^1.0.0"
+      }
+    ],
+    "skills": []
+  },
+  "examples": [
+    {
+      "question_ru": "найди вид цены?",
+      "applicability": "applicable",
+      "reason_ru": "Вопрос соответствует точному typed-контракту навыка."
+    },
+    {
+      "question_ru": "изменить найденный объект?",
+      "applicability": "not_applicable",
+      "reason_ru": "Навык выполняет только чтение данных."
+    }
+  ],
+  "tests": [
+    {
+      "test_id": "ut.ref.price-type.resolve.positive",
+      "case_kind": "positive",
+      "bindings": [
+        {
+          "parameter": "name_fragment",
+          "value": ""
+        },
+        {
+          "parameter": "retail_use_only",
+          "value": true
+        },
+        {
+          "parameter": "wholesale_use_only",
+          "value": false
+        }
+      ],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": true,
+          "data": [
+            {
+              "ВидЦены": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000001701",
+                "ТипОбъекта": "СправочникСсылка.ВидыЦен",
+                "Представление": "Розничная"
+              },
+              "Наименование": "Розничная",
+              "Назначение": "Продажа",
+              "Валюта": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000001702",
+                "ТипОбъекта": "СправочникСсылка.Валюты",
+                "Представление": "RUB"
+              },
+              "КодВалюты": "RUB",
+              "ЦенаВключаетНДС": true,
+              "ДляРозницы": true,
+              "ДляОпта": false
+            }
+          ],
+          "schema": {
+            "columns": [
+              {
+                "name": "ВидЦены",
+                "types": [
+                  "СправочникСсылка.ВидыЦен"
+                ]
+              },
+              {
+                "name": "Наименование",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Назначение",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Валюта",
+                "types": [
+                  "СправочникСсылка.Валюты"
+                ]
+              },
+              {
+                "name": "КодВалюты",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "ЦенаВключаетНДС",
+                "types": [
+                  "Булево"
+                ]
+              },
+              {
+                "name": "ДляРозницы",
+                "types": [
+                  "Булево"
+                ]
+              },
+              {
+                "name": "ДляОпта",
+                "types": [
+                  "Булево"
+                ]
+              }
+            ]
+          },
+          "count": 1
+        }
+      },
+      "expected": {
+        "status": "success_with_rows",
+        "required_fact_ids": [
+          "price_type.ref",
+          "price_type.name",
+          "price_type.purpose",
+          "price_type.currency",
+          "price_type.currency_code",
+          "price_type.includes_vat",
+          "price_type.for_retail",
+          "price_type.for_wholesale"
+        ]
+      }
+    },
+    {
+      "test_id": "ut.ref.price-type.resolve.empty",
+      "case_kind": "negative",
+      "bindings": [
+        {
+          "parameter": "name_fragment",
+          "value": ""
+        },
+        {
+          "parameter": "retail_use_only",
+          "value": true
+        },
+        {
+          "parameter": "wholesale_use_only",
+          "value": false
+        }
+      ],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": true,
+          "data": [],
+          "schema": {
+            "columns": [
+              {
+                "name": "ВидЦены",
+                "types": [
+                  "СправочникСсылка.ВидыЦен"
+                ]
+              },
+              {
+                "name": "Наименование",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Назначение",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Валюта",
+                "types": [
+                  "СправочникСсылка.Валюты"
+                ]
+              },
+              {
+                "name": "КодВалюты",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "ЦенаВключаетНДС",
+                "types": [
+                  "Булево"
+                ]
+              },
+              {
+                "name": "ДляРозницы",
+                "types": [
+                  "Булево"
+                ]
+              },
+              {
+                "name": "ДляОпта",
+                "types": [
+                  "Булево"
+                ]
+              }
+            ]
+          },
+          "count": 0
+        }
+      },
+      "expected": {
+        "status": "success_empty",
+        "required_fact_ids": []
+      }
+    },
+    {
+      "test_id": "ut.ref.price-type.resolve.malformed",
+      "case_kind": "negative",
+      "bindings": [
+        {
+          "parameter": "name_fragment",
+          "value": ""
+        },
+        {
+          "parameter": "retail_use_only",
+          "value": true
+        },
+        {
+          "parameter": "wholesale_use_only",
+          "value": false
+        }
+      ],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": false,
+          "error": "MCP_SCHEMA_MISMATCH: incompatible identity column type"
+        }
+      },
+      "expected": {
+        "status": "query_error",
+        "required_fact_ids": [],
+        "error_code": "MCP_SCHEMA_MISMATCH"
+      }
+    }
+  ],
+  "provenance": {
+    "author": "ChatBot 1C slice 3B",
+    "created_at": "2026-07-22T00:00:00Z",
+    "reviewed_by": "Metadata-proven resolver catalog",
+    "reviewed_at": "2026-07-22T00:00:00Z",
+    "source_configuration": {
+      "configuration_id": "УправлениеТорговлейБазовая",
+      "release": "11.5.27.56",
+      "compatibility_mode": "8.3.27",
+      "metadata_snapshot_sha256": "4d1c064b6ba10a78748481fbac192cc5d735ed251319f38fe4665dcd5ef32c1f"
+    },
+    "source_references": [
+      {
+        "kind": "configuration_metadata",
+        "uri": "ut-config://11.5.27.56/Catalogs/ВидыЦен.xml",
+        "sha256": "4d1c064b6ba10a78748481fbac192cc5d735ed251319f38fe4665dcd5ef32c1f"
+      }
+    ],
+    "change_note_ru": "Production typed resolver/consumer contract без object-specific core logic."
+  },
+  "integrity": {
+    "algorithm": "sha256",
+    "canonicalization": "RFC8785",
+    "scope": "document_without_integrity",
+    "digest": "abbb2fddc0b859a07996908a6997af97e8ce4e0aa71455638f13e6c66fb83dc2"
+  }
+}

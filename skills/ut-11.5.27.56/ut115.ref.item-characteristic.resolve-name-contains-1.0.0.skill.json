@@ -1,0 +1,590 @@
+{
+  "schema_version": "1.1.0",
+  "document_type": "skill",
+  "skill_id": "ut115.ref.item-characteristic.resolve-name-contains",
+  "version": "1.0.0",
+  "display": {
+    "name_ru": "Поиск характеристики товара",
+    "purpose_ru": "Разрешает exact сущность поиск характеристики товара по проверенным metadata.",
+    "limitations_ru": [
+      "Не выбирает первый результат без доказанного SelectionProof."
+    ]
+  },
+  "provides": {
+    "capability_ids": [
+      "CAP-REF-UT115-REF-ITEM-CHARACTERISTIC-RESOLVE-NAME-CONTAINS"
+    ],
+    "fact_types": [
+      "catalog.item",
+      "catalog.item.characteristic",
+      "catalog.item.characteristic.applies_to_item",
+      "catalog.item.characteristic.name",
+      "catalog.item.name"
+    ]
+  },
+  "compatibility": {
+    "configuration_id": "УправлениеТорговлейБазовая",
+    "configuration_name": "1С:Управление торговлей (базовая), редакция 11",
+    "release_range": {
+      "minimum": "11.5.27.56",
+      "maximum": "11.5.27.56",
+      "include_minimum": true,
+      "include_maximum": true
+    },
+    "compatibility_modes": [
+      "8.3.27"
+    ],
+    "required_metadata": [
+      {
+        "object_name": "Справочник.ХарактеристикиНоменклатуры",
+        "attributes": [
+          "Ссылка",
+          "Наименование",
+          "Владелец"
+        ]
+      },
+      {
+        "object_name": "Справочник.Номенклатура",
+        "attributes": [
+          "Ссылка",
+          "Наименование"
+        ]
+      }
+    ],
+    "metadata_snapshot_sha256": "75142b748a107bf258e4b1b117cf6d62011015d5f692a8893c2ac1b5e5853fa7"
+  },
+  "selection": {
+    "intent_kinds": [
+      "data"
+    ],
+    "aliases_ru": [
+      "найди характеристику выбранного товара"
+    ],
+    "anti_examples_ru": [
+      "изменить или удалить найденный объект"
+    ],
+    "required_context_fact_types": [
+      "catalog.item"
+    ]
+  },
+  "parameters": [
+    {
+      "name": "item",
+      "title_ru": "Номенклатура",
+      "description_ru": "Проверенный параметр: номенклатура.",
+      "value_type": "entity_ref",
+      "required": true,
+      "allowed_sources": [
+        "previous_step",
+        "session_context"
+      ],
+      "normalization": "object_ref",
+      "context_slot_keys": [
+        "selection.item"
+      ],
+      "semantic_type": "catalog.item",
+      "entity_types": [
+        "catalog.item"
+      ]
+    },
+    {
+      "name": "characteristic_text",
+      "title_ru": "Характеристика",
+      "description_ru": "Проверенный параметр: характеристика.",
+      "value_type": "normalized_text",
+      "required": true,
+      "allowed_sources": [
+        "user_slot"
+      ],
+      "normalization": "like_contains",
+      "context_slot_keys": []
+    }
+  ],
+  "operation": {
+    "kind": "data_query",
+    "tool": "execute_query",
+    "read_only": true,
+    "query_template": {
+      "template_id": "ut115.ref.item-characteristic.resolve-name-contains.v1",
+      "language": "1c-query",
+      "text": "ВЫБРАТЬ\n  Характеристики.Ссылка КАК Характеристика,\n  Характеристики.Наименование КАК Наименование,\n  &Номенклатура КАК Номенклатура,\n  ПРЕДСТАВЛЕНИЕ(&Номенклатура) КАК НоменклатураНаименование,\n  ИСТИНА КАК Применима\nИЗ Справочник.ХарактеристикиНоменклатуры КАК Характеристики\nГДЕ Характеристики.Владелец = &Номенклатура\n  И Характеристики.Наименование ПОДОБНО &Шаблон СПЕЦСИМВОЛ \"~\"\n  И (НЕ &ЕстьКурсор\n    ИЛИ Характеристики.Наименование > &ИмяКурсора\n    ИЛИ (Характеристики.Наименование = &ИмяКурсора\n      И Характеристики.Ссылка > &СсылкаКурсора))\nУПОРЯДОЧИТЬ ПО Характеристики.Наименование, Характеристики.Ссылка",
+      "execution": {
+        "kind": "single_select",
+        "statement_count": 1,
+        "final_statement": 1
+      },
+      "invariant_constants": [
+        {
+          "kind": "boolean_literal",
+          "statement": 1,
+          "value": true,
+          "role": "state_filter",
+          "occurrences": 1
+        }
+      ],
+      "include_schema": true,
+      "mcp_limit": {
+        "default": 20,
+        "maximum": 1000
+      }
+    },
+    "parameter_bindings": [
+      {
+        "parameter": "item",
+        "query_parameter": "Номенклатура",
+        "encoding": "object_ref"
+      },
+      {
+        "parameter": "characteristic_text",
+        "query_parameter": "Шаблон",
+        "encoding": "like_contains"
+      }
+    ],
+    "column_bindings": [
+      {
+        "column": "Характеристика",
+        "fact_id": "characteristic.ref",
+        "accepted_mcp_types": [
+          "СправочникСсылка.ХарактеристикиНоменклатуры"
+        ],
+        "converter": "object_ref"
+      },
+      {
+        "column": "Наименование",
+        "fact_id": "characteristic.name",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "Номенклатура",
+        "fact_id": "characteristic.item",
+        "accepted_mcp_types": [
+          "СправочникСсылка.Номенклатура"
+        ],
+        "converter": "object_ref"
+      },
+      {
+        "column": "НоменклатураНаименование",
+        "fact_id": "characteristic.item_name",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "Применима",
+        "fact_id": "characteristic.applies_to_item",
+        "accepted_mcp_types": [
+          "Булево"
+        ],
+        "converter": "boolean"
+      }
+    ],
+    "pagination": {
+      "strategy": "keyset",
+      "has_cursor_query_parameter": "ЕстьКурсор",
+      "sort": [
+        {
+          "fact_id": "characteristic.name",
+          "direction": "asc"
+        },
+        {
+          "fact_id": "characteristic.ref",
+          "direction": "asc"
+        }
+      ],
+      "cursor_bindings": [
+        {
+          "fact_id": "characteristic.name",
+          "query_parameter": "ИмяКурсора",
+          "encoding": "string"
+        },
+        {
+          "fact_id": "characteristic.ref",
+          "query_parameter": "СсылкаКурсора",
+          "encoding": "object_ref"
+        }
+      ]
+    }
+  },
+  "output_contract": {
+    "contract_id": "ut115.ref.item-characteristic.resolve-name-contains.v1",
+    "contract_version": "1.1.0",
+    "cardinality": "many",
+    "facts": [
+      {
+        "fact_id": "characteristic.ref",
+        "semantic_type": "catalog.item.characteristic",
+        "value_type": "entity_ref",
+        "role": "entity",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Поиск характеристики товара",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "characteristic.name",
+        "semantic_type": "catalog.item.characteristic.name",
+        "value_type": "string",
+        "role": "attribute",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Наименование",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "characteristic.item",
+        "semantic_type": "catalog.item",
+        "value_type": "entity_ref",
+        "role": "dimension",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Номенклатура",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "characteristic.item_name",
+        "semantic_type": "catalog.item.name",
+        "value_type": "string",
+        "role": "dimension",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Номенклатура",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "characteristic.applies_to_item",
+        "semantic_type": "catalog.item.characteristic.applies_to_item",
+        "value_type": "boolean",
+        "role": "attribute",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Применима к товару",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      }
+    ],
+    "sufficiency": {
+      "required_fact_sets": [
+        [
+          "characteristic.ref",
+          "characteristic.name",
+          "characteristic.item",
+          "characteristic.item_name",
+          "characteristic.applies_to_item"
+        ]
+      ],
+      "empty_semantics": "confirmed_not_found",
+      "zero_fact_ids": [],
+      "truncation_policy": "page_is_complete"
+    },
+    "renderer": {
+      "kind": "table",
+      "primary_fact_ids": [
+        "characteristic.applies_to_item"
+      ],
+      "column_fact_ids": [
+        "characteristic.ref",
+        "characteristic.name",
+        "characteristic.item",
+        "characteristic.item_name",
+        "characteristic.applies_to_item"
+      ]
+    },
+    "row_identity_fact_ids": [
+      "characteristic.ref"
+    ],
+    "resolution": {
+      "protocol": "typed_entity_resolver_v1",
+      "identity_fact_id": "characteristic.ref",
+      "candidate_label_fact_ids": [
+        "characteristic.name",
+        "characteristic.item_name"
+      ],
+      "role_proof_fact_ids": [
+        "characteristic.applies_to_item"
+      ],
+      "default_slot_key": "selection.item_characteristic"
+    },
+    "context_export_policy": [
+      {
+        "fact_id": "characteristic.ref",
+        "slot_key": "selection.item_characteristic",
+        "mode": "selected_only",
+        "lifetime": {
+          "mode": "session"
+        },
+        "max_members": 100
+      }
+    ]
+  },
+  "result_constraints": [
+    {
+      "kind": "fact_equals_parameter",
+      "fact_id": "characteristic.item",
+      "parameter": "item"
+    }
+  ],
+  "dependencies": {
+    "runtime_contracts": [
+      {
+        "contract": "skill-runtime",
+        "version_range": "^1.0.0"
+      },
+      {
+        "contract": "mcp.execute_query",
+        "version_range": "^1.0.0"
+      }
+    ],
+    "skills": [
+      {
+        "skill_id": "ut115.ref.item.resolve-name-contains",
+        "version_range": "=1.2.0",
+        "required_fact_types": [
+          "catalog.item"
+        ]
+      }
+    ]
+  },
+  "examples": [
+    {
+      "question_ru": "найди характеристику выбранного товара?",
+      "applicability": "applicable",
+      "reason_ru": "Вопрос соответствует точному typed-контракту навыка."
+    },
+    {
+      "question_ru": "изменить найденный объект?",
+      "applicability": "not_applicable",
+      "reason_ru": "Навык выполняет только чтение данных."
+    }
+  ],
+  "tests": [
+    {
+      "test_id": "ut.ref.item-characteristic.resolve-name-contains.positive",
+      "case_kind": "positive",
+      "bindings": [
+        {
+          "parameter": "item",
+          "value": {
+            "_objectRef": true,
+            "УникальныйИдентификатор": "00000000-0000-4000-8000-000000001801",
+            "ТипОбъекта": "СправочникСсылка.Номенклатура",
+            "Представление": "Куртка"
+          }
+        },
+        {
+          "parameter": "characteristic_text",
+          "value": "M"
+        }
+      ],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": true,
+          "data": [
+            {
+              "Характеристика": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000001802",
+                "ТипОбъекта": "СправочникСсылка.ХарактеристикиНоменклатуры",
+                "Представление": "M"
+              },
+              "Наименование": "M",
+              "Номенклатура": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000001801",
+                "ТипОбъекта": "СправочникСсылка.Номенклатура",
+                "Представление": "Куртка"
+              },
+              "НоменклатураНаименование": "Куртка",
+              "Применима": true
+            }
+          ],
+          "schema": {
+            "columns": [
+              {
+                "name": "Характеристика",
+                "types": [
+                  "СправочникСсылка.ХарактеристикиНоменклатуры"
+                ]
+              },
+              {
+                "name": "Наименование",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Номенклатура",
+                "types": [
+                  "СправочникСсылка.Номенклатура"
+                ]
+              },
+              {
+                "name": "НоменклатураНаименование",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Применима",
+                "types": [
+                  "Булево"
+                ]
+              }
+            ]
+          },
+          "count": 1
+        }
+      },
+      "expected": {
+        "status": "success_with_rows",
+        "required_fact_ids": [
+          "characteristic.ref",
+          "characteristic.name",
+          "characteristic.item",
+          "characteristic.item_name",
+          "characteristic.applies_to_item"
+        ]
+      }
+    },
+    {
+      "test_id": "ut.ref.item-characteristic.resolve-name-contains.empty",
+      "case_kind": "negative",
+      "bindings": [
+        {
+          "parameter": "item",
+          "value": {
+            "_objectRef": true,
+            "УникальныйИдентификатор": "00000000-0000-4000-8000-000000001801",
+            "ТипОбъекта": "СправочникСсылка.Номенклатура",
+            "Представление": "Куртка"
+          }
+        },
+        {
+          "parameter": "characteristic_text",
+          "value": "M"
+        }
+      ],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": true,
+          "data": [],
+          "schema": {
+            "columns": [
+              {
+                "name": "Характеристика",
+                "types": [
+                  "СправочникСсылка.ХарактеристикиНоменклатуры"
+                ]
+              },
+              {
+                "name": "Наименование",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Номенклатура",
+                "types": [
+                  "СправочникСсылка.Номенклатура"
+                ]
+              },
+              {
+                "name": "НоменклатураНаименование",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Применима",
+                "types": [
+                  "Булево"
+                ]
+              }
+            ]
+          },
+          "count": 0
+        }
+      },
+      "expected": {
+        "status": "success_empty",
+        "required_fact_ids": []
+      }
+    },
+    {
+      "test_id": "ut.ref.item-characteristic.resolve-name-contains.malformed",
+      "case_kind": "negative",
+      "bindings": [
+        {
+          "parameter": "item",
+          "value": {
+            "_objectRef": true,
+            "УникальныйИдентификатор": "00000000-0000-4000-8000-000000001801",
+            "ТипОбъекта": "СправочникСсылка.Номенклатура",
+            "Представление": "Куртка"
+          }
+        },
+        {
+          "parameter": "characteristic_text",
+          "value": "M"
+        }
+      ],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": false,
+          "error": "MCP_SCHEMA_MISMATCH: incompatible identity column type"
+        }
+      },
+      "expected": {
+        "status": "query_error",
+        "required_fact_ids": [],
+        "error_code": "MCP_SCHEMA_MISMATCH"
+      }
+    }
+  ],
+  "provenance": {
+    "author": "ChatBot 1C slice 3B",
+    "created_at": "2026-07-22T00:00:00Z",
+    "reviewed_by": "Metadata-proven resolver catalog",
+    "reviewed_at": "2026-07-22T00:00:00Z",
+    "source_configuration": {
+      "configuration_id": "УправлениеТорговлейБазовая",
+      "release": "11.5.27.56",
+      "compatibility_mode": "8.3.27",
+      "metadata_snapshot_sha256": "75142b748a107bf258e4b1b117cf6d62011015d5f692a8893c2ac1b5e5853fa7"
+    },
+    "source_references": [
+      {
+        "kind": "configuration_metadata",
+        "uri": "ut-config://11.5.27.56/Catalogs/ХарактеристикиНоменклатуры.xml",
+        "sha256": "280d30d59159b283fd47aa14098bfcbaf51668df0d8db48ad2df938442c0a04b"
+      },
+      {
+        "kind": "configuration_metadata",
+        "uri": "ut-config://11.5.27.56/Catalogs/Номенклатура.xml",
+        "sha256": "5fd976edf70c1dd0c65aeabce8362e6767876bcc9e33985d0aa47bdbbe8a86f4"
+      }
+    ],
+    "change_note_ru": "Production typed resolver/consumer contract без object-specific core logic."
+  },
+  "integrity": {
+    "algorithm": "sha256",
+    "canonicalization": "RFC8785",
+    "scope": "document_without_integrity",
+    "digest": "93dc1815c0c3f6a87eb79298f847a0f2d7fddf1d37699dbab3687ef696079ada"
+  }
+}

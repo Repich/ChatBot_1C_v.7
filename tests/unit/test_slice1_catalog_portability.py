@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -17,7 +18,17 @@ from chatbot1c.domain.skill import Skill
 from chatbot1c.web import create_app
 
 ROOT = Path(__file__).resolve().parents[2]
-STARTER = ROOT / "skills/ut-11.5.27.56/ut.starter.slice-two.package.json"
+DEFAULT_STARTER = (
+    ROOT / "skills/ut-11.5.27.56/ut.starter.slice-three.package.json"
+)
+LEGACY_STARTER_SHA256 = {
+    "ut.starter.slice-one.package.json": (
+        "4de313a696cf9bff478746b5d0fe9e779948b090ac3f277785c2f4818df01420"
+    ),
+    "ut.starter.slice-two.package.json": (
+        "e0f7e68d7a0bcfcc89705e6e445b8b3cef9e577199efd24ba7792acd7ed3fc5b"
+    ),
+}
 ARTICLE_SKILL = "ut115.ref.item.resolve-article-exact"
 ORDER_LINES_SKILL = "ut115.sales.order-lines"
 
@@ -118,7 +129,7 @@ def test_web_and_cli_export_identical_canonical_bytes(
             str(env_file),
             "skills",
             "import",
-            str(STARTER),
+            str(DEFAULT_STARTER),
         ]
     ) == 0
     capsys.readouterr()
@@ -145,3 +156,12 @@ def test_web_and_cli_export_identical_canonical_bytes(
     assert bare_path.read_bytes() == bare_web.content
     assert embedded_path.read_bytes() == embedded_web.content
     assert all_path.read_bytes() == all_web.content
+
+
+def test_published_legacy_starter_package_bytes_are_preserved() -> None:
+    skills_dir = ROOT / "skills/ut-11.5.27.56"
+    actual = {
+        name: hashlib.sha256((skills_dir / name).read_bytes()).hexdigest()
+        for name in LEGACY_STARTER_SHA256
+    }
+    assert actual == LEGACY_STARTER_SHA256

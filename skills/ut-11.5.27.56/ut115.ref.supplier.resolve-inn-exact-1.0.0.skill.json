@@ -1,0 +1,551 @@
+{
+  "schema_version": "1.1.0",
+  "document_type": "skill",
+  "skill_id": "ut115.ref.supplier.resolve-inn-exact",
+  "version": "1.0.0",
+  "display": {
+    "name_ru": "Поиск: поставщик",
+    "purpose_ru": "Разрешает semantic role party.supplier без core-retagging.",
+    "limitations_ru": [
+      "Не выбирает первый результат без доказанного SelectionProof."
+    ]
+  },
+  "provides": {
+    "capability_ids": [
+      "CAP-REF-UT115-REF-SUPPLIER-RESOLVE-INN-EXACT"
+    ],
+    "fact_types": [
+      "party.contractor.inn",
+      "party.partner.code",
+      "party.partner.name",
+      "party.role.customer",
+      "party.role.supplier",
+      "party.supplier"
+    ]
+  },
+  "compatibility": {
+    "configuration_id": "УправлениеТорговлейБазовая",
+    "configuration_name": "1С:Управление торговлей (базовая), редакция 11",
+    "release_range": {
+      "minimum": "11.5.27.56",
+      "maximum": "11.5.27.56",
+      "include_minimum": true,
+      "include_maximum": true
+    },
+    "compatibility_modes": [
+      "8.3.27"
+    ],
+    "required_metadata": [
+      {
+        "object_name": "Справочник.Партнеры",
+        "attributes": [
+          "Ссылка",
+          "Код",
+          "Наименование",
+          "Клиент",
+          "Поставщик",
+          "НаименованиеПолное"
+        ]
+      },
+      {
+        "object_name": "Справочник.Контрагенты",
+        "attributes": [
+          "Партнер",
+          "ИНН"
+        ]
+      }
+    ],
+    "metadata_snapshot_sha256": "08d055d5d06328e351e3c3c72df0c196cdaae0505d3b30d8b9aa2efcc7ebe251"
+  },
+  "selection": {
+    "intent_kinds": [
+      "data"
+    ],
+    "aliases_ru": [
+      "найди поставщик"
+    ],
+    "anti_examples_ru": [
+      "изменить или удалить найденный объект"
+    ],
+    "required_context_fact_types": []
+  },
+  "parameters": [
+    {
+      "name": "inn",
+      "title_ru": "Критерий партнера",
+      "description_ru": "Проверенный параметр: критерий партнера.",
+      "value_type": "string",
+      "required": true,
+      "allowed_sources": [
+        "user_slot"
+      ],
+      "normalization": "trim",
+      "context_slot_keys": []
+    }
+  ],
+  "operation": {
+    "kind": "data_query",
+    "tool": "execute_query",
+    "read_only": true,
+    "query_template": {
+      "template_id": "ut115.ref.supplier.resolve-inn-exact.v1",
+      "language": "1c-query",
+      "text": "ВЫБРАТЬ\n  Партнеры.Ссылка КАК Поставщик,\n  Партнеры.Наименование КАК Наименование,\n  Партнеры.Код КАК Код,\n  Партнеры.Клиент КАК ЭтоКлиент,\n  Партнеры.Поставщик КАК ЭтоПоставщик,\n  &ИНН КАК ИНН\nИЗ Справочник.Партнеры КАК Партнеры\nГДЕ Партнеры.Поставщик\n  И Партнеры.Ссылка В (ВЫБРАТЬ Контрагенты.Партнер ИЗ Справочник.Контрагенты КАК Контрагенты ГДЕ Контрагенты.ИНН = &ИНН)\n  И (НЕ &ЕстьКурсор\n    ИЛИ Партнеры.Наименование > &ИмяКурсора\n    ИЛИ (Партнеры.Наименование = &ИмяКурсора\n      И Партнеры.Ссылка > &СсылкаКурсора))\nУПОРЯДОЧИТЬ ПО Партнеры.Наименование, Партнеры.Ссылка",
+      "execution": {
+        "kind": "single_select",
+        "statement_count": 1,
+        "final_statement": 1
+      },
+      "invariant_constants": [],
+      "include_schema": true,
+      "mcp_limit": {
+        "default": 20,
+        "maximum": 1000
+      }
+    },
+    "parameter_bindings": [
+      {
+        "parameter": "inn",
+        "query_parameter": "ИНН",
+        "encoding": "string"
+      }
+    ],
+    "column_bindings": [
+      {
+        "column": "Поставщик",
+        "fact_id": "supplier.ref",
+        "accepted_mcp_types": [
+          "СправочникСсылка.Партнеры"
+        ],
+        "converter": "object_ref"
+      },
+      {
+        "column": "Наименование",
+        "fact_id": "partner.name",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "Код",
+        "fact_id": "partner.code",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "ЭтоКлиент",
+        "fact_id": "partner.is_customer",
+        "accepted_mcp_types": [
+          "Булево"
+        ],
+        "converter": "boolean"
+      },
+      {
+        "column": "ЭтоПоставщик",
+        "fact_id": "partner.is_supplier",
+        "accepted_mcp_types": [
+          "Булево"
+        ],
+        "converter": "boolean"
+      },
+      {
+        "column": "ИНН",
+        "fact_id": "contractor.inn",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      }
+    ],
+    "pagination": {
+      "strategy": "keyset",
+      "has_cursor_query_parameter": "ЕстьКурсор",
+      "sort": [
+        {
+          "fact_id": "partner.name",
+          "direction": "asc"
+        },
+        {
+          "fact_id": "supplier.ref",
+          "direction": "asc"
+        }
+      ],
+      "cursor_bindings": [
+        {
+          "fact_id": "partner.name",
+          "query_parameter": "ИмяКурсора",
+          "encoding": "string"
+        },
+        {
+          "fact_id": "supplier.ref",
+          "query_parameter": "СсылкаКурсора",
+          "encoding": "object_ref"
+        }
+      ]
+    }
+  },
+  "output_contract": {
+    "contract_id": "ut115.ref.supplier.resolve-inn-exact.v1",
+    "contract_version": "1.1.0",
+    "cardinality": "many",
+    "facts": [
+      {
+        "fact_id": "supplier.ref",
+        "semantic_type": "party.supplier",
+        "value_type": "entity_ref",
+        "role": "entity",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Supplier",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "partner.name",
+        "semantic_type": "party.partner.name",
+        "value_type": "string",
+        "role": "attribute",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Наименование",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "partner.code",
+        "semantic_type": "party.partner.code",
+        "value_type": "string",
+        "role": "attribute",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Код",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "partner.is_customer",
+        "semantic_type": "party.role.customer",
+        "value_type": "boolean",
+        "role": "attribute",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Клиент",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "partner.is_supplier",
+        "semantic_type": "party.role.supplier",
+        "value_type": "boolean",
+        "role": "attribute",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Поставщик",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "contractor.inn",
+        "semantic_type": "party.contractor.inn",
+        "value_type": "string",
+        "role": "attribute",
+        "required": true,
+        "nullable": false,
+        "title_ru": "ИНН",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      }
+    ],
+    "sufficiency": {
+      "required_fact_sets": [
+        [
+          "supplier.ref",
+          "partner.name",
+          "partner.code",
+          "partner.is_customer",
+          "partner.is_supplier",
+          "contractor.inn"
+        ]
+      ],
+      "empty_semantics": "confirmed_not_found",
+      "zero_fact_ids": [],
+      "truncation_policy": "page_is_complete"
+    },
+    "renderer": {
+      "kind": "table",
+      "primary_fact_ids": [
+        "contractor.inn"
+      ],
+      "column_fact_ids": [
+        "supplier.ref",
+        "partner.name",
+        "partner.code",
+        "partner.is_customer",
+        "partner.is_supplier",
+        "contractor.inn"
+      ]
+    },
+    "row_identity_fact_ids": [
+      "supplier.ref"
+    ],
+    "resolution": {
+      "protocol": "typed_entity_resolver_v1",
+      "identity_fact_id": "supplier.ref",
+      "candidate_label_fact_ids": [
+        "partner.name",
+        "partner.code",
+        "contractor.inn"
+      ],
+      "role_proof_fact_ids": [
+        "partner.is_supplier"
+      ],
+      "default_slot_key": "selection.supplier"
+    },
+    "context_export_policy": [
+      {
+        "fact_id": "supplier.ref",
+        "slot_key": "selection.supplier",
+        "mode": "selected_only",
+        "lifetime": {
+          "mode": "session"
+        },
+        "max_members": 100
+      }
+    ]
+  },
+  "result_constraints": [],
+  "dependencies": {
+    "runtime_contracts": [
+      {
+        "contract": "skill-runtime",
+        "version_range": "^1.0.0"
+      },
+      {
+        "contract": "mcp.execute_query",
+        "version_range": "^1.0.0"
+      }
+    ],
+    "skills": []
+  },
+  "examples": [
+    {
+      "question_ru": "найди поставщик?",
+      "applicability": "applicable",
+      "reason_ru": "Вопрос соответствует точному typed-контракту навыка."
+    },
+    {
+      "question_ru": "изменить найденный объект?",
+      "applicability": "not_applicable",
+      "reason_ru": "Навык выполняет только чтение данных."
+    }
+  ],
+  "tests": [
+    {
+      "test_id": "ut.supplier.inn-exact.positive",
+      "case_kind": "positive",
+      "bindings": [
+        {
+          "parameter": "inn",
+          "value": "7701000000"
+        }
+      ],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": true,
+          "data": [
+            {
+              "Поставщик": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000001208",
+                "ТипОбъекта": "СправочникСсылка.Партнеры",
+                "Представление": "Поставщик"
+              },
+              "Наименование": "Поставщик",
+              "Код": "P-8",
+              "ЭтоКлиент": false,
+              "ЭтоПоставщик": true,
+              "ИНН": "7701000000"
+            }
+          ],
+          "schema": {
+            "columns": [
+              {
+                "name": "Поставщик",
+                "types": [
+                  "СправочникСсылка.Партнеры"
+                ]
+              },
+              {
+                "name": "Наименование",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Код",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "ЭтоКлиент",
+                "types": [
+                  "Булево"
+                ]
+              },
+              {
+                "name": "ЭтоПоставщик",
+                "types": [
+                  "Булево"
+                ]
+              },
+              {
+                "name": "ИНН",
+                "types": [
+                  "Строка"
+                ]
+              }
+            ]
+          },
+          "count": 1
+        }
+      },
+      "expected": {
+        "status": "success_with_rows",
+        "required_fact_ids": [
+          "supplier.ref",
+          "partner.name",
+          "partner.code",
+          "partner.is_customer",
+          "partner.is_supplier",
+          "contractor.inn"
+        ]
+      }
+    },
+    {
+      "test_id": "ut.supplier.inn-exact.empty",
+      "case_kind": "negative",
+      "bindings": [
+        {
+          "parameter": "inn",
+          "value": "7701000000"
+        }
+      ],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": true,
+          "data": [],
+          "schema": {
+            "columns": [
+              {
+                "name": "Поставщик",
+                "types": [
+                  "СправочникСсылка.Партнеры"
+                ]
+              },
+              {
+                "name": "Наименование",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Код",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "ЭтоКлиент",
+                "types": [
+                  "Булево"
+                ]
+              },
+              {
+                "name": "ЭтоПоставщик",
+                "types": [
+                  "Булево"
+                ]
+              },
+              {
+                "name": "ИНН",
+                "types": [
+                  "Строка"
+                ]
+              }
+            ]
+          },
+          "count": 0
+        }
+      },
+      "expected": {
+        "status": "success_empty",
+        "required_fact_ids": []
+      }
+    },
+    {
+      "test_id": "ut.supplier.inn-exact.malformed",
+      "case_kind": "negative",
+      "bindings": [
+        {
+          "parameter": "inn",
+          "value": "7701000000"
+        }
+      ],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": false,
+          "error": "MCP_SCHEMA_MISMATCH: incompatible identity column type"
+        }
+      },
+      "expected": {
+        "status": "query_error",
+        "required_fact_ids": [],
+        "error_code": "MCP_SCHEMA_MISMATCH"
+      }
+    }
+  ],
+  "provenance": {
+    "author": "ChatBot 1C slice 3B",
+    "created_at": "2026-07-22T00:00:00Z",
+    "reviewed_by": "Metadata-proven resolver catalog",
+    "reviewed_at": "2026-07-22T00:00:00Z",
+    "source_configuration": {
+      "configuration_id": "УправлениеТорговлейБазовая",
+      "release": "11.5.27.56",
+      "compatibility_mode": "8.3.27",
+      "metadata_snapshot_sha256": "08d055d5d06328e351e3c3c72df0c196cdaae0505d3b30d8b9aa2efcc7ebe251"
+    },
+    "source_references": [
+      {
+        "kind": "configuration_metadata",
+        "uri": "ut-config://11.5.27.56/Catalogs/Партнеры.xml",
+        "sha256": "e1621de92d0e0c2fcbf6779c6060b06e57c6eb39a4333bbf7a5fe4ae55f471a2"
+      },
+      {
+        "kind": "configuration_metadata",
+        "uri": "ut-config://11.5.27.56/Catalogs/Контрагенты.xml",
+        "sha256": "af02379381c5c0514831b8a9282f1733716d4c714411c678b100d27e3f6e450e"
+      }
+    ],
+    "change_note_ru": "Production typed resolver/consumer contract без object-specific core logic."
+  },
+  "integrity": {
+    "algorithm": "sha256",
+    "canonicalization": "RFC8785",
+    "scope": "document_without_integrity",
+    "digest": "81571cf9fee7bfaf6fbdf365ca85bf133c4f1ab695d433b68b0392c50b9bdf1c"
+  }
+}

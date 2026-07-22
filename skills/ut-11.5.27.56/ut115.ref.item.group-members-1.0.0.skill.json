@@ -1,0 +1,556 @@
+{
+  "schema_version": "1.1.0",
+  "document_type": "skill",
+  "skill_id": "ut115.ref.item.group-members",
+  "version": "1.0.0",
+  "display": {
+    "name_ru": "Состав выбранной группы",
+    "purpose_ru": "Возвращает товары exact выбранной группы с явно заданным правилом потомков.",
+    "limitations_ru": [
+      "Не выбирает первый результат без доказанного SelectionProof."
+    ]
+  },
+  "provides": {
+    "capability_ids": [
+      "CAP-REF-UT115-REF-ITEM-GROUP-MEMBERS"
+    ],
+    "fact_types": [
+      "catalog.item",
+      "catalog.item.code",
+      "catalog.item.group",
+      "catalog.item.name"
+    ]
+  },
+  "compatibility": {
+    "configuration_id": "УправлениеТорговлейБазовая",
+    "configuration_name": "1С:Управление торговлей (базовая), редакция 11",
+    "release_range": {
+      "minimum": "11.5.27.56",
+      "maximum": "11.5.27.56",
+      "include_minimum": true,
+      "include_maximum": true
+    },
+    "compatibility_modes": [
+      "8.3.27"
+    ],
+    "required_metadata": [
+      {
+        "object_name": "Справочник.Номенклатура",
+        "attributes": [
+          "Ссылка",
+          "Код",
+          "Наименование",
+          "ЭтоГруппа",
+          "Родитель"
+        ]
+      }
+    ],
+    "metadata_snapshot_sha256": "5fd976edf70c1dd0c65aeabce8362e6767876bcc9e33985d0aa47bdbbe8a86f4"
+  },
+  "selection": {
+    "intent_kinds": [
+      "data"
+    ],
+    "aliases_ru": [
+      "покажи товары выбранной группы"
+    ],
+    "anti_examples_ru": [
+      "изменить или удалить найденный объект"
+    ],
+    "required_context_fact_types": [
+      "catalog.item.group"
+    ]
+  },
+  "parameters": [
+    {
+      "name": "group",
+      "title_ru": "Группа",
+      "description_ru": "Проверенный параметр: группа.",
+      "value_type": "entity_ref",
+      "required": true,
+      "allowed_sources": [
+        "previous_step",
+        "session_context"
+      ],
+      "normalization": "object_ref",
+      "context_slot_keys": [
+        "selection.item_group"
+      ],
+      "semantic_type": "catalog.item.group",
+      "entity_types": [
+        "catalog.item.group"
+      ]
+    },
+    {
+      "name": "include_descendants",
+      "title_ru": "Включать подгруппы",
+      "description_ru": "Проверенный параметр: включать подгруппы.",
+      "value_type": "boolean",
+      "required": true,
+      "allowed_sources": [
+        "system"
+      ],
+      "normalization": "none",
+      "context_slot_keys": [],
+      "default": true
+    }
+  ],
+  "operation": {
+    "kind": "data_query",
+    "tool": "execute_query",
+    "read_only": true,
+    "query_template": {
+      "template_id": "ut115.ref.item.group-members.v1",
+      "language": "1c-query",
+      "text": "ВЫБРАТЬ\n  Номенклатура.Ссылка КАК Номенклатура,\n  Номенклатура.Наименование КАК Наименование,\n  Номенклатура.Код КАК Код,\n  Номенклатура.Родитель КАК Родитель,\n  &Группа КАК ВыбраннаяГруппа\nИЗ Справочник.Номенклатура КАК Номенклатура\nГДЕ НЕ Номенклатура.ЭтоГруппа\n  И ((&ВключаяПодгруппы И Номенклатура.Родитель В ИЕРАРХИИ (&Группа))\n    ИЛИ (НЕ &ВключаяПодгруппы И Номенклатура.Родитель = &Группа))\n  И (НЕ &ЕстьКурсор\n    ИЛИ Номенклатура.Наименование > &ИмяКурсора\n    ИЛИ (Номенклатура.Наименование = &ИмяКурсора\n      И Номенклатура.Ссылка > &СсылкаКурсора))\nУПОРЯДОЧИТЬ ПО Номенклатура.Наименование, Номенклатура.Ссылка",
+      "execution": {
+        "kind": "single_select",
+        "statement_count": 1,
+        "final_statement": 1
+      },
+      "invariant_constants": [],
+      "include_schema": true,
+      "mcp_limit": {
+        "default": 20,
+        "maximum": 1000
+      }
+    },
+    "parameter_bindings": [
+      {
+        "parameter": "group",
+        "query_parameter": "Группа",
+        "encoding": "object_ref"
+      },
+      {
+        "parameter": "include_descendants",
+        "query_parameter": "ВключаяПодгруппы",
+        "encoding": "boolean"
+      }
+    ],
+    "column_bindings": [
+      {
+        "column": "Номенклатура",
+        "fact_id": "item.ref",
+        "accepted_mcp_types": [
+          "СправочникСсылка.Номенклатура"
+        ],
+        "converter": "object_ref"
+      },
+      {
+        "column": "Наименование",
+        "fact_id": "item.name",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "Код",
+        "fact_id": "item.code",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "Родитель",
+        "fact_id": "item.parent_group_ref",
+        "accepted_mcp_types": [
+          "СправочникСсылка.Номенклатура"
+        ],
+        "converter": "object_ref"
+      },
+      {
+        "column": "ВыбраннаяГруппа",
+        "fact_id": "selected_group.ref",
+        "accepted_mcp_types": [
+          "СправочникСсылка.Номенклатура"
+        ],
+        "converter": "object_ref"
+      }
+    ],
+    "pagination": {
+      "strategy": "keyset",
+      "has_cursor_query_parameter": "ЕстьКурсор",
+      "sort": [
+        {
+          "fact_id": "item.name",
+          "direction": "asc"
+        },
+        {
+          "fact_id": "item.ref",
+          "direction": "asc"
+        }
+      ],
+      "cursor_bindings": [
+        {
+          "fact_id": "item.name",
+          "query_parameter": "ИмяКурсора",
+          "encoding": "string"
+        },
+        {
+          "fact_id": "item.ref",
+          "query_parameter": "СсылкаКурсора",
+          "encoding": "object_ref"
+        }
+      ]
+    }
+  },
+  "output_contract": {
+    "contract_id": "ut115.ref.item.group-members.v1",
+    "contract_version": "1.1.0",
+    "cardinality": "many",
+    "facts": [
+      {
+        "fact_id": "item.ref",
+        "semantic_type": "catalog.item",
+        "value_type": "entity_ref",
+        "role": "entity",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Номенклатура",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "item.name",
+        "semantic_type": "catalog.item.name",
+        "value_type": "string",
+        "role": "attribute",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Наименование",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "item.code",
+        "semantic_type": "catalog.item.code",
+        "value_type": "string",
+        "role": "attribute",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Код",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "item.parent_group_ref",
+        "semantic_type": "catalog.item.group",
+        "value_type": "entity_ref",
+        "role": "dimension",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Родительская группа",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "selected_group.ref",
+        "semantic_type": "catalog.item.group",
+        "value_type": "entity_ref",
+        "role": "dimension",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Выбранная группа",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      }
+    ],
+    "sufficiency": {
+      "required_fact_sets": [
+        [
+          "item.ref",
+          "item.name",
+          "item.code",
+          "item.parent_group_ref",
+          "selected_group.ref"
+        ]
+      ],
+      "empty_semantics": "confirmed_not_found",
+      "zero_fact_ids": [],
+      "truncation_policy": "page_is_complete"
+    },
+    "renderer": {
+      "kind": "table",
+      "primary_fact_ids": [
+        "selected_group.ref"
+      ],
+      "column_fact_ids": [
+        "item.ref",
+        "item.name",
+        "item.code",
+        "item.parent_group_ref",
+        "selected_group.ref"
+      ]
+    },
+    "row_identity_fact_ids": [
+      "item.ref"
+    ],
+    "resolution": null,
+    "context_export_policy": []
+  },
+  "result_constraints": [
+    {
+      "kind": "fact_equals_parameter",
+      "fact_id": "selected_group.ref",
+      "parameter": "group"
+    }
+  ],
+  "dependencies": {
+    "runtime_contracts": [
+      {
+        "contract": "skill-runtime",
+        "version_range": "^1.0.0"
+      },
+      {
+        "contract": "mcp.execute_query",
+        "version_range": "^1.0.0"
+      }
+    ],
+    "skills": [
+      {
+        "skill_id": "ut115.ref.item-group.resolve-name-contains",
+        "version_range": "=1.0.0",
+        "required_fact_types": [
+          "catalog.item.group"
+        ]
+      }
+    ]
+  },
+  "examples": [
+    {
+      "question_ru": "покажи товары выбранной группы?",
+      "applicability": "applicable",
+      "reason_ru": "Вопрос соответствует точному typed-контракту навыка."
+    },
+    {
+      "question_ru": "изменить найденный объект?",
+      "applicability": "not_applicable",
+      "reason_ru": "Навык выполняет только чтение данных."
+    }
+  ],
+  "tests": [
+    {
+      "test_id": "ut.item.group-members.positive",
+      "case_kind": "positive",
+      "bindings": [
+        {
+          "parameter": "group",
+          "value": {
+            "_objectRef": true,
+            "УникальныйИдентификатор": "00000000-0000-4000-8000-000000001101",
+            "ТипОбъекта": "СправочникСсылка.Номенклатура",
+            "Представление": "Верхняя одежда"
+          }
+        },
+        {
+          "parameter": "include_descendants",
+          "value": true
+        }
+      ],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": true,
+          "data": [
+            {
+              "Номенклатура": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000001102",
+                "ТипОбъекта": "СправочникСсылка.Номенклатура",
+                "Представление": "Куртка"
+              },
+              "Наименование": "Куртка",
+              "Код": "I-1",
+              "Родитель": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000001103",
+                "ТипОбъекта": "СправочникСсылка.Номенклатура",
+                "Представление": "Куртки"
+              },
+              "ВыбраннаяГруппа": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000001101",
+                "ТипОбъекта": "СправочникСсылка.Номенклатура",
+                "Представление": "Верхняя одежда"
+              }
+            }
+          ],
+          "schema": {
+            "columns": [
+              {
+                "name": "Номенклатура",
+                "types": [
+                  "СправочникСсылка.Номенклатура"
+                ]
+              },
+              {
+                "name": "Наименование",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Код",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Родитель",
+                "types": [
+                  "СправочникСсылка.Номенклатура"
+                ]
+              },
+              {
+                "name": "ВыбраннаяГруппа",
+                "types": [
+                  "СправочникСсылка.Номенклатура"
+                ]
+              }
+            ]
+          },
+          "count": 1
+        }
+      },
+      "expected": {
+        "status": "success_with_rows",
+        "required_fact_ids": [
+          "item.ref",
+          "item.name",
+          "item.code",
+          "item.parent_group_ref",
+          "selected_group.ref"
+        ]
+      }
+    },
+    {
+      "test_id": "ut.item.group-members.empty",
+      "case_kind": "negative",
+      "bindings": [
+        {
+          "parameter": "group",
+          "value": {
+            "_objectRef": true,
+            "УникальныйИдентификатор": "00000000-0000-4000-8000-000000001101",
+            "ТипОбъекта": "СправочникСсылка.Номенклатура",
+            "Представление": "Верхняя одежда"
+          }
+        },
+        {
+          "parameter": "include_descendants",
+          "value": true
+        }
+      ],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": true,
+          "data": [],
+          "schema": {
+            "columns": [
+              {
+                "name": "Номенклатура",
+                "types": [
+                  "СправочникСсылка.Номенклатура"
+                ]
+              },
+              {
+                "name": "Наименование",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Код",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Родитель",
+                "types": [
+                  "СправочникСсылка.Номенклатура"
+                ]
+              },
+              {
+                "name": "ВыбраннаяГруппа",
+                "types": [
+                  "СправочникСсылка.Номенклатура"
+                ]
+              }
+            ]
+          },
+          "count": 0
+        }
+      },
+      "expected": {
+        "status": "success_empty",
+        "required_fact_ids": []
+      }
+    },
+    {
+      "test_id": "ut.item.group-members.malformed",
+      "case_kind": "negative",
+      "bindings": [
+        {
+          "parameter": "group",
+          "value": {
+            "_objectRef": true,
+            "УникальныйИдентификатор": "00000000-0000-4000-8000-000000001101",
+            "ТипОбъекта": "СправочникСсылка.Номенклатура",
+            "Представление": "Верхняя одежда"
+          }
+        },
+        {
+          "parameter": "include_descendants",
+          "value": true
+        }
+      ],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": false,
+          "error": "MCP_SCHEMA_MISMATCH: incompatible identity column type"
+        }
+      },
+      "expected": {
+        "status": "query_error",
+        "required_fact_ids": [],
+        "error_code": "MCP_SCHEMA_MISMATCH"
+      }
+    }
+  ],
+  "provenance": {
+    "author": "ChatBot 1C slice 3B",
+    "created_at": "2026-07-22T00:00:00Z",
+    "reviewed_by": "Metadata-proven resolver catalog",
+    "reviewed_at": "2026-07-22T00:00:00Z",
+    "source_configuration": {
+      "configuration_id": "УправлениеТорговлейБазовая",
+      "release": "11.5.27.56",
+      "compatibility_mode": "8.3.27",
+      "metadata_snapshot_sha256": "5fd976edf70c1dd0c65aeabce8362e6767876bcc9e33985d0aa47bdbbe8a86f4"
+    },
+    "source_references": [
+      {
+        "kind": "configuration_metadata",
+        "uri": "ut-config://11.5.27.56/Catalogs/Номенклатура.xml",
+        "sha256": "5fd976edf70c1dd0c65aeabce8362e6767876bcc9e33985d0aa47bdbbe8a86f4"
+      }
+    ],
+    "change_note_ru": "Production typed resolver/consumer contract без object-specific core logic."
+  },
+  "integrity": {
+    "algorithm": "sha256",
+    "canonicalization": "RFC8785",
+    "scope": "document_without_integrity",
+    "digest": "351ef2074a096eb97205d6b1bff5a9c36f993d31f8cba205d8f0668686dd32e3"
+  }
+}
