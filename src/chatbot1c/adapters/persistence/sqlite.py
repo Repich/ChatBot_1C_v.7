@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import secrets
 from collections.abc import Iterator, Mapping, Sequence
@@ -24,13 +25,19 @@ from sqlalchemy.pool import StaticPool
 
 from chatbot1c.application.errors import ApplicationError, CatalogConflictError
 from chatbot1c.application.models import (
+    ClarificationResponse,
     ContextFact,
+    ContextSlotSummary,
     EntityFactOrigin,
     MaintenancePreview,
     MaintenanceScope,
     PageContinuation,
     PageStrategy,
+    PendingChoice,
+    PendingClarification,
+    PendingClarificationDraft,
     PinnedCatalog,
+    ScalarFactOrigin,
     SessionRecord,
     TurnEvent,
     TurnRecord,
@@ -54,16 +61,32 @@ _CLEAR_SCOPES: frozenset[MaintenanceScope] = frozenset(
 _MAINTENANCE_SCOPES_ADAPTER = TypeAdapter(tuple[MaintenanceScope, ...])
 _JSON_OBJECT_ADAPTER = TypeAdapter(dict[str, JsonValue])
 _JSON_TUPLE_ADAPTER = TypeAdapter(tuple[JsonValue, ...])
+_PENDING_CHOICES_ADAPTER = TypeAdapter(tuple[PendingChoice, ...])
 _RAW_PAYLOAD_PREDICATE = (
     "name IN ('request.json', 'context.json', 'planner/request.json', "
     "'planner/response.json') OR name LIKE 'steps/%/request.json' "
     "OR name LIKE 'steps/%/response.json'"
 )
 _PAGE_HANDLE = re.compile(r"^page_[A-Za-z0-9_-]{32}$")
+_CONTEXT_HANDLE = re.compile(r"^ctx_[A-Za-z0-9_-]{32}$")
+_CLARIFICATION_HANDLE = re.compile(r"^clar_[A-Za-z0-9_-]{32}$")
+
+
+class _ContextRestoreError(Exception):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
 
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+def _policy_now() -> datetime:
+    controlled = os.environ.get("SLICE3_ACCEPTANCE_NOW")
+    if controlled:
+        return datetime.fromisoformat(controlled.replace("Z", "+00:00"))
+    return _now()
 
 
 def _iso(value: datetime) -> str:
@@ -78,6 +101,22 @@ def _datetime(value: object) -> datetime:
 
 def _json(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _skill_storage_json(skill: Skill) -> str:
+    document = skill.model_dump(mode="json", by_alias=True, exclude_none=True)
+    if skill.schema_version == "1.0.0":
+        for parameter in cast(list[dict[str, object]], document["parameters"]):
+            parameter.pop("context_slot_keys", None)
+        output = cast(dict[str, object], document["output_contract"])
+        output.pop("resolution", None)
+        output.pop("context_export_policy", None)
+        for fact in cast(list[dict[str, object]], output["facts"]):
+            fact.pop("allowed_values", None)
+    else:
+        output = cast(dict[str, object], document["output_contract"])
+        output.setdefault("resolution", None)
+    return _json(document)
 
 
 class SQLiteStore:
@@ -157,12 +196,16 @@ class SQLiteStore:
 
     def load_catalog(self) -> PinnedCatalog:
         with self._engine.connect() as connection:
-            revision_row = connection.execute(
-                sql_text(
-                    "SELECT revision, snapshot_id FROM catalog_revisions "
-                    "ORDER BY revision DESC LIMIT 1"
+            revision_row = (
+                connection.execute(
+                    sql_text(
+                        "SELECT revision, snapshot_id FROM catalog_revisions "
+                        "ORDER BY revision DESC LIMIT 1"
+                    )
                 )
-            ).mappings().one()
+                .mappings()
+                .one()
+            )
             rows = connection.execute(
                 sql_text(
                     "SELECT d.document_json FROM catalog_revision_skills r "
@@ -185,13 +228,17 @@ class SQLiteStore:
 
     def load_catalog_revision(self, revision: int) -> PinnedCatalog:
         with self._engine.connect() as connection:
-            revision_row = connection.execute(
-                sql_text(
-                    "SELECT revision, snapshot_id FROM catalog_revisions "
-                    "WHERE revision=:revision"
-                ),
-                {"revision": revision},
-            ).mappings().one_or_none()
+            revision_row = (
+                connection.execute(
+                    sql_text(
+                        "SELECT revision, snapshot_id FROM catalog_revisions "
+                        "WHERE revision=:revision"
+                    ),
+                    {"revision": revision},
+                )
+                .mappings()
+                .one_or_none()
+            )
             if revision_row is None:
                 raise ApplicationError(
                     "CATALOG_SNAPSHOT_NOT_FOUND",
@@ -271,7 +318,7 @@ class SQLiteStore:
                         "skill_id": skill.skill_id,
                         "version": skill.version,
                         "digest": skill.integrity.digest,
-                        "document_json": skill.model_dump_json(by_alias=True),
+                        "document_json": _skill_storage_json(skill),
                     },
                 )
             connection.execute(
@@ -331,10 +378,14 @@ class SQLiteStore:
 
     def get_session(self, session_id: UUID) -> SessionRecord | None:
         with self._engine.connect() as connection:
-            row = connection.execute(
-                sql_text("SELECT * FROM sessions WHERE session_id=:session_id"),
-                {"session_id": str(session_id)},
-            ).mappings().one_or_none()
+            row = (
+                connection.execute(
+                    sql_text("SELECT * FROM sessions WHERE session_id=:session_id"),
+                    {"session_id": str(session_id)},
+                )
+                .mappings()
+                .one_or_none()
+            )
         return None if row is None else self._session(row)
 
     def delete_session(self, session_id: UUID) -> bool:
@@ -354,16 +405,20 @@ class SQLiteStore:
         expected_context_version: int,
     ) -> tuple[TurnRecord, bool]:
         with self._immediate() as connection:
-            existing = connection.execute(
-                sql_text(
-                    "SELECT * FROM turns WHERE session_id=:session_id "
-                    "AND client_message_id=:client_message_id"
-                ),
-                {
-                    "session_id": str(session_id),
-                    "client_message_id": client_message_id,
-                },
-            ).mappings().one_or_none()
+            existing = (
+                connection.execute(
+                    sql_text(
+                        "SELECT * FROM turns WHERE session_id=:session_id "
+                        "AND client_message_id=:client_message_id"
+                    ),
+                    {
+                        "session_id": str(session_id),
+                        "client_message_id": client_message_id,
+                    },
+                )
+                .mappings()
+                .one_or_none()
+            )
             if existing is not None:
                 return self._turn(existing), False
             current = connection.execute(
@@ -381,6 +436,14 @@ class SQLiteStore:
                     409,
                 )
             now = _now()
+            connection.execute(
+                sql_text(
+                    "UPDATE pending_clarifications SET superseded_at=:now "
+                    "WHERE session_id=:session_id AND consumed_at IS NULL "
+                    "AND superseded_at IS NULL"
+                ),
+                {"now": _iso(now), "session_id": str(session_id)},
+            )
             values = {
                 "turn_id": str(uuid4()),
                 "request_id": str(uuid4()),
@@ -401,10 +464,14 @@ class SQLiteStore:
                 ),
                 values,
             )
-            row = connection.execute(
-                sql_text("SELECT * FROM turns WHERE turn_id=:turn_id"),
-                {"turn_id": values["turn_id"]},
-            ).mappings().one()
+            row = (
+                connection.execute(
+                    sql_text("SELECT * FROM turns WHERE turn_id=:turn_id"),
+                    {"turn_id": values["turn_id"]},
+                )
+                .mappings()
+                .one()
+            )
             return self._turn(row), True
 
     def pin_turn(self, turn_id: UUID, catalog: PinnedCatalog) -> None:
@@ -425,10 +492,14 @@ class SQLiteStore:
 
     def get_turn(self, turn_id: UUID) -> TurnRecord | None:
         with self._engine.connect() as connection:
-            row = connection.execute(
-                sql_text("SELECT * FROM turns WHERE turn_id=:turn_id"),
-                {"turn_id": str(turn_id)},
-            ).mappings().one_or_none()
+            row = (
+                connection.execute(
+                    sql_text("SELECT * FROM turns WHERE turn_id=:turn_id"),
+                    {"turn_id": str(turn_id)},
+                )
+                .mappings()
+                .one_or_none()
+            )
         return None if row is None else self._turn(row)
 
     def list_turns(self, session_id: UUID) -> tuple[TurnRecord, ...]:
@@ -463,40 +534,160 @@ class SQLiteStore:
             return tuple(reversed(tuple(cast(str, value) for value in values)))
 
     def context_facts(self, session_id: UUID) -> tuple[ContextFact, ...]:
+        now = _policy_now()
+        with self._immediate() as connection:
+            connection.execute(
+                sql_text(
+                    "UPDATE context_slots SET status='expired', "
+                    "reason='policy_time_reached', updated_at=:now "
+                    "WHERE session_id=:session_id AND status='active' "
+                    "AND expires_at IS NOT NULL AND expires_at<=:now"
+                ),
+                {"session_id": str(session_id), "now": _iso(now)},
+            )
+            rows = tuple(
+                connection.execute(
+                    sql_text(
+                        "SELECT s.handle, s.slot_key, s.semantic_type, s.value_type, "
+                        "s.policy_mode, s.cardinality, s.lifetime_mode, s.expires_at, "
+                        "s.proof_digest, s.member_count, s.membership_digest, "
+                        "m.member_index, f.fact_record_id, f.value_json, f.value_digest, "
+                        "f.presentation, f.origin_turn_id, f.origin_fact_instance_id, "
+                        "f.created_at FROM context_slots s "
+                        "LEFT JOIN context_slot_members m ON m.handle=s.handle "
+                        "LEFT JOIN context_facts f ON f.fact_record_id=m.fact_record_id "
+                        "WHERE s.session_id=:session_id AND s.status='active' "
+                        "ORDER BY s.slot_key, m.member_index"
+                    ),
+                    {"session_id": str(session_id)},
+                ).mappings()
+            )
+            restored: list[ContextFact] = []
+            grouped: dict[str, list[RowMapping]] = {}
+            for row in rows:
+                grouped.setdefault(cast(str, row["handle"]), []).append(row)
+            for handle, member_rows in grouped.items():
+                try:
+                    expected_count = int(member_rows[0]["member_count"])
+                    indexes = [row["member_index"] for row in member_rows]
+                    if (
+                        len(member_rows) != expected_count
+                        or any(index is None for index in indexes)
+                        or [int(cast(int, index)) for index in indexes]
+                        != list(range(expected_count))
+                    ):
+                        raise _ContextRestoreError("provenance_missing")
+                    restored_members = [
+                        self._restore_context_fact(connection, row)
+                        for row in member_rows
+                    ]
+                    membership_digest = hashlib.sha256(
+                        canonicalize([item.value_digest for item in restored_members])
+                    ).hexdigest()
+                    if membership_digest != member_rows[0]["membership_digest"]:
+                        raise _ContextRestoreError("provenance_missing")
+                    restored.extend(restored_members)
+                except _ContextRestoreError as error:
+                    connection.execute(
+                        sql_text(
+                            "UPDATE context_slots SET status='invalidated',reason=:reason,"
+                            "updated_at=:now WHERE handle=:handle AND status='active'"
+                        ),
+                        {"reason": error.reason, "now": _iso(now), "handle": handle},
+                    )
+            return tuple(restored)
+
+    def context_slots(self, session_id: UUID) -> tuple[ContextSlotSummary, ...]:
+        self.context_facts(session_id)
         with self._engine.connect() as connection:
             rows = connection.execute(
                 sql_text(
-                    "SELECT * FROM context_facts WHERE session_id=:session_id "
-                    "ORDER BY created_at"
+                    "SELECT * FROM context_slots WHERE session_id=:session_id "
+                    "AND status='active' ORDER BY slot_key"
                 ),
                 {"session_id": str(session_id)},
             ).mappings()
-            return tuple(self._restore_context_fact(connection, row) for row in rows)
+            return tuple(
+                ContextSlotSummary(
+                    slot_key=cast(str, row["slot_key"]),
+                    handle=cast(str, row["handle"]),
+                    semantic_type=cast(str, row["semantic_type"]),
+                    value_type=cast(str, row["value_type"]),
+                    policy_mode=cast(Any, row["policy_mode"]),
+                    cardinality=cast(Any, row["cardinality"]),
+                    member_count=int(row["member_count"]),
+                    presentation=cast(str, row["presentation"]),
+                    expires_at=(
+                        None
+                        if row["expires_at"] is None
+                        else _datetime(row["expires_at"])
+                    ),
+                )
+                for row in rows
+            )
+
+    def context_handle_states(
+        self, session_id: UUID, handles: Sequence[str] = ()
+    ) -> Mapping[str, str]:
+        self.context_facts(session_id)
+        with self._engine.connect() as connection:
+            parameters: dict[str, object] = {"session_id": str(session_id)}
+            requested = tuple(dict.fromkeys(handles))
+            handle_clause = ""
+            if requested:
+                placeholders: list[str] = []
+                for index, handle in enumerate(requested):
+                    name = f"handle_{index}"
+                    parameters[name] = handle
+                    placeholders.append(f":{name}")
+                handle_clause = " OR handle IN (" + ",".join(placeholders) + ")"
+            rows = connection.execute(
+                sql_text(
+                    "SELECT handle,session_id,status FROM context_slots "
+                    "WHERE session_id=:session_id" + handle_clause
+                ),
+                parameters,
+            ).mappings()
+            return {
+                cast(str, row["handle"]): (
+                    cast(str, row["status"])
+                    if row["session_id"] == str(session_id)
+                    else "foreign"
+                )
+                for row in rows
+            }
 
     def _restore_context_fact(
         self, connection: Connection, row: RowMapping
     ) -> ContextFact:
-        origin_turn_id = UUID(cast(str, row["origin_turn_id"]))
-        origin_fact_instance_id = UUID(cast(str, row["origin_fact_instance_id"]))
-        turn = connection.execute(
-            sql_text(
-                "SELECT evidence_json, catalog_revision FROM turns "
-                "WHERE turn_id=:turn_id"
-            ),
-            {"turn_id": str(origin_turn_id)},
-        ).mappings().one_or_none()
+        try:
+            origin_turn_id = UUID(cast(str, row["origin_turn_id"]))
+            origin_fact_instance_id = UUID(cast(str, row["origin_fact_instance_id"]))
+        except (TypeError, ValueError) as error:
+            raise _ContextRestoreError("provenance_missing") from error
+        turn = (
+            connection.execute(
+                sql_text(
+                    "SELECT evidence_json, catalog_revision FROM turns "
+                    "WHERE turn_id=:turn_id"
+                ),
+                {"turn_id": str(origin_turn_id)},
+            )
+            .mappings()
+            .one_or_none()
+        )
         if (
             turn is None
             or turn["evidence_json"] is None
             or turn["catalog_revision"] is None
         ):
-            raise _context_provenance_error()
+            raise _ContextRestoreError("provenance_missing")
         try:
             evidence = EvidenceBundle.model_validate_json(
                 cast(str, turn["evidence_json"])
             )
         except ValueError as error:
-            raise _context_provenance_error() from error
+            raise _ContextRestoreError("provenance_missing") from error
         fact = next(
             (
                 candidate
@@ -514,20 +705,24 @@ class SQLiteStore:
             ),
             None,
         )
-        if fact is None or exported is None or not isinstance(fact.value, EntityRef):
-            raise _context_provenance_error()
+        if fact is None or exported is None:
+            raise _ContextRestoreError("provenance_missing")
         step = next(
-            (candidate for candidate in evidence.steps if candidate.step_id == fact.step_id),
+            (
+                candidate
+                for candidate in evidence.steps
+                if candidate.step_id == fact.step_id
+            ),
             None,
         )
         if step is None or not step.operation_ref.startswith("skill://"):
-            raise _context_provenance_error()
+            raise _ContextRestoreError("provenance_missing")
         try:
             skill_id, skill_version = step.operation_ref.removeprefix(
                 "skill://"
             ).rsplit("/", 1)
         except ValueError as error:
-            raise _context_provenance_error() from error
+            raise _ContextRestoreError("provenance_missing") from error
         snapshot_skill = next(
             (
                 candidate
@@ -536,31 +731,35 @@ class SQLiteStore:
             ),
             None,
         )
-        skill_row = connection.execute(
-            sql_text(
-                "SELECT d.document_json, r.digest FROM catalog_revision_skills r "
-                "JOIN skill_documents d ON d.skill_id=r.skill_id "
-                "AND d.version=r.version WHERE r.revision=:revision "
-                "AND r.skill_id=:skill_id AND r.version=:version"
-            ),
-            {
-                "revision": int(turn["catalog_revision"]),
-                "skill_id": skill_id,
-                "version": skill_version,
-            },
-        ).mappings().one_or_none()
+        skill_row = (
+            connection.execute(
+                sql_text(
+                    "SELECT d.document_json, r.digest FROM catalog_revision_skills r "
+                    "JOIN skill_documents d ON d.skill_id=r.skill_id "
+                    "AND d.version=r.version WHERE r.revision=:revision "
+                    "AND r.skill_id=:skill_id AND r.version=:version"
+                ),
+                {
+                    "revision": int(turn["catalog_revision"]),
+                    "skill_id": skill_id,
+                    "version": skill_version,
+                },
+            )
+            .mappings()
+            .one_or_none()
+        )
         if skill_row is None or snapshot_skill is None:
-            raise _context_provenance_error()
+            raise _ContextRestoreError("producer_contract_missing")
         try:
             skill = Skill.model_validate_json(cast(str, skill_row["document_json"]))
         except ValueError as error:
-            raise _context_provenance_error() from error
+            raise _ContextRestoreError("producer_contract_missing") from error
         if (
             skill.integrity.digest != skill_row["digest"]
             or skill.integrity.digest != snapshot_skill.digest
             or not isinstance(skill.operation, DataQueryOperation)
         ):
-            raise _context_provenance_error()
+            raise _ContextRestoreError("producer_contract_missing")
         definition = next(
             (
                 item
@@ -575,38 +774,65 @@ class SQLiteStore:
             if binding.fact_id == fact.fact_id
             and binding.column == fact.source_locator.reference
         ]
-        if (
-            definition is None
-            or definition.semantic_type != fact.semantic_type
-            or definition.value_type is not FactValueType.ENTITY_REF
-            or len(bindings) != 1
-            or bindings[0].converter != "object_ref"
-            or fact.value.object_type not in bindings[0].accepted_mcp_types
-        ):
-            raise _context_provenance_error()
-        binding = bindings[0]
-        origin = EntityFactOrigin(
-            fact=fact,
-            skill_id=skill.skill_id,
-            skill_version=skill.version,
-            skill_digest=skill.integrity.digest,
-            column=binding.column,
-            accepted_mcp_types=binding.accepted_mcp_types,
-        )
+        if definition is None or definition.semantic_type != fact.semantic_type:
+            raise _ContextRestoreError("producer_contract_missing")
+        origin: EntityFactOrigin | ScalarFactOrigin
+        if isinstance(fact.value, EntityRef):
+            if (
+                definition.value_type is not FactValueType.ENTITY_REF
+                or len(bindings) != 1
+                or bindings[0].converter != "object_ref"
+                or fact.value.object_type not in bindings[0].accepted_mcp_types
+            ):
+                raise _ContextRestoreError("producer_contract_missing")
+            binding = bindings[0]
+            origin = EntityFactOrigin(
+                fact=fact,
+                skill_id=skill.skill_id,
+                skill_version=skill.version,
+                skill_digest=skill.integrity.digest,
+                column=binding.column,
+                accepted_mcp_types=binding.accepted_mcp_types,
+            )
+        else:
+            if fact.source_locator.kind not in {
+                "query_column_binding",
+                "operator_result",
+                "system_value",
+            }:
+                raise _ContextRestoreError("producer_contract_missing")
+            origin = ScalarFactOrigin(
+                fact=fact,
+                skill_id=skill.skill_id,
+                skill_version=skill.version,
+                skill_digest=skill.integrity.digest,
+                source_kind=cast(Any, fact.source_locator.kind),
+                source_reference=fact.source_locator.reference,
+                allowed_values=definition.allowed_values,
+            )
         try:
             return ContextFact(
                 handle=cast(str, row["handle"]),
                 semantic_type=cast(str, row["semantic_type"]),
-                value=cast(
-                    JsonValue, json.loads(cast(str, row["value_json"]))
-                ),
+                value=cast(JsonValue, json.loads(cast(str, row["value_json"]))),
                 presentation=cast(str, row["presentation"]),
                 origin_turn_id=origin_turn_id,
                 origin_fact_instance_id=origin_fact_instance_id,
                 origin=origin,
+                slot_key=cast(str, row["slot_key"]),
+                value_type=FactValueType(cast(str, row["value_type"])),
+                policy_mode=cast(Any, row["policy_mode"]),
+                cardinality=cast(Any, row["cardinality"]),
+                member_index=int(row["member_index"]),
+                value_digest=cast(str, row["value_digest"]),
+                expires_at=(
+                    None if row["expires_at"] is None else _datetime(row["expires_at"])
+                ),
+                proof_digest=cast(str | None, row["proof_digest"]),
+                lifetime_mode=cast(Any, row["lifetime_mode"]),
             )
         except ValueError as error:
-            raise _context_provenance_error() from error
+            raise _ContextRestoreError("provenance_missing") from error
 
     def complete_turn(
         self,
@@ -618,14 +844,19 @@ class SQLiteStore:
         plan_json: str | None,
         evidence_json: str | None,
         context_exports: Sequence[ContextFact],
+        pending_clarification: PendingClarificationDraft | None = None,
         error_code: str | None = None,
     ) -> TurnRecord:
         completed_at = _now()
         with self._immediate() as connection:
-            turn = connection.execute(
-                sql_text("SELECT * FROM turns WHERE turn_id=:turn_id"),
-                {"turn_id": str(turn_id)},
-            ).mappings().one_or_none()
+            turn = (
+                connection.execute(
+                    sql_text("SELECT * FROM turns WHERE turn_id=:turn_id"),
+                    {"turn_id": str(turn_id)},
+                )
+                .mappings()
+                .one_or_none()
+            )
             if turn is None:
                 raise ApplicationError("TURN_NOT_FOUND", "Ход диалога не найден.", 404)
             connection.execute(
@@ -647,30 +878,21 @@ class SQLiteStore:
                 },
             )
             session_id = cast(str, turn["session_id"])
-            for fact in context_exports:
-                if fact.origin_turn_id != turn_id:
-                    raise ValueError("context export must originate from completed turn")
-                connection.execute(
-                    sql_text(
-                        "INSERT INTO context_facts (handle, session_id, semantic_type, "
-                        "value_json, presentation, origin_turn_id, "
-                        "origin_fact_instance_id, created_at) VALUES "
-                        "(:handle, :session_id, :semantic_type, :value_json, "
-                        ":presentation, :origin_turn_id, :origin_fact_instance_id, "
-                        ":created_at)"
-                    ),
-                    {
-                        "handle": fact.handle,
-                        "session_id": session_id,
-                        "semantic_type": fact.semantic_type,
-                        "value_json": _json(fact.value),
-                        "presentation": fact.presentation,
-                        "origin_turn_id": str(fact.origin_turn_id),
-                        "origin_fact_instance_id": str(
-                            fact.origin_fact_instance_id
-                        ),
-                        "created_at": _iso(completed_at),
-                    },
+            self._commit_context_mutations(
+                connection,
+                session_id=session_id,
+                turn_id=turn_id,
+                context_exports=context_exports,
+                completed_at=completed_at,
+            )
+            if pending_clarification is not None:
+                self._insert_pending(
+                    connection,
+                    session_id=session_id,
+                    origin_turn_id=turn_id,
+                    context_version=int(turn["context_version"]) + 1,
+                    draft=pending_clarification,
+                    issued_at=_policy_now(),
                 )
             connection.execute(
                 sql_text(
@@ -679,11 +901,571 @@ class SQLiteStore:
                 ),
                 {"updated_at": _iso(completed_at), "session_id": session_id},
             )
-            completed = connection.execute(
-                sql_text("SELECT * FROM turns WHERE turn_id=:turn_id"),
-                {"turn_id": str(turn_id)},
-            ).mappings().one()
+            completed = (
+                connection.execute(
+                    sql_text("SELECT * FROM turns WHERE turn_id=:turn_id"),
+                    {"turn_id": str(turn_id)},
+                )
+                .mappings()
+                .one()
+            )
         return self._turn(completed)
+
+    def _commit_context_mutations(
+        self,
+        connection: Connection,
+        *,
+        session_id: str,
+        turn_id: UUID,
+        context_exports: Sequence[ContextFact],
+        completed_at: datetime,
+    ) -> None:
+        grouped: dict[str, list[ContextFact]] = {}
+        for fact in context_exports:
+            if fact.origin_turn_id != turn_id:
+                raise ValueError("context export must originate from completed turn")
+            grouped.setdefault(fact.handle, []).append(fact)
+        for handle, members in grouped.items():
+            members.sort(key=lambda item: item.member_index)
+            first = members[0]
+            if [item.member_index for item in members] != list(range(len(members))):
+                raise ValueError("context members must use contiguous indexes")
+            if any(
+                item.slot_key != first.slot_key
+                or item.semantic_type != first.semantic_type
+                or item.value_type is not first.value_type
+                or item.policy_mode != first.policy_mode
+                or item.cardinality != first.cardinality
+                or item.lifetime_mode != first.lifetime_mode
+                or item.proof_digest != first.proof_digest
+                for item in members
+            ):
+                raise ValueError("context members must share one exact slot contract")
+            previous = (
+                connection.execute(
+                    sql_text(
+                        "SELECT handle,generation FROM context_slots "
+                        "WHERE session_id=:session_id AND slot_key=:slot_key "
+                        "AND status='active'"
+                    ),
+                    {"session_id": session_id, "slot_key": first.slot_key},
+                )
+                .mappings()
+                .one_or_none()
+            )
+            generation = int(
+                connection.execute(
+                    sql_text(
+                        "SELECT COALESCE(MAX(generation),0)+1 FROM context_slots "
+                        "WHERE session_id=:session_id AND slot_key=:slot_key"
+                    ),
+                    {"session_id": session_id, "slot_key": first.slot_key},
+                ).scalar_one()
+            )
+            if previous is not None:
+                connection.execute(
+                    sql_text(
+                        "UPDATE context_slots SET status='replaced', "
+                        "reason='new_selection', updated_at=:updated_at "
+                        "WHERE handle=:old_handle"
+                    ),
+                    {
+                        "updated_at": _iso(completed_at),
+                        "old_handle": cast(str, previous["handle"]),
+                    },
+                )
+            membership_payload: list[str] = []
+            for fact in members:
+                fact_record_id = str(fact.origin_fact_instance_id)
+                value_digest = (
+                    fact.value_digest
+                    or hashlib.sha256(canonicalize(fact.value)).hexdigest()
+                )
+                connection.execute(
+                    sql_text(
+                        "INSERT OR IGNORE INTO context_facts "
+                        "(fact_record_id,session_id,semantic_type,value_type,value_json,"
+                        "value_digest,presentation,origin_turn_id,"
+                        "origin_fact_instance_id,created_at) VALUES "
+                        "(:fact_record_id,:session_id,:semantic_type,:value_type,"
+                        ":value_json,:value_digest,:presentation,:origin_turn_id,"
+                        ":origin_fact_instance_id,:created_at)"
+                    ),
+                    {
+                        "fact_record_id": fact_record_id,
+                        "session_id": session_id,
+                        "semantic_type": fact.semantic_type,
+                        "value_type": fact.value_type.value,
+                        "value_json": _json(fact.value),
+                        "value_digest": value_digest,
+                        "presentation": fact.presentation,
+                        "origin_turn_id": str(fact.origin_turn_id),
+                        "origin_fact_instance_id": str(fact.origin_fact_instance_id),
+                        "created_at": _iso(completed_at),
+                    },
+                )
+                membership_payload.append(value_digest)
+            membership_digest = hashlib.sha256(
+                canonicalize(membership_payload)
+            ).hexdigest()
+            presentation = (
+                first.presentation
+                if len(members) == 1
+                else f"Выбрано объектов: {len(members)}"
+            )
+            connection.execute(
+                sql_text(
+                    "INSERT INTO context_slots "
+                    "(handle,session_id,slot_key,generation,semantic_type,value_type,"
+                    "policy_mode,cardinality,member_count,membership_digest,"
+                    "presentation,lifetime_mode,expires_at,status,reason,replaced_by,"
+                    "proof_digest,created_at,updated_at) VALUES "
+                    "(:handle,:session_id,:slot_key,:generation,:semantic_type,"
+                    ":value_type,:policy_mode,:cardinality,:member_count,"
+                    ":membership_digest,:presentation,:lifetime_mode,:expires_at,"
+                    ":status,:reason,NULL,:proof_digest,:created_at,:created_at)"
+                ),
+                {
+                    "handle": handle,
+                    "session_id": session_id,
+                    "slot_key": first.slot_key,
+                    "generation": generation,
+                    "semantic_type": first.semantic_type,
+                    "value_type": first.value_type.value,
+                    "policy_mode": first.policy_mode,
+                    "cardinality": first.cardinality,
+                    "member_count": len(members),
+                    "membership_digest": membership_digest,
+                    "presentation": presentation,
+                    "lifetime_mode": first.lifetime_mode,
+                    "expires_at": (
+                        _iso(completed_at)
+                        if first.lifetime_mode == "turn"
+                        else None
+                        if first.expires_at is None
+                        else _iso(first.expires_at)
+                    ),
+                    "status": (
+                        "expired" if first.lifetime_mode == "turn" else "active"
+                    ),
+                    "reason": (
+                        "policy_time_reached" if first.lifetime_mode == "turn" else None
+                    ),
+                    "proof_digest": first.proof_digest,
+                    "created_at": _iso(completed_at),
+                },
+            )
+            for fact in members:
+                identity_digest: str | None = None
+                if isinstance(fact.origin, EntityFactOrigin) and isinstance(
+                    fact.origin.fact.value, EntityRef
+                ):
+                    ref = fact.origin.fact.value
+                    identity_digest = hashlib.sha256(
+                        canonicalize(
+                            [fact.semantic_type, ref.object_type, str(ref.unique_id)]
+                        )
+                    ).hexdigest()
+                connection.execute(
+                    sql_text(
+                        "INSERT INTO context_slot_members "
+                        "(handle,member_index,fact_record_id,entity_identity_digest) "
+                        "VALUES (:handle,:member_index,:fact_record_id,:identity_digest)"
+                    ),
+                    {
+                        "handle": handle,
+                        "member_index": fact.member_index,
+                        "fact_record_id": str(fact.origin_fact_instance_id),
+                        "identity_digest": identity_digest,
+                    },
+                )
+            if previous is not None:
+                connection.execute(
+                    sql_text(
+                        "UPDATE context_slots SET replaced_by=:new_handle "
+                        "WHERE handle=:old_handle"
+                    ),
+                    {
+                        "new_handle": handle,
+                        "old_handle": cast(str, previous["handle"]),
+                    },
+                )
+
+    def _insert_pending(
+        self,
+        connection: Connection,
+        *,
+        session_id: str,
+        origin_turn_id: UUID,
+        context_version: int,
+        draft: PendingClarificationDraft,
+        issued_at: datetime,
+    ) -> PendingClarification:
+        connection.execute(
+            sql_text(
+                "UPDATE pending_clarifications SET superseded_at=:now "
+                "WHERE session_id=:session_id AND consumed_at IS NULL "
+                "AND superseded_at IS NULL"
+            ),
+            {"now": _iso(issued_at), "session_id": session_id},
+        )
+        handle = f"clar_{secrets.token_urlsafe(24)}"
+        expires_at = issued_at + timedelta(minutes=30)
+        connection.execute(
+            sql_text(
+                "INSERT INTO pending_clarifications "
+                "(handle,session_id,origin_turn_id,kind,question_ru,original_question,"
+                "plan_json,resolver_step_id,choices_json,has_more_candidates,"
+                "context_version,catalog_snapshot_id,catalog_revision,database_marker,"
+                "issued_at,expires_at) VALUES "
+                "(:handle,:session_id,:origin_turn_id,:kind,:question_ru,"
+                ":original_question,:plan_json,:resolver_step_id,:choices_json,"
+                ":has_more_candidates,:context_version,:catalog_snapshot_id,"
+                ":catalog_revision,:database_marker,:issued_at,:expires_at)"
+            ),
+            {
+                "handle": handle,
+                "session_id": session_id,
+                "origin_turn_id": str(origin_turn_id),
+                "kind": draft.kind,
+                "question_ru": draft.question_ru,
+                "original_question": draft.original_question,
+                "plan_json": draft.plan_json,
+                "resolver_step_id": draft.resolver_step_id,
+                "choices_json": _json(
+                    [
+                        item.model_dump(mode="json", by_alias=True)
+                        for item in draft.choices
+                    ]
+                ),
+                "has_more_candidates": draft.has_more_candidates,
+                "context_version": context_version,
+                "catalog_snapshot_id": str(draft.catalog_snapshot_id),
+                "catalog_revision": draft.catalog_revision,
+                "database_marker": draft.database_marker,
+                "issued_at": _iso(issued_at),
+                "expires_at": _iso(expires_at),
+            },
+        )
+        row = (
+            connection.execute(
+                sql_text("SELECT * FROM pending_clarifications WHERE handle=:handle"),
+                {"handle": handle},
+            )
+            .mappings()
+            .one()
+        )
+        return self._pending(row)
+
+    def active_pending(self, session_id: UUID) -> PendingClarification | None:
+        now = _policy_now()
+        with self._engine.connect() as connection:
+            row = (
+                connection.execute(
+                    sql_text(
+                        "SELECT * FROM pending_clarifications WHERE session_id=:session_id "
+                        "AND consumed_at IS NULL AND superseded_at IS NULL "
+                        "AND expires_at>:now"
+                    ),
+                    {"session_id": str(session_id), "now": _iso(now)},
+                )
+                .mappings()
+                .one_or_none()
+            )
+        return None if row is None else self._pending(row)
+
+    def pending_for_claim_turn(self, turn_id: UUID) -> PendingClarification | None:
+        with self._engine.connect() as connection:
+            row = (
+                connection.execute(
+                    sql_text(
+                        "SELECT * FROM pending_clarifications WHERE claim_turn_id=:turn_id"
+                    ),
+                    {"turn_id": str(turn_id)},
+                )
+                .mappings()
+                .one_or_none()
+            )
+        return None if row is None else self._pending(row)
+
+    def claim_clarification(
+        self,
+        *,
+        session_id: UUID,
+        text: str,
+        client_message_id: str,
+        expected_context_version: int,
+        response: ClarificationResponse,
+        active_catalog: PinnedCatalog,
+        database_marker: str,
+    ) -> tuple[PendingClarification, TurnRecord]:
+        if _CLARIFICATION_HANDLE.fullmatch(response.handle) is None:
+            raise ApplicationError(
+                "CLARIFICATION_HANDLE_INVALID",
+                "Clarification handle имеет неверный формат.",
+                422,
+            )
+        now = _policy_now()
+        turn_created_at = _now()
+        with self._immediate() as connection:
+            row = (
+                connection.execute(
+                    sql_text(
+                        "SELECT * FROM pending_clarifications WHERE handle=:handle"
+                    ),
+                    {"handle": response.handle},
+                )
+                .mappings()
+                .one_or_none()
+            )
+            if row is None:
+                raise ApplicationError(
+                    "CLARIFICATION_NOT_FOUND", "Уточнение не найдено.", 404
+                )
+            pending = self._pending(row)
+            if pending.session_id != session_id:
+                raise ApplicationError(
+                    "CLARIFICATION_SESSION_MISMATCH",
+                    "Уточнение принадлежит другой сессии.",
+                    409,
+                )
+            if pending.superseded_at is not None:
+                raise ApplicationError(
+                    "CLARIFICATION_SUPERSEDED", "Уточнение уже заменено.", 409
+                )
+            if pending.consumed_at is not None:
+                raise ApplicationError(
+                    "CLARIFICATION_CONSUMED", "Уточнение уже использовано.", 409
+                )
+            if now >= pending.expires_at:
+                connection.execute(
+                    sql_text(
+                        "UPDATE pending_clarifications SET consumed_at=:now, "
+                        "claimed_action='cancel' WHERE handle=:handle"
+                    ),
+                    {"now": _iso(now), "handle": response.handle},
+                )
+                raise ApplicationError(
+                    "CLARIFICATION_EXPIRED", "Срок уточнения истек.", 410
+                )
+            current_version = connection.execute(
+                sql_text(
+                    "SELECT context_version FROM sessions WHERE session_id=:session_id"
+                ),
+                {"session_id": str(session_id)},
+            ).scalar_one_or_none()
+            if current_version is None:
+                raise ApplicationError("SESSION_NOT_FOUND", "Сессия не найдена.", 404)
+            if (
+                int(current_version) != expected_context_version
+                or pending.context_version != expected_context_version
+            ):
+                raise ApplicationError(
+                    "CONTEXT_VERSION_CONFLICT",
+                    "Контекст сессии изменился; перечитайте диалог.",
+                    409,
+                )
+            if (
+                pending.catalog_snapshot_id != active_catalog.snapshot_id
+                or pending.catalog_revision != active_catalog.revision
+            ):
+                raise ApplicationError(
+                    "CLARIFICATION_CATALOG_CHANGED",
+                    "Каталог навыков изменился; повторите исходный вопрос.",
+                    409,
+                )
+            latest_catalog_revision = connection.execute(
+                sql_text("SELECT MAX(revision) FROM catalog_revisions")
+            ).scalar_one_or_none()
+            if (
+                latest_catalog_revision is None
+                or int(latest_catalog_revision) != active_catalog.revision
+            ):
+                raise ApplicationError(
+                    "CLARIFICATION_CATALOG_CHANGED",
+                    "Каталог навыков изменился; повторите исходный вопрос.",
+                    409,
+                )
+            if pending.database_marker != database_marker:
+                raise ApplicationError(
+                    "CLARIFICATION_MARKER_CHANGED",
+                    "Состояние базы изменилось; повторите исходный вопрос.",
+                    409,
+                )
+            if response.action == "narrow" and (
+                pending.kind != "resolver_choice"
+                or not pending.has_more_candidates
+                or not text.strip()
+            ):
+                raise ApplicationError(
+                    "CLARIFICATION_ACTION_INVALID",
+                    "Сужение недоступно для этого уточнения.",
+                    422,
+                )
+            if response.action == "choose" and not any(
+                item.choice_id == response.choice_id for item in pending.choices
+            ):
+                raise ApplicationError(
+                    "CLARIFICATION_CHOICE_INVALID", "Вариант уточнения не найден.", 422
+                )
+            turn_values = {
+                "turn_id": str(uuid4()),
+                "request_id": str(uuid4()),
+                "trace_id": str(uuid4()),
+                "session_id": str(session_id),
+                "client_message_id": client_message_id,
+                "user_text": text.strip() or response.action,
+                "created_at": _iso(turn_created_at),
+                "context_version": expected_context_version,
+            }
+            connection.execute(
+                sql_text(
+                    "INSERT INTO turns (turn_id,request_id,trace_id,session_id,"
+                    "client_message_id,user_text,status,created_at,context_version) "
+                    "VALUES (:turn_id,:request_id,:trace_id,:session_id,"
+                    ":client_message_id,:user_text,'accepted',:created_at,:context_version)"
+                ),
+                turn_values,
+            )
+            result = connection.execute(
+                sql_text(
+                    "UPDATE pending_clarifications SET consumed_at=:now,"
+                    "claim_turn_id=:turn_id,claimed_action=:action,"
+                    "claimed_choice_id=:choice_id WHERE handle=:handle "
+                    "AND consumed_at IS NULL AND superseded_at IS NULL"
+                ),
+                {
+                    "now": _iso(now),
+                    "turn_id": turn_values["turn_id"],
+                    "action": response.action,
+                    "choice_id": response.choice_id,
+                    "handle": response.handle,
+                },
+            )
+            if result.rowcount != 1:
+                raise ApplicationError(
+                    "CLARIFICATION_CONSUMED", "Уточнение уже использовано.", 409
+                )
+            turn_row = (
+                connection.execute(
+                    sql_text("SELECT * FROM turns WHERE turn_id=:turn_id"),
+                    {"turn_id": turn_values["turn_id"]},
+                )
+                .mappings()
+                .one()
+            )
+            claimed_row = (
+                connection.execute(
+                    sql_text(
+                        "SELECT * FROM pending_clarifications WHERE handle=:handle"
+                    ),
+                    {"handle": response.handle},
+                )
+                .mappings()
+                .one()
+            )
+        return self._pending(claimed_row), self._turn(turn_row)
+
+    def remove_context(
+        self, session_id: UUID, handle: str, expected_context_version: int
+    ) -> tuple[SessionRecord, TurnRecord]:
+        if _CONTEXT_HANDLE.fullmatch(handle) is None:
+            raise ApplicationError(
+                "CONTEXT_HANDLE_INVALID", "Context handle имеет неверный формат.", 422
+            )
+        now = _now()
+        with self._immediate() as connection:
+            current_version = connection.execute(
+                sql_text(
+                    "SELECT context_version FROM sessions WHERE session_id=:session_id"
+                ),
+                {"session_id": str(session_id)},
+            ).scalar_one_or_none()
+            if current_version is None:
+                raise ApplicationError("SESSION_NOT_FOUND", "Сессия не найдена.", 404)
+            if int(current_version) != expected_context_version:
+                raise ApplicationError(
+                    "CONTEXT_VERSION_CONFLICT",
+                    "Контекст сессии изменился; перечитайте диалог и повторите.",
+                    409,
+                )
+            row = (
+                connection.execute(
+                    sql_text("SELECT * FROM context_slots WHERE handle=:handle"),
+                    {"handle": handle},
+                )
+                .mappings()
+                .one_or_none()
+            )
+            if row is None:
+                raise ApplicationError(
+                    "CONTEXT_HANDLE_INVALIDATED", "Context slot не найден.", 404
+                )
+            if cast(str, row["session_id"]) != str(session_id):
+                raise ApplicationError(
+                    "CONTEXT_HANDLE_INVALIDATED", "Context slot другой сессии.", 409
+                )
+            if row["status"] != "active":
+                raise ApplicationError(
+                    "CONTEXT_HANDLE_INVALIDATED", "Context slot уже неактивен.", 409
+                )
+            connection.execute(
+                sql_text(
+                    "UPDATE context_slots SET status='invalidated',reason='user_removed',"
+                    "updated_at=:now WHERE handle=:handle"
+                ),
+                {"now": _iso(now), "handle": handle},
+            )
+            connection.execute(
+                sql_text(
+                    "UPDATE sessions SET context_version=context_version+1,"
+                    "updated_at=:now WHERE session_id=:session_id"
+                ),
+                {"now": _iso(now), "session_id": str(session_id)},
+            )
+            turn_values = {
+                "turn_id": str(uuid4()),
+                "request_id": str(uuid4()),
+                "trace_id": str(uuid4()),
+                "session_id": str(session_id),
+                "client_message_id": f"context-remove:{uuid4()}",
+                "created_at": _iso(now),
+                "context_version": expected_context_version,
+            }
+            connection.execute(
+                sql_text(
+                    "INSERT INTO turns (turn_id,request_id,trace_id,session_id,"
+                    "client_message_id,user_text,assistant_text,status,outcome,created_at,"
+                    "completed_at,context_version) VALUES (:turn_id,:request_id,:trace_id,"
+                    ":session_id,:client_message_id,'','Фильтр контекста удален.',"
+                    "'completed','context_updated',:created_at,:created_at,:context_version)"
+                ),
+                turn_values,
+            )
+            connection.execute(
+                sql_text(
+                    "INSERT INTO turn_events (turn_id,sequence,event_name,timestamp,status,"
+                    "payload_json) VALUES (:turn_id,1,'request.accepted',:created_at,'accepted',"
+                    "'{}'),(:turn_id,2,'request.completed',:created_at,'ok','{}')"
+                ),
+                turn_values,
+            )
+            session_row = (
+                connection.execute(
+                    sql_text("SELECT * FROM sessions WHERE session_id=:session_id"),
+                    {"session_id": str(session_id)},
+                )
+                .mappings()
+                .one()
+            )
+            turn_row = (
+                connection.execute(
+                    sql_text("SELECT * FROM turns WHERE turn_id=:turn_id"), turn_values
+                )
+                .mappings()
+                .one()
+            )
+        return self._session(session_row), self._turn(turn_row)
 
     def append_event(
         self,
@@ -849,12 +1631,14 @@ class SQLiteStore:
             )
         now = _now()
         with self._immediate() as connection:
-            row = connection.execute(
-                sql_text(
-                    "SELECT * FROM page_continuations WHERE handle=:handle"
-                ),
-                {"handle": handle},
-            ).mappings().one_or_none()
+            row = (
+                connection.execute(
+                    sql_text("SELECT * FROM page_continuations WHERE handle=:handle"),
+                    {"handle": handle},
+                )
+                .mappings()
+                .one_or_none()
+            )
             if row is None:
                 raise ApplicationError(
                     "CONTINUATION_NOT_FOUND", "Продолжение списка не найдено.", 404
@@ -957,31 +1741,41 @@ class SQLiteStore:
                     "Продолжение уже было использовано.",
                     409,
                 )
-            turn_row = connection.execute(
-                sql_text("SELECT * FROM turns WHERE turn_id=:turn_id"),
-                {"turn_id": str(turn_id)},
-            ).mappings().one()
-        claimed = replace(
-            continuation, consumed_at=now, accepted_turn_id=turn_id
-        )
+            turn_row = (
+                connection.execute(
+                    sql_text("SELECT * FROM turns WHERE turn_id=:turn_id"),
+                    {"turn_id": str(turn_id)},
+                )
+                .mappings()
+                .one()
+            )
+        claimed = replace(continuation, consumed_at=now, accepted_turn_id=turn_id)
         return claimed, self._turn(turn_row)
 
     def get_continuation(self, handle: str) -> PageContinuation | None:
         with self._engine.connect() as connection:
-            row = connection.execute(
-                sql_text("SELECT * FROM page_continuations WHERE handle=:handle"),
-                {"handle": handle},
-            ).mappings().one_or_none()
+            row = (
+                connection.execute(
+                    sql_text("SELECT * FROM page_continuations WHERE handle=:handle"),
+                    {"handle": handle},
+                )
+                .mappings()
+                .one_or_none()
+            )
         return None if row is None else self._continuation(row)
 
     def continuation_for_turn(self, turn_id: UUID) -> PageContinuation | None:
         with self._engine.connect() as connection:
-            row = connection.execute(
-                sql_text(
-                    "SELECT * FROM page_continuations WHERE accepted_turn_id=:turn_id"
-                ),
-                {"turn_id": str(turn_id)},
-            ).mappings().one_or_none()
+            row = (
+                connection.execute(
+                    sql_text(
+                        "SELECT * FROM page_continuations WHERE accepted_turn_id=:turn_id"
+                    ),
+                    {"turn_id": str(turn_id)},
+                )
+                .mappings()
+                .one_or_none()
+            )
         return None if row is None else self._continuation(row)
 
     def preview_clear(self, scopes: Sequence[str]) -> MaintenancePreview:
@@ -1022,12 +1816,14 @@ class SQLiteStore:
         normalized = _normalize_clear_scopes(scopes)
         now = _now()
         with self._immediate() as connection:
-            row = connection.execute(
-                sql_text(
-                    "SELECT * FROM maintenance_previews WHERE token=:token"
-                ),
-                {"token": confirmation_token},
-            ).mappings().one_or_none()
+            row = (
+                connection.execute(
+                    sql_text("SELECT * FROM maintenance_previews WHERE token=:token"),
+                    {"token": confirmation_token},
+                )
+                .mappings()
+                .one_or_none()
+            )
             if row is None:
                 raise ApplicationError(
                     "CLEAR_CONFIRMATION_NOT_FOUND",
@@ -1180,7 +1976,7 @@ class SQLiteStore:
             "context": list(
                 connection.execute(
                     sql_text(
-                        "SELECT handle FROM context_facts WHERE "
+                        "SELECT handle FROM context_slots WHERE "
                         + ("1=1" if "sessions" in scopes else "1=0")
                         + " ORDER BY handle"
                     )
@@ -1261,9 +2057,7 @@ class SQLiteStore:
 
     @staticmethod
     def _continuation(row: RowMapping) -> PageContinuation:
-        arguments = _JSON_OBJECT_ADAPTER.validate_json(
-            cast(str, row["arguments_json"])
-        )
+        arguments = _JSON_OBJECT_ADAPTER.validate_json(cast(str, row["arguments_json"]))
         sort_tuple = _JSON_TUPLE_ADAPTER.validate_json(
             cast(str, row["sort_tuple_json"])
         )
@@ -1305,6 +2099,44 @@ class SQLiteStore:
             ),
         )
 
+    @staticmethod
+    def _pending(row: RowMapping) -> PendingClarification:
+        choices_raw = json.loads(cast(str, row["choices_json"]))
+        choices = _PENDING_CHOICES_ADAPTER.validate_python(choices_raw)
+        return PendingClarification(
+            handle=cast(str, row["handle"]),
+            session_id=UUID(cast(str, row["session_id"])),
+            origin_turn_id=UUID(cast(str, row["origin_turn_id"])),
+            kind=cast(Any, row["kind"]),
+            question_ru=cast(str, row["question_ru"]),
+            original_question=cast(str, row["original_question"]),
+            plan_json=cast(str, row["plan_json"]),
+            resolver_step_id=cast(str | None, row["resolver_step_id"]),
+            choices=choices,
+            has_more_candidates=bool(row["has_more_candidates"]),
+            context_version=int(row["context_version"]),
+            catalog_snapshot_id=UUID(cast(str, row["catalog_snapshot_id"])),
+            catalog_revision=int(row["catalog_revision"]),
+            database_marker=cast(str, row["database_marker"]),
+            issued_at=_datetime(row["issued_at"]),
+            expires_at=_datetime(row["expires_at"]),
+            consumed_at=(
+                None if row["consumed_at"] is None else _datetime(row["consumed_at"])
+            ),
+            superseded_at=(
+                None
+                if row["superseded_at"] is None
+                else _datetime(row["superseded_at"])
+            ),
+            claim_turn_id=(
+                None
+                if row["claim_turn_id"] is None
+                else UUID(cast(str, row["claim_turn_id"]))
+            ),
+            claimed_action=cast(Any, row["claimed_action"]),
+            claimed_choice_id=cast(str | None, row["claimed_choice_id"]),
+        )
+
     def put_artifact(self, trace_id: UUID, name: str, content: bytes) -> None:
         with self._immediate() as connection:
             connection.execute(
@@ -1325,9 +2157,7 @@ class SQLiteStore:
                 ),
                 {"trace_id": str(trace_id)},
             ).mappings()
-            return {
-                cast(str, row["name"]): cast(bytes, row["content"]) for row in rows
-            }
+            return {cast(str, row["name"]): cast(bytes, row["content"]) for row in rows}
 
     @staticmethod
     def _session(row: RowMapping) -> SessionRecord:
@@ -1398,40 +2228,22 @@ def _continuation_contract_matches(
     pagination = operation.pagination
     if isinstance(pagination, PrefixPagination):
         return (
-            len(continuation.sort_tuple)
-            == len(pagination.stable_order_fact_ids)
+            len(continuation.sort_tuple) == len(pagination.stable_order_fact_ids)
             and not continuation.cursor_values
             and continuation.shown <= pagination.maximum_total
         )
     if isinstance(pagination, KeysetPagination):
-        return (
-            len(continuation.sort_tuple) == len(pagination.sort)
-            and set(continuation.cursor_values)
-            == {
-                binding.query_parameter
-                for binding in pagination.cursor_bindings
-            }
-        )
+        return len(continuation.sort_tuple) == len(pagination.sort) and set(
+            continuation.cursor_values
+        ) == {binding.query_parameter for binding in pagination.cursor_bindings}
     return False
-
-
-def _context_provenance_error() -> ApplicationError:
-    return ApplicationError(
-        "ENTITY_BINDING_PROVENANCE_MISSING",
-        "Сохраненный entity context не имеет проверяемого producer provenance.",
-        409,
-    )
 
 
 def _normalize_clear_scopes(
     scopes: Sequence[str],
 ) -> tuple[MaintenanceScope, ...]:
     raw = tuple(scopes)
-    if (
-        not raw
-        or len(raw) != len(set(raw))
-        or not set(raw) <= set(_CLEAR_SCOPES)
-    ):
+    if not raw or len(raw) != len(set(raw)) or not set(raw) <= set(_CLEAR_SCOPES):
         raise ApplicationError(
             "CLEAR_SCOPES_INVALID",
             "Scopes должны быть непустым уникальным подмножеством sessions, traces, raw_payloads.",

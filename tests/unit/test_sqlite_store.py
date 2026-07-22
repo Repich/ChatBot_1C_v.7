@@ -29,7 +29,7 @@ def test_clean_database_repeat_startup_wal_and_create_turn(tmp_path: Path) -> No
     with store.engine.connect() as connection:
         assert connection.exec_driver_sql("PRAGMA journal_mode").scalar_one() == "wal"
         assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
-            "0003_slice2"
+            "0004_entity_context"
         )
     store.engine.dispose()
 
@@ -93,7 +93,7 @@ def test_upgrade_from_0002_preserves_existing_dialogue_rows(tmp_path: Path) -> N
     with store.engine.connect() as connection:
         assert connection.execute(
             text("SELECT version_num FROM alembic_version")
-        ).scalar_one() == "0003_slice2"
+        ).scalar_one() == "0004_entity_context"
         assert connection.execute(
             text("SELECT COUNT(*) FROM page_continuations")
         ).scalar_one() == 0

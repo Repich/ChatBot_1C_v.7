@@ -10,10 +10,6 @@ from chatbot1c.application.ports import SkillShortlistPort
 from chatbot1c.domain.skill import Skill
 
 _WORD_RE = re.compile(r"[0-9A-Za-zА-Яа-яЁё_]+")
-_DOC_SIGNALS = frozenset({"что", "означает", "назначение", "справка", "описание"})
-_DATA_SIGNALS = frozenset(
-    {"найти", "найди", "покажи", "сколько", "остаток", "строки", "состав", "статус"}
-)
 
 
 class LexicalSkillShortlist(SkillShortlistPort):
@@ -29,7 +25,6 @@ class LexicalSkillShortlist(SkillShortlistPort):
     ) -> Sequence[Skill]:
         tokens = _tokens(question)
         context_types = {fact.semantic_type for fact in context}
-        intent = _intent(tokens)
         ranked: list[tuple[float, str, Skill]] = []
         for skill in catalog.skills.values():
             manifest_text = " ".join(
@@ -43,8 +38,6 @@ class LexicalSkillShortlist(SkillShortlistPort):
             manifest_tokens = _tokens(manifest_text)
             overlap = len(tokens & manifest_tokens)
             score = float(overlap * 5)
-            if intent in skill.selection.intent_kinds:
-                score += 4.0
             required = set(skill.selection.required_context_fact_types)
             if required and required <= context_types:
                 score += 6.0
@@ -72,16 +65,6 @@ def _tokens(value: str) -> set[str]:
         for token in _WORD_RE.findall(value)
         if len(token) > 1
     }
-
-
-def _intent(tokens: set[str]) -> str:
-    doc = len(tokens & _DOC_SIGNALS)
-    data = len(tokens & _DATA_SIGNALS)
-    if doc and data:
-        return "mixed"
-    if doc > data:
-        return "documentation"
-    return "data"
 
 
 def _dependency_group(skill: Skill, catalog: PinnedCatalog) -> tuple[Skill, ...]:

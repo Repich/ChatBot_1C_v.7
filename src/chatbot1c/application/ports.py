@@ -10,7 +10,9 @@ from uuid import UUID
 from pydantic import JsonValue
 
 from chatbot1c.application.models import (
+    ClarificationResponse,
     ContextFact,
+    ContextSlotSummary,
     ExecuteQueryEnvelope,
     ExecuteQueryRequest,
     GetMetadataRequest,
@@ -20,6 +22,8 @@ from chatbot1c.application.models import (
     MetadataEnvelope,
     PageContinuation,
     PageStrategy,
+    PendingClarification,
+    PendingClarificationDraft,
     PinnedCatalog,
     PlannerRequest,
     SessionRecord,
@@ -32,6 +36,8 @@ from chatbot1c.domain.skill import Skill
 
 
 class PlannerPort(Protocol):
+    def outbound_http_request(self, request: PlannerRequest) -> bytes | None: ...
+
     async def plan(self, request: PlannerRequest) -> PlannerOutput: ...
 
 
@@ -116,6 +122,32 @@ class SessionRepository(Protocol):
 
     def context_facts(self, session_id: UUID) -> tuple[ContextFact, ...]: ...
 
+    def context_slots(self, session_id: UUID) -> tuple[ContextSlotSummary, ...]: ...
+
+    def context_handle_states(
+        self, session_id: UUID, handles: Sequence[str] = ()
+    ) -> Mapping[str, str]: ...
+
+    def active_pending(self, session_id: UUID) -> PendingClarification | None: ...
+
+    def pending_for_claim_turn(self, turn_id: UUID) -> PendingClarification | None: ...
+
+    def claim_clarification(
+        self,
+        *,
+        session_id: UUID,
+        text: str,
+        client_message_id: str,
+        expected_context_version: int,
+        response: ClarificationResponse,
+        active_catalog: PinnedCatalog,
+        database_marker: str,
+    ) -> tuple[PendingClarification, TurnRecord]: ...
+
+    def remove_context(
+        self, session_id: UUID, handle: str, expected_context_version: int
+    ) -> tuple[SessionRecord, TurnRecord]: ...
+
     def complete_turn(
         self,
         *,
@@ -126,6 +158,7 @@ class SessionRepository(Protocol):
         plan_json: str | None,
         evidence_json: str | None,
         context_exports: Sequence[ContextFact],
+        pending_clarification: PendingClarificationDraft | None = None,
         error_code: str | None = None,
     ) -> TurnRecord: ...
 

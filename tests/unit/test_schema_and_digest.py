@@ -15,6 +15,7 @@ from chatbot1c.contracts import (
     verify_digest,
 )
 from chatbot1c.contracts.schema import json_pointer
+from chatbot1c.domain.evidence import EvidenceBundle
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "tests/fixtures/contracts"
@@ -59,6 +60,31 @@ def test_evidence_schema_versions_new_fields_without_rewriting_legacy() -> None:
     current["steps"][0]["collection_scope"] = "complete_set"
     current["coverage"]["requirements"][0]["required"] = True
     repository.validate(current, "evidence.schema.json")
+
+
+def test_evidence_enum_fact_is_available_only_in_v11() -> None:
+    repository = SchemaRepository.discover(ROOT)
+    legacy = _json("valid/data_evidence_rows.json")
+    enum_fact = next(
+        fact for fact in legacy["facts"] if fact["fact_id"] == "time.moment"
+    )
+    enum_fact["value_type"] = "enum"
+
+    assert any(
+        issue.json_pointer == "/facts/2"
+        for issue in repository.issues(legacy, "evidence.schema.json")
+    )
+    with pytest.raises(ValueError):
+        EvidenceBundle.model_validate(legacy)
+
+    current = copy.deepcopy(legacy)
+    current["schema_version"] = "1.1.0"
+    for step in current["steps"]:
+        step["collection_scope"] = "complete_set"
+    for requirement in current["coverage"]["requirements"]:
+        requirement["required"] = True
+    repository.validate(current, "evidence.schema.json")
+    EvidenceBundle.model_validate(current)
 
 
 def test_json_pointer_escapes_reference_tokens() -> None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from collections import Counter, defaultdict, deque
 from collections.abc import Callable, Iterable, Sequence
@@ -10,6 +11,7 @@ from typing import Literal, TypeVar
 
 from semantic_version import NpmSpec, SimpleSpec, Version
 
+from chatbot1c.contracts.digest import canonicalize
 from chatbot1c.contracts.errors import ContractIssue, raise_for_issues
 from chatbot1c.contracts.query import (
     ParsedQuery,
@@ -19,9 +21,12 @@ from chatbot1c.contracts.query import (
 )
 from chatbot1c.domain.evidence import (
     CitationValue,
+    ContextExport,
     DocumentFragment,
     EvidenceBundle,
     Fact,
+    FilterRetentionProof,
+    SelectionProof,
 )
 from chatbot1c.domain.outcomes import CoverageStatus, Outcome
 from chatbot1c.domain.package import SkillPackage
@@ -42,6 +47,7 @@ from chatbot1c.domain.plan import (
     StepBinding,
 )
 from chatbot1c.domain.skill import (
+    ConfirmedFilterContextPolicy,
     DataQueryOperation,
     DocumentationFixture,
     DocumentationRetrievalOperation,
@@ -52,6 +58,7 @@ from chatbot1c.domain.skill import (
     McpFixture,
     Parameter,
     ParameterValueType,
+    SelectedOnlyContextPolicy,
     Skill,
     UnitFromFact,
     collection_scope_for_skill,
@@ -91,14 +98,10 @@ _ERROR_CODE_ALIASES: dict[str, tuple[str, ...]] = {
         "DISAGREEMENT_DISTINCT_CITATIONS_REQUIRED",
     ),
     "DISAGREEMENT_FACT_UNKNOWN": ("DISAGREEMENT_FACT_REFERENCE_MISSING",),
-    "DISAGREEMENT_SUBJECT_MISMATCH": (
-        "DISAGREEMENT_SUBJECT_FACT_MISMATCH",
-    ),
+    "DISAGREEMENT_SUBJECT_MISMATCH": ("DISAGREEMENT_SUBJECT_FACT_MISMATCH",),
     "PACKAGE_LOCK_MISSING": ("DEPENDENCY_LOCK_MISSING",),
     "PACKAGE_LOCK_ORPHAN": ("DEPENDENCY_LOCK_ORPHAN",),
-    "QUERY_FINAL_PROJECTION_BINDING_MISMATCH": (
-        "QUERY_BINDING_ALIAS_MISSING",
-    ),
+    "QUERY_FINAL_PROJECTION_BINDING_MISMATCH": ("QUERY_BINDING_ALIAS_MISSING",),
     "QUERY_PARAMETER_UNDECLARED": ("QUERY_PARAMETER_UNBOUND",),
     "SKILL_DIGEST_CONFLICT": ("PACKAGE_CATALOG_DIGEST_CONFLICT",),
 }
@@ -196,9 +199,7 @@ class SemanticValidator:
         )
 
         provided = set(skill.provides.fact_types)
-        output_types = {
-            fact.semantic_type for fact in skill.output_contract.facts
-        }
+        output_types = {fact.semantic_type for fact in skill.output_contract.facts}
         if provided != output_types:
             issues.append(
                 _issue(
@@ -241,6 +242,8 @@ class SemanticValidator:
         issues.extend(self._result_constraint_issues(skill, parameters, facts, prefix))
         issues.extend(self._runtime_contract_issues(skill, prefix))
         issues.extend(self._fixture_issues(skill, parameters, facts, prefix))
+        if skill.schema_version == "1.1.0":
+            issues.extend(self._context_contract_issues(skill, facts, prefix))
 
         operation = skill.operation
         if isinstance(operation, DataQueryOperation):
@@ -251,6 +254,215 @@ class SemanticValidator:
             issues.extend(
                 self._documentation_operation_issues(
                     skill, operation, parameters, facts, prefix
+                )
+            )
+        return issues
+
+    def _context_contract_issues(
+        self,
+        skill: Skill,
+        facts: dict[str, FactDefinition],
+        prefix: str,
+    ) -> list[ContractIssue]:
+        issues: list[ContractIssue] = []
+        contract = skill.output_contract
+        policies = contract.context_export_policy or ()
+        policy_keys: set[tuple[str, str]] = set()
+        for index, policy in enumerate(policies):
+            pointer = f"{prefix}/output_contract/context_export_policy/{index}"
+            key = (policy.fact_id, policy.slot_key)
+            if key in policy_keys:
+                issues.append(
+                    _issue(
+                        "CONTEXT_EXPORT_POLICY_INVALID",
+                        pointer,
+                        "Один fact/slot context policy объявлен повторно.",
+                    )
+                )
+            policy_keys.add(key)
+            fact = facts.get(policy.fact_id)
+            if fact is None:
+                issues.append(
+                    _issue(
+                        "CONTEXT_EXPORT_POLICY_INVALID",
+                        pointer + "/fact_id",
+                        "Context policy ссылается на неизвестный output fact.",
+                    )
+                )
+                continue
+            if isinstance(policy, SelectedOnlyContextPolicy):
+                if (
+                    fact.value_type is not FactValueType.ENTITY_REF
+                    or fact.role != "entity"
+                    or fact.nullable
+                ):
+                    issues.append(
+                        _issue(
+                            "CONTEXT_EXPORT_MODE_INVALID",
+                            pointer,
+                            "selected_only разрешен только для non-null entity_ref fact.",
+                        )
+                    )
+            elif isinstance(policy, ConfirmedFilterContextPolicy):
+                if fact.value_type is FactValueType.ENTITY_REF:
+                    issues.append(
+                        _issue(
+                            "CONTEXT_EXPORT_MODE_INVALID",
+                            pointer,
+                            "confirmed_filter не может экспортировать entity_ref fact.",
+                        )
+                    )
+                    continue
+                if (
+                    fact.semantic_type != policy.semantic_type
+                    or fact.value_type.value != policy.value_type
+                    or fact.nullable
+                    or (
+                        fact.value_type is FactValueType.ENUM
+                        and not fact.allowed_values
+                    )
+                ):
+                    issues.append(
+                        _issue(
+                            "CONTEXT_FILTER_CONTRACT_INVALID",
+                            pointer,
+                            "confirmed_filter не совпадает с exact non-entity fact contract.",
+                        )
+                    )
+            lifetime = policy.lifetime
+            if lifetime.mode == "until":
+                expires = facts.get(lifetime.expires_at_fact_id)
+                if (
+                    expires is None
+                    or expires.value_type is not FactValueType.DATETIME
+                    or expires.nullable
+                ):
+                    issues.append(
+                        _issue(
+                            "CONTEXT_EXPORT_POLICY_INVALID",
+                            pointer + "/lifetime/expires_at_fact_id",
+                            "until lifetime требует non-null datetime output fact.",
+                        )
+                    )
+
+        resolution = contract.resolution
+        if resolution is None:
+            if any(isinstance(item, SelectedOnlyContextPolicy) for item in policies):
+                issues.append(
+                    _issue(
+                        "CONTEXT_EXPORT_POLICY_INVALID",
+                        f"{prefix}/output_contract/context_export_policy",
+                        "selected_only требует typed resolver declaration.",
+                    )
+                )
+            return issues
+
+        pointer = f"{prefix}/output_contract/resolution"
+        if not isinstance(skill.operation, DataQueryOperation):
+            issues.append(
+                _issue(
+                    "RESOLVER_CONTRACT_INVALID",
+                    pointer,
+                    "Typed resolver должен быть data-query skill.",
+                )
+            )
+            return issues
+        if contract.cardinality != "many":
+            issues.append(
+                _issue(
+                    "RESOLVER_CONTRACT_INVALID",
+                    pointer,
+                    "Typed resolver producer обязан иметь cardinality=many.",
+                )
+            )
+        identity = facts.get(resolution.identity_fact_id)
+        if (
+            identity is None
+            or identity.value_type is not FactValueType.ENTITY_REF
+            or identity.role != "entity"
+            or not identity.required
+            or identity.nullable
+        ):
+            issues.append(
+                _issue(
+                    "RESOLVER_IDENTITY_FACT_INVALID",
+                    pointer + "/identity_fact_id",
+                    "Resolver identity обязан быть required non-null entity_ref fact.",
+                )
+            )
+        bindings = [
+            item
+            for item in skill.operation.column_bindings
+            if item.fact_id == resolution.identity_fact_id
+            and item.converter == "object_ref"
+            and item.accepted_mcp_types
+        ]
+        if len(bindings) != 1:
+            issues.append(
+                _issue(
+                    "RESOLVER_PHYSICAL_PROOF_MISSING",
+                    pointer + "/identity_fact_id",
+                    "Resolver identity требует один exact object_ref column binding.",
+                )
+            )
+        if resolution.identity_fact_id not in (contract.row_identity_fact_ids or ()):
+            issues.append(
+                _issue(
+                    "RESOLVER_ROW_IDENTITY_INVALID",
+                    pointer + "/identity_fact_id",
+                    "Resolver identity должна входить в row_identity_fact_ids.",
+                )
+            )
+        for index, fact_id in enumerate(resolution.candidate_label_fact_ids):
+            fact = facts.get(fact_id)
+            if fact is None or fact.nullable or not fact.required:
+                issues.append(
+                    _issue(
+                        "RESOLVER_PROOF_FACT_INVALID",
+                        f"{pointer}/candidate_label_fact_ids/{index}",
+                        "Resolver label требует known required non-null fact.",
+                    )
+                )
+        for index, fact_id in enumerate(resolution.role_proof_fact_ids):
+            fact = facts.get(fact_id)
+            exact_boolean = (
+                fact is not None and fact.value_type is FactValueType.BOOLEAN
+            )
+            exact_enum = (
+                fact is not None
+                and fact.value_type is FactValueType.ENUM
+                and len(fact.allowed_values or ()) == 1
+            )
+            if (
+                fact is None
+                or fact.nullable
+                or not fact.required
+                or not (exact_boolean or exact_enum)
+            ):
+                issues.append(
+                    _issue(
+                        "RESOLVER_ROLE_PROOF_INVALID",
+                        f"{pointer}/role_proof_fact_ids/{index}",
+                        (
+                            "Role proof требует required non-null boolean fact "
+                            "(истина означает соответствие) или enum fact с одним "
+                            "exact allowed_values."
+                        ),
+                    )
+                )
+        selected = [
+            item
+            for item in policies
+            if isinstance(item, SelectedOnlyContextPolicy)
+            and item.fact_id == resolution.identity_fact_id
+            and item.slot_key == resolution.default_slot_key
+        ]
+        if len(selected) != 1:
+            issues.append(
+                _issue(
+                    "CONTEXT_EXPORT_POLICY_INVALID",
+                    f"{prefix}/output_contract/context_export_policy",
+                    "Resolver identity требует одну matching selected_only policy.",
                 )
             )
         return issues
@@ -312,7 +524,10 @@ class SemanticValidator:
                 if isinstance(constraint, FactEqualsParameterConstraint)
                 else ParameterValueType.ENTITY_REF_LIST
             )
-            if parameter is not None and parameter.value_type is not expected_parameter_type:
+            if (
+                parameter is not None
+                and parameter.value_type is not expected_parameter_type
+            ):
                 issues.append(
                     _issue(
                         "RESULT_CONSTRAINT_PARAMETER_TYPE_MISMATCH",
@@ -556,9 +771,7 @@ class SemanticValidator:
                     )
                 )
             else:
-                if not _encoding_matches_parameter(
-                    binding.encoding, parameter
-                ):
+                if not _encoding_matches_parameter(binding.encoding, parameter):
                     issues.append(
                         _issue(
                             "PARAMETER_BINDING_TYPE_MISMATCH",
@@ -620,9 +833,7 @@ class SemanticValidator:
                 operation.pagination.has_cursor_query_parameter.casefold()
             )
             for cursor_binding in operation.pagination.cursor_bindings:
-                allowed_query_parameters.add(
-                    cursor_binding.query_parameter.casefold()
-                )
+                allowed_query_parameters.add(cursor_binding.query_parameter.casefold())
         if query_contract.parsed is not None:
             used_query_parameters = {
                 name.casefold() for name in query_contract.parsed.parameters
@@ -636,13 +847,10 @@ class SemanticValidator:
                     issues.append(
                         _issue(
                             "LIKE_CONTAINS_ESCAPE_MISSING",
-                            (
-                                f"{prefix}/operation/parameter_bindings/{index}"
-                                "/encoding"
-                            ),
+                            (f"{prefix}/operation/parameter_bindings/{index}/encoding"),
                             (
                                 "like_contains требует predicate "
-                                "ПОДОБНО &Параметр СПЕЦСИМВОЛ \"~\"."
+                                'ПОДОБНО &Параметр СПЕЦСИМВОЛ "~".'
                             ),
                         )
                     )
@@ -771,10 +979,7 @@ class SemanticValidator:
                 issues.append(
                     _issue(
                         "PAGINATION_PARAMETER_COLLISION",
-                        (
-                            f"{prefix}/operation/pagination/"
-                            "has_cursor_query_parameter"
-                        ),
+                        (f"{prefix}/operation/pagination/has_cursor_query_parameter"),
                         "Has-cursor parameter конфликтует с обычным query binding.",
                     )
                 )
@@ -815,9 +1020,7 @@ class SemanticValidator:
                             "Cursor binding ссылается на необъявленный fact_id.",
                         )
                     )
-                elif not _cursor_encoding_matches_fact(
-                    cursor_binding.encoding, fact
-                ):
+                elif not _cursor_encoding_matches_fact(cursor_binding.encoding, fact):
                     issues.append(
                         _issue(
                             "PAGINATION_CURSOR_ENCODING_MISMATCH",
@@ -892,8 +1095,7 @@ class SemanticValidator:
                     binding.fact_id for binding in operation.column_bindings
                 )
                 if any(
-                    column_binding_counts[fact_id] != 1
-                    for fact_id in sort_fact_ids
+                    column_binding_counts[fact_id] != 1 for fact_id in sort_fact_ids
                 ):
                     issues.append(
                         _issue(
@@ -915,8 +1117,7 @@ class SemanticValidator:
                         directions=[item.direction for item in pagination.sort],
                         guard_parameter=pagination.has_cursor_query_parameter,
                         cursor_parameters=[
-                            item.query_parameter
-                            for item in pagination.cursor_bindings
+                            item.query_parameter for item in pagination.cursor_bindings
                         ],
                     )
                     if query_proof.order == "mismatch":
@@ -964,9 +1165,8 @@ class SemanticValidator:
                         "Paged skill должен разрешать page_size+1 probe.",
                     )
                 )
-            if (
-                Version(skill.version) >= Version("1.1.0")
-                and not isinstance(operation.pagination, KeysetPagination)
+            if Version(skill.version) >= Version("1.1.0") and not isinstance(
+                operation.pagination, KeysetPagination
             ):
                 for index, invariant in enumerate(
                     operation.query_template.invariant_constants
@@ -1129,9 +1329,7 @@ class SemanticValidator:
                 matching_pairs = [
                     candidate_pair
                     for candidate_pair in same_id
-                    if _version_matches(
-                        candidate_pair[1], dependency.version_range
-                    )
+                    if _version_matches(candidate_pair[1], dependency.version_range)
                 ]
                 if not same_id:
                     issues.append(
@@ -1178,9 +1376,7 @@ class SemanticValidator:
                                 f"Dependency {dependency.skill_id} имеет несколько совместимых lock entries.",
                             )
                         )
-                    selected_pair = max(
-                        locked_pairs, key=lambda item: Version(item[1])
-                    )
+                    selected_pair = max(locked_pairs, key=lambda item: Version(item[1]))
 
                 selected_documents = documents_by_pair.get(selected_pair, [])
                 if not selected_documents:
@@ -1481,8 +1677,7 @@ class SemanticValidator:
                 )
             )
         if evidence.coverage.sufficient and any(
-            requirement.required
-            and requirement.status is not CoverageStatus.COVERED
+            requirement.required and requirement.status is not CoverageStatus.COVERED
             for requirement in evidence.coverage.requirements
         ):
             issues.append(
@@ -1493,14 +1688,30 @@ class SemanticValidator:
                 )
             )
 
+        exported_fact_ids = {
+            export.fact_instance_id for export in evidence.context_exports
+        }
+        context_producer_steps = {
+            fact.step_id
+            for fact in evidence.facts
+            if fact.fact_instance_id in exported_fact_ids
+        }
         if evidence.outcome is Outcome.SUCCESS_EMPTY and (
-            evidence.facts or any(step.row_count > 0 for step in evidence.steps)
+            any(fact.step_id not in context_producer_steps for fact in evidence.facts)
+            or any(
+                step.row_count > 0 and step.step_id not in context_producer_steps
+                for step in evidence.steps
+            )
         ):
             issues.append(
                 _issue(
                     "ZERO_AGGREGATE_CLASSIFIED_AS_EMPTY",
                     "/outcome",
-                    "success_empty не может содержать строки или подтвержденные факты; нулевой aggregate имеет отдельный outcome.",
+                    (
+                        "success_empty не может содержать результатные строки или "
+                        "факты; разрешены только доказательства подтвержденного "
+                        "upstream context resolver/filter."
+                    ),
                 )
             )
         if evidence.outcome is Outcome.ZERO_AGGREGATE:
@@ -1721,8 +1932,9 @@ class SemanticValidator:
                                 "Fact fact_id не совпадает с disagreement.subject_fact_id.",
                             )
                         )
-                    if fact.value_type is not FactValueType.DOCUMENT_FRAGMENT or not isinstance(
-                        fact.value, DocumentFragment
+                    if (
+                        fact.value_type is not FactValueType.DOCUMENT_FRAGMENT
+                        or not isinstance(fact.value, DocumentFragment)
                     ):
                         issues.append(
                             _issue(
@@ -1764,8 +1976,7 @@ class SemanticValidator:
                     if position_fragments and not any(
                         citation_fact.row_id == fragment.row_id
                         and citation_fact.step_id == fragment.step_id
-                        and citation_fact.source_locator.kind
-                        == "documentation_chunk"
+                        and citation_fact.source_locator.kind == "documentation_chunk"
                         and citation_fact.source_locator.reference
                         == fragment.source_locator.reference
                         for citation_fact in provenance
@@ -1872,9 +2083,8 @@ class _FactProof:
     required: bool
     nullable: bool
     collection_scope: Literal["visible_page", "complete_set"] = "complete_set"
-    collection_obligation: Literal[
-        "fact", "visible_page", "complete_set"
-    ] = "fact"
+    collection_obligation: Literal["fact", "visible_page", "complete_set"] = "fact"
+    resolver_identity: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -1928,13 +2138,9 @@ def build_plan_coverage_proof(
 ) -> PlanCoverageProof:
     if not isinstance(plan.result, ExecuteResult):
         return PlanCoverageProof((), frozenset(), (), ())
-    catalog = {
-        (skill.skill_id, skill.version): skill for skill in available_skills
-    }
+    catalog = {(skill.skill_id, skill.version): skill for skill in available_skills}
     proofs_by_step = _coverage_proofs_by_step(plan, catalog)
-    graph = {
-        step.step_id: _step_dependencies(step) for step in plan.result.steps
-    }
+    graph = {step.step_id: _step_dependencies(step) for step in plan.result.steps}
     required_roots: dict[str, set[str]] = defaultdict(set)
     required_final_refs: set[tuple[str, str]] = set()
     all_roots: set[str] = set()
@@ -1966,9 +2172,7 @@ def build_plan_coverage_proof(
         matching_finals = [
             output
             for output in plan.result.final_outputs
-            if (
-                proof := proofs_by_step.get(output.step_id, {}).get(output.fact_id)
-            )
+            if (proof := proofs_by_step.get(output.step_id, {}).get(output.fact_id))
             is not None
             and _proof_matches(requirement, proof)
         ]
@@ -2180,6 +2384,58 @@ def validate_evidence_against_plan(
     raise_for_issues(cross_artifact_evidence_issues(plan, coverage_proof, evidence))
 
 
+def context_proof_evidence_issues(
+    coverage_proof: PlanCoverageProof,
+    evidence: EvidenceBundle,
+    *,
+    selection_proofs: Sequence[SelectionProof],
+    filter_retention_proofs: Sequence[FilterRetentionProof],
+    available_skills: Sequence[Skill],
+) -> tuple[ContractIssue, ...]:
+    """Validate private selection/filter proofs against public Evidence 1.1."""
+
+    catalog = {(skill.skill_id, skill.version): skill for skill in available_skills}
+    snapshot = {
+        (skill.skill_id, skill.version): skill.digest
+        for skill in evidence.catalog_snapshot.skills
+    }
+    skill_by_step = {
+        step.step_id: catalog[pair]
+        for step in evidence.steps
+        if (pair := _skill_operation_pair(step.operation_ref)) in catalog
+        and snapshot.get(pair) == catalog[pair].integrity.digest
+    }
+    return _deduplicate(
+        _context_proof_issues(
+            evidence,
+            selection_proofs=selection_proofs,
+            filter_retention_proofs=filter_retention_proofs,
+            required_step_ids=frozenset(coverage_proof.required_steps),
+            fact_index={fact.fact_instance_id: fact for fact in evidence.facts},
+            skill_by_step=skill_by_step,
+        )
+    )
+
+
+def validate_context_proofs_against_evidence(
+    coverage_proof: PlanCoverageProof,
+    evidence: EvidenceBundle,
+    *,
+    selection_proofs: Sequence[SelectionProof],
+    filter_retention_proofs: Sequence[FilterRetentionProof],
+    available_skills: Sequence[Skill],
+) -> None:
+    raise_for_issues(
+        context_proof_evidence_issues(
+            coverage_proof,
+            evidence,
+            selection_proofs=selection_proofs,
+            filter_retention_proofs=filter_retention_proofs,
+            available_skills=available_skills,
+        )
+    )
+
+
 def _coverage_proofs_by_step(
     plan: PlannerOutput, catalog: dict[tuple[str, str], Skill]
 ) -> dict[str, dict[str, _FactProof]]:
@@ -2194,16 +2450,12 @@ def _coverage_proofs_by_step(
         elif isinstance(step, (FilterOperator, RankOperator)):
             proofs_by_step[step.step_id] = {
                 fact_id: replace(proof, collection_obligation="complete_set")
-                for fact_id, proof in proofs_by_step.get(
-                    step.input_step_id, {}
-                ).items()
+                for fact_id, proof in proofs_by_step.get(step.input_step_id, {}).items()
             }
         elif isinstance(step, JoinOperator):
             joined = {
                 fact_id: replace(proof, collection_obligation="complete_set")
-                for fact_id, proof in proofs_by_step.get(
-                    step.left_step_id, {}
-                ).items()
+                for fact_id, proof in proofs_by_step.get(step.left_step_id, {}).items()
             }
             joined.update(
                 {
@@ -2437,6 +2689,10 @@ def _skill_call_proofs(step: SkillCall, skill: Skill) -> dict[str, _FactProof]:
             nullable=fact.nullable,
             collection_scope=collection_scope,
             collection_obligation=collection_obligation,
+            resolver_identity=(
+                contract.resolution is not None
+                and contract.resolution.identity_fact_id == fact.fact_id
+            ),
         )
         for fact in contract.facts
         if fact.fact_id in requested
@@ -2491,9 +2747,7 @@ def _proof_matches(requirement: FactRequirement, proof: _FactProof) -> bool:
     )
 
 
-def _proof_signature_matches(
-    requirement: FactRequirement, proof: _FactProof
-) -> bool:
+def _proof_signature_matches(requirement: FactRequirement, proof: _FactProof) -> bool:
     if proof.semantic_type != requirement.semantic_type:
         return False
     if proof.value_type != requirement.value_type.value:
@@ -2504,7 +2758,15 @@ def _proof_signature_matches(
         "many": {"many"},
         "aggregate": {"aggregate"},
     }
-    if proof.cardinality not in cardinalities[requirement.cardinality]:
+    resolver_select_one = (
+        requirement.cardinality == "one"
+        and proof.cardinality == "many"
+        and proof.resolver_identity
+    )
+    if (
+        proof.cardinality not in cardinalities[requirement.cardinality]
+        and not resolver_select_one
+    ):
         return False
     if requirement.unit_dimension is not None and (
         proof.unit_dimension != requirement.unit_dimension
@@ -2567,13 +2829,20 @@ def _requirement_mismatch_issue(
         return _issue(code, pointer, message)
 
     allowed_cardinalities = {
-            "one": {"exactly_one"},
-            "zero_or_one": {"exactly_one", "zero_or_one"},
-            "many": {"many"},
-            "aggregate": {"aggregate"},
+        "one": {"exactly_one"},
+        "zero_or_one": {"exactly_one", "zero_or_one"},
+        "many": {"many"},
+        "aggregate": {"aggregate"},
     }[requirement.cardinality]
     matching = [
-        proof for proof in matching if proof.cardinality in allowed_cardinalities
+        proof
+        for proof in matching
+        if proof.cardinality in allowed_cardinalities
+        or (
+            requirement.cardinality == "one"
+            and proof.cardinality == "many"
+            and proof.resolver_identity
+        )
     ]
     if not matching:
         code = "PLAN_FACT_CARDINALITY_MISMATCH"
@@ -2646,7 +2915,7 @@ def _encoding_matches_parameter(encoding: str, parameter: Parameter) -> bool:
 def _converter_matches_fact(converter: str, fact: FactDefinition) -> bool:
     allowed: dict[str, set[FactValueType]] = {
         "identity": {FactValueType.STRING},
-        "string": {FactValueType.STRING},
+        "string": {FactValueType.STRING, FactValueType.ENUM},
         "integer": {FactValueType.INTEGER},
         "decimal": {
             FactValueType.DECIMAL,
@@ -2800,9 +3069,7 @@ def _step_dependencies(step: object) -> set[str]:
     return dependencies
 
 
-def _reverse_closure(
-    roots: Iterable[str], graph: dict[str, set[str]]
-) -> set[str]:
+def _reverse_closure(roots: Iterable[str], graph: dict[str, set[str]]) -> set[str]:
     closure = set(roots)
     pending = list(closure)
     while pending:
@@ -2836,6 +3103,7 @@ def _fact_value_issues(fact: Fact, index: int) -> list[ContractIssue]:
         FactValueType.DATE: isinstance(value, str),
         FactValueType.DATETIME: isinstance(value, str),
         FactValueType.PERIOD: isinstance(value, Period),
+        FactValueType.ENUM: isinstance(value, str),
         FactValueType.ENTITY_REF: isinstance(value, EntityRef),
         FactValueType.MONEY: type(value) in {int, float},
         FactValueType.QUANTITY: type(value) in {int, float},
@@ -2852,6 +3120,325 @@ def _fact_value_issues(fact: Fact, index: int) -> list[ContractIssue]:
             "Fact value не соответствует declared value_type.",
         )
     ]
+
+
+def _context_proof_issues(
+    evidence: EvidenceBundle,
+    *,
+    selection_proofs: Sequence[SelectionProof],
+    filter_retention_proofs: Sequence[FilterRetentionProof],
+    required_step_ids: frozenset[str],
+    fact_index: dict[object, Fact],
+    skill_by_step: dict[str, Skill],
+) -> list[ContractIssue]:
+    issues: list[ContractIssue] = []
+    steps = {step.step_id: step for step in evidence.steps}
+    exports_by_fact: dict[object, list[ContextExport]] = defaultdict(list)
+    exports_by_handle: dict[str, set[object]] = defaultdict(set)
+    for export in evidence.context_exports:
+        exports_by_fact[export.fact_instance_id].append(export)
+        exports_by_handle[export.context_handle].add(export.fact_instance_id)
+
+    required_technical_failure = any(
+        step.step_id in required_step_ids
+        and step.status
+        in {Outcome.QUERY_ERROR, Outcome.MCP_UNAVAILABLE, Outcome.CONTRACT_ERROR}
+        for step in evidence.steps
+    )
+    if required_technical_failure and (
+        selection_proofs
+        or filter_retention_proofs
+        or evidence.context_exports
+    ):
+        issues.append(
+            _issue(
+                "CONTEXT_COMMIT_ON_TECHNICAL_FAILURE",
+                "/context_exports",
+                (
+                    "Context proofs/exports запрещены при техническом падении "
+                    "обязательного downstream step."
+                ),
+            )
+        )
+
+    expected_export_ids: list[object] = []
+    proof_fact_ids: set[object] = set()
+    for index, proof in enumerate(selection_proofs):
+        pointer = f"/selection_proofs/{index}"
+        step = steps.get(proof.resolver.step_id)
+        skill = skill_by_step.get(proof.resolver.step_id)
+        resolution = None if skill is None else skill.output_contract.resolution
+        policy = (
+            None
+            if skill is None
+            else next(
+                (
+                    item
+                    for item in (skill.output_contract.context_export_policy or ())
+                    if isinstance(item, SelectedOnlyContextPolicy)
+                    and item.fact_id == proof.resolver.identity_fact_id
+                    and item.slot_key == proof.resolver.slot_key
+                ),
+                None,
+            )
+        )
+        contract_matches = (
+            step is not None
+            and step.step_id in required_step_ids
+            and step.status is Outcome.SUCCESS_WITH_ROWS
+            and step.collection_scope == "complete_set"
+            and not step.has_more
+            and not step.truncated
+            and skill is not None
+            and resolution is not None
+            and proof.resolver.skill_id == skill.skill_id
+            and proof.resolver.identity_fact_id == resolution.identity_fact_id
+            and proof.resolver.slot_key == resolution.default_slot_key
+            and proof.resolver.mode in {"select_one", "select_set"}
+            and policy is not None
+        )
+        if not contract_matches:
+            issues.append(
+                _issue(
+                    "CONTEXT_SELECTION_PROOF_INVALID",
+                    pointer,
+                    (
+                        "Selection proof не совпадает с required complete resolver "
+                        "step и exact selected_only policy."
+                    ),
+                )
+            )
+            continue
+
+        assert step is not None and skill is not None and resolution is not None
+        identity_facts: dict[tuple[str, str, object], Fact] = {}
+        for fact in evidence.facts:
+            if (
+                fact.step_id != step.step_id
+                or fact.fact_id != resolution.identity_fact_id
+                or not isinstance(fact.value, EntityRef)
+                or not _semantic_role_proofs_satisfied(skill, evidence.facts, fact.row_id)
+            ):
+                continue
+            key = (fact.semantic_type, fact.value.object_type, fact.value.unique_id)
+            identity_facts.setdefault(key, fact)
+        expected_facts = tuple(identity_facts.values())
+        expected_ids = tuple(fact.fact_instance_id for fact in expected_facts)
+        expected_identities = tuple(
+            (fact.semantic_type, fact.value.object_type, fact.value.unique_id)
+            for fact in expected_facts
+            if isinstance(fact.value, EntityRef)
+        )
+        actual_identities = tuple(
+            (item.semantic_type, item.physical_type, item.unique_id)
+            for item in proof.identities
+        )
+        cardinality_valid = (
+            proof.state == "selected_one"
+            and proof.resolver.mode == "select_one"
+            and len(expected_facts) == 1
+        ) or (
+            proof.state == "selected_set"
+            and proof.resolver.mode == "select_set"
+            and bool(expected_facts)
+            and policy is not None
+            and len(expected_facts) <= policy.max_members
+        )
+        payload = {
+            "resolver": proof.resolver.model_dump(mode="json"),
+            "state": proof.state,
+            "fact_instance_ids": [str(item) for item in proof.fact_instance_ids],
+            "identities": [item.model_dump(mode="json") for item in proof.identities],
+            "complete": True,
+        }
+        digest_valid = (
+            hashlib.sha256(canonicalize(payload)).hexdigest() == proof.proof_digest
+        )
+        exact_members = (
+            len(set(proof.fact_instance_ids)) == len(proof.fact_instance_ids)
+            and set(proof.fact_instance_ids) == set(expected_ids)
+            and len(proof.identities) == len(expected_identities)
+            and set(actual_identities) == set(expected_identities)
+        )
+        if not cardinality_valid or not digest_valid or not exact_members:
+            issues.append(
+                _issue(
+                    "CONTEXT_SELECTION_PROOF_INVALID",
+                    pointer,
+                    (
+                        "Selection proof не подтверждает exact member set, "
+                        "identity/cardinality или canonical digest."
+                    ),
+                )
+            )
+            continue
+        if proof_fact_ids & set(proof.fact_instance_ids):
+            issues.append(
+                _issue(
+                    "CONTEXT_SELECTION_PROOF_INVALID",
+                    pointer + "/fact_instance_ids",
+                    "Один fact instance не может входить в несколько context proofs.",
+                )
+            )
+        proof_fact_ids.update(proof.fact_instance_ids)
+        expected_export_ids.extend(proof.fact_instance_ids)
+        handles = {
+            export.context_handle
+            for fact_id in proof.fact_instance_ids
+            for export in exports_by_fact.get(fact_id, ())
+        }
+        if (
+            len(handles) != 1
+            or any(len(exports_by_fact.get(fact_id, ())) != 1 for fact_id in proof.fact_instance_ids)
+            or exports_by_handle[next(iter(handles), "")] != set(proof.fact_instance_ids)
+        ):
+            issues.append(
+                _issue(
+                    "CONTEXT_EXPORT_PROOF_MISMATCH",
+                    "/context_exports",
+                    "Selected member set должен экспортироваться одним exact handle.",
+                )
+            )
+
+    for index, filter_proof in enumerate(filter_retention_proofs):
+        pointer = f"/filter_retention_proofs/{index}"
+        step = steps.get(filter_proof.step_id)
+        skill = skill_by_step.get(filter_proof.step_id)
+        retained_fact = fact_index.get(filter_proof.fact_instance_id)
+        filter_policy = (
+            None
+            if skill is None
+            else next(
+                (
+                    item
+                    for item in (skill.output_contract.context_export_policy or ())
+                    if isinstance(item, ConfirmedFilterContextPolicy)
+                    and item.fact_id == filter_proof.fact_id
+                    and item.slot_key == filter_proof.slot_key
+                ),
+                None,
+            )
+        )
+        definition = (
+            None
+            if skill is None
+            else next(
+                (
+                    item
+                    for item in skill.output_contract.facts
+                    if item.fact_id == filter_proof.fact_id
+                ),
+                None,
+            )
+        )
+        value_digest = (
+            ""
+            if retained_fact is None
+            else hashlib.sha256(
+                canonicalize(retained_fact.model_dump(mode="json")["value"])
+            ).hexdigest()
+        )
+        filter_payload = {
+            "step_id": filter_proof.step_id,
+            "fact_instance_id": str(filter_proof.fact_instance_id),
+            "fact_id": filter_proof.fact_id,
+            "slot_key": filter_proof.slot_key,
+            "semantic_type": filter_proof.semantic_type,
+            "value_type": filter_proof.value_type,
+            "canonical_value_digest": filter_proof.canonical_value_digest,
+        }
+        valid = (
+            step is not None
+            and step.step_id in required_step_ids
+            and step.status
+            in {Outcome.SUCCESS_WITH_ROWS, Outcome.ZERO_AGGREGATE, Outcome.SUCCESS_EMPTY}
+            and skill is not None
+            and filter_policy is not None
+            and definition is not None
+            and retained_fact is not None
+            and retained_fact.step_id == filter_proof.step_id
+            and retained_fact.fact_id == filter_proof.fact_id
+            and retained_fact.semantic_type
+            == filter_proof.semantic_type
+            == filter_policy.semantic_type
+            and retained_fact.value_type.value
+            == filter_proof.value_type
+            == filter_policy.value_type
+            and value_digest == filter_proof.canonical_value_digest
+            and hashlib.sha256(canonicalize(filter_payload)).hexdigest()
+            == filter_proof.proof_digest
+        )
+        if not valid:
+            issues.append(
+                _issue(
+                    "CONTEXT_FILTER_PROOF_INVALID",
+                    pointer,
+                    (
+                        "Filter proof не совпадает с required producer step, "
+                        "exact fact/policy/value digest."
+                    ),
+                )
+            )
+            continue
+        if filter_proof.fact_instance_id in proof_fact_ids:
+            issues.append(
+                _issue(
+                    "CONTEXT_FILTER_PROOF_INVALID",
+                    pointer + "/fact_instance_id",
+                    "Один fact instance не может входить в несколько context proofs.",
+                )
+            )
+        proof_fact_ids.add(filter_proof.fact_instance_id)
+        expected_export_ids.append(filter_proof.fact_instance_id)
+        matching_exports = exports_by_fact.get(filter_proof.fact_instance_id, ())
+        if (
+            len(matching_exports) != 1
+            or len(exports_by_handle[matching_exports[0].context_handle]) != 1
+        ):
+            issues.append(
+                _issue(
+                    "CONTEXT_EXPORT_PROOF_MISMATCH",
+                    "/context_exports",
+                    "Confirmed filter должен экспортироваться одним отдельным handle.",
+                )
+            )
+
+    actual_export_ids = [item.fact_instance_id for item in evidence.context_exports]
+    if Counter(actual_export_ids) != Counter(expected_export_ids):
+        issues.append(
+            _issue(
+                "CONTEXT_EXPORT_PROOF_MISSING",
+                "/context_exports",
+                "Context exports должны точно совпадать с validated proof member set.",
+            )
+        )
+    return issues
+
+
+def _semantic_role_proofs_satisfied(
+    skill: Skill, facts: Sequence[Fact], row_id: str
+) -> bool:
+    resolution = skill.output_contract.resolution
+    if resolution is None:
+        return False
+    definitions = {item.fact_id: item for item in skill.output_contract.facts}
+    for fact_id in resolution.role_proof_fact_ids:
+        definition = definitions.get(fact_id)
+        matches = [
+            fact for fact in facts if fact.row_id == row_id and fact.fact_id == fact_id
+        ]
+        if definition is None or len(matches) != 1:
+            return False
+        if definition.value_type is FactValueType.BOOLEAN:
+            if matches[0].value is not True:
+                return False
+        elif definition.value_type is FactValueType.ENUM:
+            allowed = definition.allowed_values or ()
+            if len(allowed) != 1 or matches[0].value != allowed[0]:
+                return False
+        else:
+            return False
+    return True
 
 
 def _skill_operation_pair(operation_ref: str) -> tuple[str, str] | None:

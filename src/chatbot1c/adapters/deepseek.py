@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from collections.abc import Callable
 from datetime import datetime
 from typing import Any, cast
@@ -15,6 +16,7 @@ from chatbot1c.application.deadlines import retry_fits, stage_timeout
 from chatbot1c.application.errors import ApplicationError
 from chatbot1c.application.models import PlannerRequest
 from chatbot1c.application.ports import PlannerPort
+from chatbot1c.contracts.digest import canonicalize
 from chatbot1c.contracts.errors import ContractValidationError
 from chatbot1c.contracts.harness import ContractHarness
 from chatbot1c.contracts.json_limits import loads_bounded_json, validate_json_structure
@@ -23,6 +25,9 @@ from chatbot1c.domain.plan import PlannerOutput
 MAX_PROVIDER_BODY = 1024 * 1024
 MAX_PLANNER_CONTENT = 256 * 1024
 MAX_PLANNER_REQUEST = 512 * 1024
+_UUID_TEXT = re.compile(
+    r"(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b"
+)
 
 
 class DeepSeekPlanner(PlannerPort):
@@ -101,16 +106,42 @@ class DeepSeekPlanner(PlannerPort):
                     503,
                 ) from error
 
+    def outbound_http_request(self, request: PlannerRequest) -> bytes:
+        return canonicalize(self._request_payload(request))
+
+    def _request_payload(self, request: PlannerRequest) -> dict[str, object]:
+        return {
+            "model": self._model,
+            "messages": self._messages(request),
+            "temperature": 0,
+            "stream": False,
+            "max_tokens": self._max_tokens,
+            "response_format": {"type": "json_object"},
+        }
+
     def _messages(self, request: PlannerRequest) -> list[dict[str, str]]:
-        context = [
-            {
-                "handle": fact.handle,
-                "semantic_type": fact.semantic_type,
-                "presentation": fact.presentation,
-                "origin_turn_id": str(fact.origin_turn_id),
-            }
-            for fact in request.confirmed_facts
-        ]
+        grouped: dict[str, list[object]] = {}
+        for fact in request.confirmed_facts:
+            grouped.setdefault(fact.handle, []).append(fact)
+        context = []
+        for handle, raw_items in grouped.items():
+            facts = [cast(Any, item) for item in raw_items]
+            first = facts[0]
+            context.append(
+                {
+                    "handle": handle,
+                    "slot_key": first.slot_key,
+                    "semantic_type": first.semantic_type,
+                    "value_type": first.value_type.value,
+                    "cardinality": first.cardinality,
+                    "member_count": len(facts),
+                    "presentation": (
+                        _safe_context_presentation(first.presentation)
+                        if len(facts) == 1
+                        else f"Выбрано объектов: {len(facts)}"
+                    ),
+                }
+            )
         cards = [card.model_dump(mode="json") for card in request.skill_cards]
         payload = {
             "question_ru": request.message,
@@ -131,6 +162,10 @@ class DeepSeekPlanner(PlannerPort):
                 "planner-output.schema.json"
             ),
         }
+        if request.interpretation_resume is not None:
+            payload["interpretation_resume"] = request.interpretation_resume.model_dump(
+                mode="json", by_alias=True
+            )
         if _contains_forbidden_manifest_key(cards):
             raise AssertionError("planner payload must never contain query text")
         serialized = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
@@ -146,6 +181,9 @@ class DeepSeekPlanner(PlannerPort):
                 "content": (
                     "Ты ограниченный планировщик read-only ассистента 1С УТ. "
                     "Используй только skill IDs из manifest и opaque context handles. "
+                    "Если передан interpretation_resume, сохрани frozen intent, goal и "
+                    "requirements без изменений, установи exact selected binding в "
+                    "указанный slot и используй его в required closure. "
                     "Не создавай query, код, MCP arguments или object refs. "
                     "Верни только JSON object по planner schema."
                 ),
@@ -217,7 +255,11 @@ class DeepSeekPlanner(PlannerPort):
                 return content
             except ApplicationError:
                 raise
-            except (httpx.TimeoutException, httpx.TransportError, _RetryableStatus) as error:
+            except (
+                httpx.TimeoutException,
+                httpx.TransportError,
+                _RetryableStatus,
+            ) as error:
                 last_error = error
                 if attempt < attempts and retry_fits(deadline_at, backoff=0.5):
                     await self._sleep(0.5)
@@ -231,12 +273,20 @@ class DeepSeekPlanner(PlannerPort):
         return PlannerOutput.model_validate(document)
 
 
+def _safe_context_presentation(value: str) -> str:
+    return _UUID_TEXT.sub("[идентификатор скрыт]", value)
+
+
 class FixturePlanner(PlannerPort):
     """Deterministic queue adapter for application and UI tests."""
 
     def __init__(self, outputs: list[PlannerOutput]) -> None:
         self._outputs = list(outputs)
         self.requests: list[PlannerRequest] = []
+
+    def outbound_http_request(self, request: PlannerRequest) -> bytes | None:
+        del request
+        return None
 
     async def plan(self, request: PlannerRequest) -> PlannerOutput:
         self.requests.append(request)
@@ -286,7 +336,9 @@ def _choice_content(document: dict[str, Any]) -> str:
             raise TypeError
         return content
     except (KeyError, TypeError, IndexError) as error:
-        raise ValueError("DeepSeek response has no choices[0].message.content") from error
+        raise ValueError(
+            "DeepSeek response has no choices[0].message.content"
+        ) from error
 
 
 def _compact_errors(error: BaseException) -> list[dict[str, str]]:
@@ -308,12 +360,17 @@ def _compact_errors(error: BaseException) -> list[dict[str, str]]:
             }
             for item in error.errors(include_url=False)[:20]
         ]
-    return [{"code": "JSON_PARSE_ERROR", "json_pointer": "", "message": str(error)[:300]}]
+    return [
+        {"code": "JSON_PARSE_ERROR", "json_pointer": "", "message": str(error)[:300]}
+    ]
 
 
 def _contains_forbidden_manifest_key(value: object) -> bool:
     if isinstance(value, dict):
-        if any(key in {"query", "query_text", "query_template", "mcp_arguments"} for key in value):
+        if any(
+            key in {"query", "query_text", "query_template", "mcp_arguments"}
+            for key in value
+        ):
             return True
         return any(_contains_forbidden_manifest_key(item) for item in value.values())
     if isinstance(value, list):

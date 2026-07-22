@@ -42,6 +42,7 @@ class FactValueType(StrEnum):
     DATE = "date"
     DATETIME = "datetime"
     PERIOD = "period"
+    ENUM = "enum"
     ENTITY_REF = "entity_ref"
     MONEY = "money"
     QUANTITY = "quantity"
@@ -162,6 +163,19 @@ class Parameter(ClosedModel):
     ]
     constraints: ParameterConstraints | None = None
     default: JsonValue = None
+    context_slot_keys: (
+        Annotated[
+            tuple[
+                Annotated[
+                    str,
+                    Field(pattern=r"^[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+$"),
+                ],
+                ...,
+            ],
+            Field(max_length=20),
+        ]
+        | None
+    ) = None
 
     @model_validator(mode="after")
     def conditional_contract(self) -> "Parameter":
@@ -259,9 +273,7 @@ class EmptyInvariant(ClosedModel):
 class MetadataConstantInvariant(ClosedModel):
     kind: Literal["metadata_constant"]
     statement: Annotated[int, Field(ge=1, le=16)]
-    constant_kind: Literal[
-        "enum_member", "predefined_reference", "empty_reference"
-    ]
+    constant_kind: Literal["enum_member", "predefined_reference", "empty_reference"]
     symbol: Annotated[
         str,
         Field(
@@ -312,9 +324,7 @@ class QueryTemplate(ClosedModel):
     language: Literal["1c-query"]
     text: Annotated[str, Field(min_length=10, max_length=50000)]
     execution: QueryExecution
-    invariant_constants: Annotated[
-        tuple[InvariantConstant, ...], Field(max_length=64)
-    ]
+    invariant_constants: Annotated[tuple[InvariantConstant, ...], Field(max_length=64)]
     include_schema: Literal[True]
     mcp_limit: McpLimit
 
@@ -520,6 +530,18 @@ class FactDefinition(ClosedModel):
     nullable: bool
     title_ru: Annotated[str, Field(min_length=1, max_length=120)]
     unit_contract: UnitContract
+    allowed_values: (
+        Annotated[
+            tuple[Annotated[str, Field(max_length=160)], ...], Field(min_length=1)
+        ]
+        | None
+    ) = None
+
+    @model_validator(mode="after")
+    def enum_domain(self) -> "FactDefinition":
+        if (self.value_type is FactValueType.ENUM) != (self.allowed_values is not None):
+            raise ValueError("enum facts require an exact allowed_values domain")
+        return self
 
 
 class Sufficiency(ClosedModel):
@@ -543,10 +565,62 @@ class Renderer(ClosedModel):
     kind: Literal[
         "scalar", "table", "ranked_list", "timeline", "procedure", "explanation"
     ]
-    primary_fact_ids: Annotated[
-        tuple[FactId, ...], Field(min_length=1, max_length=100)
-    ]
+    primary_fact_ids: Annotated[tuple[FactId, ...], Field(min_length=1, max_length=100)]
     column_fact_ids: Annotated[tuple[FactId, ...], Field(max_length=100)]
+
+
+class TypedEntityResolution(ClosedModel):
+    protocol: Literal["typed_entity_resolver_v1"]
+    identity_fact_id: FactId
+    candidate_label_fact_ids: Annotated[
+        tuple[FactId, ...], Field(min_length=1, max_length=10)
+    ]
+    role_proof_fact_ids: Annotated[tuple[FactId, ...], Field(max_length=10)]
+    default_slot_key: Annotated[
+        str, Field(pattern=r"^[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+$")
+    ]
+
+
+class SessionLifetime(ClosedModel):
+    mode: Literal["session"]
+
+
+class TurnLifetime(ClosedModel):
+    mode: Literal["turn"]
+
+
+class UntilLifetime(ClosedModel):
+    mode: Literal["until"]
+    expires_at_fact_id: FactId
+
+
+ContextLifetime = Annotated[
+    SessionLifetime | TurnLifetime | UntilLifetime,
+    Field(discriminator="mode"),
+]
+
+
+class SelectedOnlyContextPolicy(ClosedModel):
+    fact_id: FactId
+    slot_key: Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+$")]
+    mode: Literal["selected_only"]
+    lifetime: ContextLifetime
+    max_members: Annotated[int, Field(ge=1, le=100)]
+
+
+class ConfirmedFilterContextPolicy(ClosedModel):
+    fact_id: FactId
+    slot_key: Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+$")]
+    mode: Literal["confirmed_filter"]
+    semantic_type: SemanticType
+    value_type: Literal["datetime", "period", "enum"]
+    lifetime: ContextLifetime
+
+
+ContextExportPolicy = Annotated[
+    SelectedOnlyContextPolicy | ConfirmedFilterContextPolicy,
+    Field(discriminator="mode"),
+]
 
 
 class OutputContract(ClosedModel):
@@ -559,6 +633,10 @@ class OutputContract(ClosedModel):
     facts: Annotated[tuple[FactDefinition, ...], Field(min_length=1, max_length=100)]
     sufficiency: Sufficiency
     renderer: Renderer
+    resolution: TypedEntityResolution | None = None
+    context_export_policy: (
+        Annotated[tuple[ContextExportPolicy, ...], Field(max_length=20)] | None
+    ) = None
 
 
 class FactEqualsParameterConstraint(ClosedModel):
@@ -701,7 +779,7 @@ class SkillProvenance(ClosedModel):
 
 
 class Skill(ClosedModel):
-    schema_version: Literal["1.0.0"]
+    schema_version: Literal["1.0.0", "1.1.0"]
     document_type: Literal["skill"]
     skill_id: SkillId
     version: SemVer
@@ -720,6 +798,42 @@ class Skill(ClosedModel):
     tests: Annotated[tuple[SkillTestCase, ...], Field(min_length=2, max_length=50)]
     provenance: SkillProvenance
     integrity: Integrity
+
+    @model_validator(mode="after")
+    def versioned_context_contract(self) -> "Skill":
+        parameters_have_field = tuple(
+            "context_slot_keys" in parameter.model_fields_set
+            for parameter in self.parameters
+        )
+        output = self.output_contract
+        output_has_resolution = "resolution" in output.model_fields_set
+        output_has_policy = "context_export_policy" in output.model_fields_set
+        if self.schema_version == "1.0.0":
+            if any(parameters_have_field) or output_has_resolution or output_has_policy:
+                raise ValueError("skill 1.0.0 cannot declare slice-3 context fields")
+            if any(
+                fact.value_type is FactValueType.ENUM
+                for fact in self.output_contract.facts
+            ):
+                raise ValueError("skill 1.0.0 cannot declare enum facts")
+            return self
+
+        if not all(parameters_have_field):
+            raise ValueError("skill 1.1.0 requires parameters[*].context_slot_keys")
+        if not output_has_resolution or not output_has_policy:
+            raise ValueError(
+                "skill 1.1.0 requires explicit resolution and context_export_policy"
+            )
+        if output.context_export_policy is None:
+            raise ValueError("skill 1.1.0 context_export_policy cannot be null")
+        for parameter in self.parameters:
+            keys = parameter.context_slot_keys or ()
+            allows_context = "session_context" in parameter.allowed_sources
+            if allows_context != bool(keys):
+                raise ValueError(
+                    "session_context source and context_slot_keys must be declared together"
+                )
+        return self
 
 
 CollectionScope = Literal["visible_page", "complete_set"]

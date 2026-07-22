@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import threading
 from collections.abc import Iterable, Mapping
-from typing import Literal
+from typing import Literal, cast
 
 from semantic_version import NpmSpec, SimpleSpec, Version
 
@@ -229,7 +229,11 @@ class CatalogService:
         ]
         closure_digest = hashlib.sha256(canonicalize(closure_identity)).hexdigest()
         document: dict[str, object] = {
-            "schema_version": "1.0.0",
+            "schema_version": (
+                "1.1.0"
+                if any(skill.schema_version == "1.1.0" for skill in skills)
+                else "1.0.0"
+            ),
             "document_type": "skill_package",
             "package_id": f"ut.export.closure-{closure_digest[:24]}",
             "version": "1.0.0",
@@ -274,9 +278,7 @@ class CatalogService:
         validated = self._harness.validate_document(signed)
         if not isinstance(validated, SkillPackage):
             raise AssertionError("generated catalog export is not a package")
-        return canonicalize(
-            validated.model_dump(mode="json", by_alias=True, exclude_none=True)
-        )
+        return canonicalize(signed)
 
     def _validate_package_target(self, package: SkillPackage) -> None:
         issues: list[ContractIssue] = []
@@ -474,7 +476,11 @@ def _version_matches(version: str, specification: str) -> bool:
 def _wire_skill(skill: Skill) -> dict[str, object]:
     """Serialize a skill exactly as the closed JSON Schema wire contract permits."""
 
-    return skill.model_dump(mode="json", by_alias=True, exclude_none=True)
+    document = skill.model_dump(mode="json", by_alias=True, exclude_none=True)
+    if skill.schema_version == "1.1.0":
+        output = cast(dict[str, object], document["output_contract"])
+        output.setdefault("resolution", None)
+    return document
 
 
 def _cycle_issues(graph: Mapping[str, set[str]]) -> tuple[ContractIssue, ...]:

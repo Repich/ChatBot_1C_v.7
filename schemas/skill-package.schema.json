@@ -18,7 +18,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": "1.0.0"
+      "enum": ["1.0.0", "1.1.0"]
     },
     "document_type": {
       "const": "skill_package"
@@ -199,6 +199,41 @@
       }
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"schema_version": {"const": "1.0.0"}},
+        "required": ["schema_version"]
+      },
+      "then": {
+        "properties": {
+          "skills": {
+            "items": {
+              "allOf": [
+                {"$ref": "skill.schema.json"},
+                {"properties": {"schema_version": {"const": "1.0.0"}}}
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"schema_version": {"const": "1.1.0"}},
+        "required": ["schema_version"]
+      },
+      "then": {
+        "properties": {
+          "skills": {
+            "items": {
+              "$ref": "skill.schema.json"
+            }
+          }
+        }
+      }
+    }
+  ],
   "$defs": {
     "semver": {
       "type": "string",

@@ -135,8 +135,9 @@ object-specific branches в core:
 - generic typed scalar/filter slots с отдельным safe `confirmed_filter` policy:
   retained moment/period/enum/detail preference сохраняют exact value type,
   origin/allowed-source proof и consumer compatibility без recomputation;
-- outbound DeepSeek regression gate: только handle, semantic type,
-  presentation и origin turn; полный ref остается server-side/в diagnostics.
+- outbound DeepSeek regression gate: только opaque handle, slot key, semantic
+  type, value type, cardinality, member count и безопасное presentation; origin
+  turn, внутренние UUID и полный ref остаются server-side/в diagnostics.
 
 Тесты: Q013-Q020, Q029, Q037, Q042, Q056-Q057, Q062-Q064, Q073, Q081-Q082,
 Q091-Q097, Q108. Property tests проверяют, что presentation collision не меняет UUID

@@ -24,7 +24,10 @@
   ],
   "properties": {
     "schema_version": {
-      "const": "1.0.0"
+      "enum": [
+        "1.0.0",
+        "1.1.0"
+      ]
     },
     "document_type": {
       "const": "skill"
@@ -108,6 +111,61 @@
       "$ref": "#/$defs/integrity"
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "schema_version": {"const": "1.0.0"}
+        },
+        "required": ["schema_version"]
+      },
+      "then": {
+        "properties": {
+          "parameters": {
+            "items": {"not": {"required": ["context_slot_keys"]}}
+          },
+          "output_contract": {
+            "allOf": [
+              {"not": {"required": ["resolution"]}},
+              {"not": {"required": ["context_export_policy"]}},
+              {
+                "properties": {
+                  "facts": {
+                    "items": {
+                      "not": {
+                        "properties": {
+                          "value_type": {"const": "enum"}
+                        },
+                        "required": ["value_type"]
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "schema_version": {"const": "1.1.0"}
+        },
+        "required": ["schema_version"]
+      },
+      "then": {
+        "properties": {
+          "parameters": {
+            "items": {"required": ["context_slot_keys"]}
+          },
+          "output_contract": {
+            "required": ["resolution", "context_export_policy"]
+          }
+        }
+      }
+    }
+  ],
   "$defs": {
     "skillId": {
       "type": "string",
@@ -467,7 +525,16 @@
             }
           }
         },
-        "default": {}
+        "default": {},
+        "context_slot_keys": {
+          "type": "array",
+          "maxItems": 20,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*(?:\\.[a-z0-9_]+)+$"
+          }
+        }
       },
       "allOf": [
         {
@@ -1384,8 +1451,113 @@
         },
         "renderer": {
           "$ref": "#/$defs/renderer"
+        },
+        "resolution": {
+          "oneOf": [
+            {"$ref": "#/$defs/typedEntityResolution"},
+            {"type": "null"}
+          ]
+        },
+        "context_export_policy": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {"$ref": "#/$defs/contextExportPolicy"}
         }
       }
+    },
+    "typedEntityResolution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "identity_fact_id",
+        "candidate_label_fact_ids",
+        "role_proof_fact_ids",
+        "default_slot_key"
+      ],
+      "properties": {
+        "protocol": {"const": "typed_entity_resolver_v1"},
+        "identity_fact_id": {"$ref": "#/$defs/factId"},
+        "candidate_label_fact_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/factId"}
+        },
+        "role_proof_fact_ids": {
+          "type": "array",
+          "maxItems": 10,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/factId"}
+        },
+        "default_slot_key": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*(?:\\.[a-z0-9_]+)+$"
+        }
+      }
+    },
+    "contextLifetime": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode"],
+          "properties": {"mode": {"const": "session"}}
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode"],
+          "properties": {"mode": {"const": "turn"}}
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "expires_at_fact_id"],
+          "properties": {
+            "mode": {"const": "until"},
+            "expires_at_fact_id": {"$ref": "#/$defs/factId"}
+          }
+        }
+      ]
+    },
+    "contextExportPolicy": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fact_id", "slot_key", "mode", "lifetime", "max_members"],
+          "properties": {
+            "fact_id": {"$ref": "#/$defs/factId"},
+            "slot_key": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*(?:\\.[a-z0-9_]+)+$"
+            },
+            "mode": {"const": "selected_only"},
+            "lifetime": {"$ref": "#/$defs/contextLifetime"},
+            "max_members": {"type": "integer", "minimum": 1, "maximum": 100}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "fact_id", "slot_key", "mode", "semantic_type", "value_type", "lifetime"
+          ],
+          "properties": {
+            "fact_id": {"$ref": "#/$defs/factId"},
+            "slot_key": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*(?:\\.[a-z0-9_]+)+$"
+            },
+            "mode": {"const": "confirmed_filter"},
+            "semantic_type": {"$ref": "#/$defs/semanticType"},
+            "value_type": {"enum": ["datetime", "period", "enum"]},
+            "lifetime": {"$ref": "#/$defs/contextLifetime"}
+          }
+        }
+      ]
     },
     "factEqualsParameterConstraint": {
       "type": "object",
@@ -1458,6 +1630,7 @@
             "date",
             "datetime",
             "period",
+            "enum",
             "entity_ref",
             "money",
             "quantity",
@@ -1536,8 +1709,22 @@
               }
             }
           ]
+        },
+        "allowed_values": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {"type": "string", "maxLength": 160}
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"value_type": {"const": "enum"}}},
+          "then": {"required": ["allowed_values"]},
+          "else": {"not": {"required": ["allowed_values"]}}
+        }
+      ]
     },
     "sufficiency": {
       "type": "object",

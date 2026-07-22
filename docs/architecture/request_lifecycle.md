@@ -87,9 +87,12 @@ Planner получает не сырой transcript и не raw MCP, а огра
   "confirmed_facts": [
     {
       "handle": "ctx_01J...",
+      "slot_key": "selection.sales_order",
       "semantic_type": "document.sales_order",
-      "presentation": "Заказ 0000-000005 от 12.02.2025",
-      "origin_turn_id": "..."
+      "value_type": "entity_ref",
+      "cardinality": "one",
+      "member_count": 1,
+      "presentation": "Заказ 0000-000005 от 12.02.2025"
     }
   ],
   "active_filters": [

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import hashlib
+import secrets
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Literal, cast
@@ -18,7 +20,10 @@ from chatbot1c.application.models import (
     HelpChunk,
     HelpSearchRequest,
     PageContinuation,
+    PendingChoice,
+    PendingClarificationDraft,
     PinnedCatalog,
+    ScalarFactOrigin,
 )
 from chatbot1c.application.operators import normalize_period
 from chatbot1c.application.outcome_machine import (
@@ -36,6 +41,7 @@ from chatbot1c.contracts.semantic import (
     PlanCoverageProof,
     build_plan_coverage_proof,
     collection_obligation_satisfied,
+    validate_context_proofs_against_evidence,
     validate_evidence_against_plan,
 )
 from chatbot1c.domain.evidence import (
@@ -48,11 +54,15 @@ from chatbot1c.domain.evidence import (
     CoverageRequirement,
     DatabaseStateMarker,
     DocumentFragment,
+    EntityIdentity,
     EvidenceBundle,
     EvidenceError,
     Fact,
     FactValue,
+    FilterRetentionProof,
     Pagination,
+    ResolverUseProof,
+    SelectionProof,
     SourceLocator,
     StepEvidence,
     UnitNotApplicable,
@@ -74,13 +84,16 @@ from chatbot1c.domain.plan import (
     SystemBinding,
 )
 from chatbot1c.domain.skill import (
+    ConfirmedFilterContextPolicy,
     DataQueryOperation,
     DocumentationRetrievalOperation,
     FactDefinition,
     FactEqualsParameterConstraint,
     FactValueType,
     KeysetPagination,
+    ParameterValueType,
     PrefixPagination,
+    SelectedOnlyContextPolicy,
     Skill,
     UnitFixed,
     UnitFromFact,
@@ -100,6 +113,7 @@ class ExecutionContext:
     catalog: PinnedCatalog
     context_facts: tuple[ContextFact, ...]
     database_state_marker: DatabaseStateMarker
+    context_handle_states: Mapping[str, str] | None = None
     deadline_at: datetime | None = None
 
 
@@ -121,6 +135,7 @@ class StepResult:
     criticality: Literal["required", "optional"] = "required"
     collection_scope: Literal["visible_page", "complete_set"] = "complete_set"
     empty_reason: Literal["not_found", "no_rows"] | None = None
+    resolver_use: ResolverUseProof | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,6 +159,9 @@ class ExecutionResult:
     context_facts: tuple[ContextFact, ...]
     steps: tuple[StepResult, ...]
     continuation: ContinuationDraft | None = None
+    selection_proofs: tuple[SelectionProof, ...] = ()
+    filter_retention_proofs: tuple[FilterRetentionProof, ...] = ()
+    pending_clarification: PendingClarificationDraft | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,6 +169,7 @@ class ResolvedBinding:
     value: JsonValue
     source: Literal["user_slot", "session_context", "previous_step", "system"]
     origins: tuple[EntityFactOrigin, ...] = ()
+    context_items: tuple[ContextFact, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -179,21 +198,68 @@ class PlanExecutor:
         self._traces = traces
         self._documentation_revision = documentation_revision
         self._documentation_digest = documentation_digest or _sha("unavailable")
-        self._configuration_profile_digest = (
-            configuration_profile_digest or _sha("ut-11.5.27.56")
+        self._configuration_profile_digest = configuration_profile_digest or _sha(
+            "ut-11.5.27.56"
         )
 
     async def execute(
-        self, plan: PlannerOutput, context: ExecutionContext
+        self,
+        plan: PlannerOutput,
+        context: ExecutionContext,
+        *,
+        resolver_resume: tuple[str, tuple[Fact, ...]] | None = None,
     ) -> ExecutionResult:
         if not isinstance(plan.result, ExecuteResult):
             raise ValueError("PlanExecutor accepts execute decisions only")
         coverage_proof = build_plan_coverage_proof(
             plan, tuple(context.catalog.skills.values())
         )
-        context_index = {fact.handle: fact for fact in context.context_facts}
+        resolver_uses = _derive_resolver_use_proofs(plan, context.catalog)
+        context_index: dict[str, tuple[ContextFact, ...]] = {}
+        for item in context.context_facts:
+            context_index[item.handle] = (*context_index.get(item.handle, ()), item)
         step_results: dict[str, StepResult] = {}
         ordered: list[StepResult] = []
+        if resolver_resume is not None:
+            resume_step_id, resume_facts = resolver_resume
+            use = resolver_uses.get(resume_step_id)
+            call = next(
+                (
+                    item
+                    for item in plan.result.steps
+                    if isinstance(item, SkillCall) and item.step_id == resume_step_id
+                ),
+                None,
+            )
+            skill = None if call is None else context.catalog.skills.get(call.skill_id)
+            if use is None or use.mode != "select_one" or skill is None:
+                raise ApplicationError(
+                    "CLARIFICATION_RESUME_INVALID",
+                    "Сохраненный resolver checkpoint несовместим с plan.",
+                    409,
+                )
+            now = datetime.now(UTC)
+            resumed = StepResult(
+                step_id=resume_step_id,
+                skill=skill,
+                outcome=Outcome.SUCCESS_WITH_ROWS,
+                facts=resume_facts,
+                citations=(),
+                row_count=1,
+                started_at=now,
+                finished_at=now,
+                attempts=0,
+                collection_scope="complete_set",
+                resolver_use=use,
+            )
+            if len(_resolver_identity_facts(resumed)) != 1:
+                raise ApplicationError(
+                    "CLARIFICATION_RESUME_INVALID",
+                    "Выбранный resolver candidate не имеет exact identity.",
+                    409,
+                )
+            step_results[resume_step_id] = resumed
+            ordered.append(resumed)
         required_ids = coverage_proof.required_steps
         scheduled = (
             [step for step in plan.result.steps if step.step_id in required_ids],
@@ -206,6 +272,8 @@ class PlanExecutor:
             if phase == 1 and (required_failed or stop_all):
                 break
             for step in steps:
+                if step.step_id in step_results:
+                    continue
                 if _runtime_step_dependencies(step) & failed_or_blocked:
                     failed_or_blocked.add(step.step_id)
                     continue
@@ -219,6 +287,9 @@ class PlanExecutor:
                     context_index,
                     step_results,
                 )
+                resolver_use = resolver_uses.get(step.step_id)
+                if resolver_use is not None:
+                    result = _apply_resolver_state(result, resolver_use)
                 result = replace(result, criticality=criticality)
                 step_results[step.step_id] = result
                 ordered.append(result)
@@ -239,6 +310,13 @@ class PlanExecutor:
                     stop_all = True
                     break
                 if (
+                    resolver_use is not None
+                    and resolver_use.mode == "select_set"
+                    and result.outcome is Outcome.PARTIAL
+                ):
+                    stop_all = True
+                    break
+                if (
                     criticality == "required"
                     and result.outcome
                     in {Outcome.SUCCESS_EMPTY, Outcome.DOCUMENTATION_EMPTY}
@@ -255,22 +333,57 @@ class PlanExecutor:
         }
         ordered.sort(key=lambda result: step_order[result.step_id])
         outcome = _overall_outcome(ordered, plan, coverage_proof)
+        selection_proofs = _selection_proofs(
+            tuple(ordered), allowed_step_ids=frozenset(coverage_proof.required_steps)
+        )
+        filter_retention_proofs = _filter_retention_proofs(
+            plan, coverage_proof, tuple(ordered)
+        )
         evidence = self._build_evidence(
-            plan, coverage_proof, context, tuple(ordered), outcome
+            plan,
+            coverage_proof,
+            context,
+            tuple(ordered),
+            outcome,
+            selection_proofs,
+            filter_retention_proofs,
         )
         outcome, evidence = _finalize_coverage_outcome(
             plan, coverage_proof, outcome, evidence
         )
+        context_commit_allowed = _context_commit_allowed(tuple(ordered), outcome)
+        if not context_commit_allowed:
+            selection_proofs = ()
+            filter_retention_proofs = ()
+            evidence = evidence.model_copy(
+                update={
+                    "context_exports": (),
+                }
+            )
+        validate_context_proofs_against_evidence(
+            coverage_proof,
+            evidence,
+            selection_proofs=selection_proofs,
+            filter_retention_proofs=filter_retention_proofs,
+            available_skills=tuple(context.catalog.skills.values()),
+        )
         exported_context = (
             ()
-            if outcome is Outcome.CONTRACT_ERROR
-            else _context_facts(evidence, context.turn_id, tuple(ordered))
+            if not context_commit_allowed
+            else _context_facts(
+                evidence,
+                context.turn_id,
+                tuple(ordered),
+                selection_proofs,
+                filter_retention_proofs,
+            )
         )
+        pending_clarification = _pending_from_resolver(plan, context, tuple(ordered))
         continuations = [
-            result.continuation
-            for result in ordered
-            if result.continuation is not None
+            result.continuation for result in ordered if result.continuation is not None
         ]
+        if pending_clarification is not None:
+            continuations = []
         if len(continuations) > 1:
             raise ApplicationError(
                 "MULTIPLE_CONTINUATIONS_UNSUPPORTED",
@@ -283,6 +396,9 @@ class PlanExecutor:
             exported_context,
             tuple(ordered),
             continuations[0] if continuations else None,
+            selection_proofs,
+            filter_retention_proofs,
+            pending_clarification,
         )
 
     async def execute_continuation(
@@ -352,15 +468,22 @@ class PlanExecutor:
         )
         outcome = _overall_outcome([result], plan, coverage_proof)
         evidence = self._build_evidence(
-            plan, coverage_proof, context, (result,), outcome
+            plan, coverage_proof, context, (result,), outcome, (), ()
         )
         outcome, evidence = _finalize_coverage_outcome(
             plan, coverage_proof, outcome, evidence
         )
+        validate_context_proofs_against_evidence(
+            coverage_proof,
+            evidence,
+            selection_proofs=(),
+            filter_retention_proofs=(),
+            available_skills=tuple(context.catalog.skills.values()),
+        )
         exported_context = (
             ()
             if outcome is Outcome.CONTRACT_ERROR
-            else _context_facts(evidence, context.turn_id, (result,))
+            else _context_facts(evidence, context.turn_id, (result,), (), ())
         )
         return ExecutionResult(
             outcome,
@@ -375,7 +498,7 @@ class PlanExecutor:
         plan: PlannerOutput,
         step: PlanStep,
         context: ExecutionContext,
-        context_index: dict[str, ContextFact],
+        context_index: dict[str, tuple[ContextFact, ...]],
         previous: dict[str, StepResult],
     ) -> StepResult:
         if isinstance(step, SkillCall):
@@ -407,7 +530,7 @@ class PlanExecutor:
         call: SkillCall,
         skill: Skill,
         context: ExecutionContext,
-        context_index: dict[str, ContextFact],
+        context_index: dict[str, tuple[ContextFact, ...]],
         previous: dict[str, StepResult],
     ) -> StepResult:
         started = datetime.now(UTC)
@@ -455,9 +578,7 @@ class PlanExecutor:
         for binding in operation.parameter_bindings:
             if binding.parameter not in arguments:
                 parameter = next(
-                    item
-                    for item in skill.parameters
-                    if item.name == binding.parameter
+                    item for item in skill.parameters if item.name == binding.parameter
                 )
                 if not parameter.required:
                     params[binding.query_parameter] = (
@@ -542,10 +663,7 @@ class PlanExecutor:
                 409,
             )
         has_probe_row = len(page_rows) > page.page_size
-        has_more = has_probe_row or (
-            (envelope.has_more or envelope.truncated)
-            and len(page_rows) >= page.page_size
-        )
+        has_more = has_probe_row or envelope.has_more or envelope.truncated
         visible_rows = page_rows[: page.page_size]
         structural_rows = page_rows[: page.page_size + 1]
         effective_empty = _validate_projected_rows(skill, structural_rows)
@@ -717,7 +835,7 @@ class PlanExecutor:
         plan: PlannerOutput,
         step: NormalizePeriodOperator,
         context: ExecutionContext,
-        context_index: dict[str, ContextFact],
+        context_index: dict[str, tuple[ContextFact, ...]],
         previous: dict[str, StepResult],
     ) -> StepResult:
         started = datetime.now(UTC)
@@ -849,7 +967,7 @@ class PlanExecutor:
         plan: PlannerOutput,
         binding: Binding,
         context: ExecutionContext,
-        context_index: dict[str, ContextFact],
+        context_index: dict[str, tuple[ContextFact, ...]],
         previous: dict[str, StepResult],
     ) -> ResolvedBinding:
         if isinstance(binding, LiteralBinding):
@@ -858,23 +976,68 @@ class PlanExecutor:
                 "user_slot",
             )
         if isinstance(binding, ContextBinding):
-            context_fact = context_index.get(binding.context_handle)
-            if context_fact is None:
+            context_facts = context_index.get(binding.context_handle)
+            if not context_facts:
+                state = (context.context_handle_states or {}).get(
+                    binding.context_handle
+                )
+                if state == "replaced":
+                    raise ApplicationError(
+                        "CONTEXT_HANDLE_REPLACED",
+                        "Context handle заменен новым поколением.",
+                        409,
+                    )
+                if state == "expired":
+                    raise ApplicationError(
+                        "CONTEXT_HANDLE_EXPIRED", "Context handle истек.", 409
+                    )
+                if state == "invalidated":
+                    raise ApplicationError(
+                        "CONTEXT_HANDLE_INVALIDATED",
+                        "Context handle недействителен.",
+                        409,
+                    )
                 raise ApplicationError(
-                    "PLAN_CONTEXT_MISSING",
-                    f"Context handle {binding.context_handle} отсутствует в сессии.",
+                    "CONTEXT_PROVENANCE_MISSING",
+                    "Context handle не имеет подтвержденной provenance в сессии.",
                     409,
                 )
-            if context_fact.semantic_type != binding.expected_semantic_type:
+            if any(
+                item.semantic_type != binding.expected_semantic_type
+                for item in context_facts
+            ):
                 raise ApplicationError(
-                    "PLAN_CONTEXT_TYPE_MISMATCH",
+                    "ENTITY_REF_CONTRACT_MISMATCH",
                     "Context handle имеет другой semantic type.",
                     409,
                 )
+            if len(context_facts) == 1 and context_facts[0].cardinality == "one":
+                item = context_facts[0]
+                return ResolvedBinding(
+                    item.value,
+                    "session_context",
+                    (
+                        (item.origin,)
+                        if isinstance(item.origin, EntityFactOrigin)
+                        else ()
+                    ),
+                    (item,),
+                )
+            if any(item.cardinality != "many" for item in context_facts):
+                raise ApplicationError(
+                    "ENTITY_REF_CONTRACT_MISMATCH",
+                    "Context handle содержит несовместимую cardinality.",
+                    409,
+                )
             return ResolvedBinding(
-                context_fact.value,
+                cast(JsonValue, [item.value for item in context_facts]),
                 "session_context",
-                (context_fact.origin,),
+                tuple(
+                    item.origin
+                    for item in context_facts
+                    if isinstance(item.origin, EntityFactOrigin)
+                ),
+                context_facts,
             )
         if isinstance(binding, StepBinding):
             result = previous.get(binding.step_id)
@@ -884,9 +1047,12 @@ class PlanExecutor:
                     f"Previous step {binding.step_id} не выполнен.",
                     422,
                 )
-            facts = [
-                fact for fact in result.facts if fact.fact_id == binding.fact_id
-            ]
+            facts = [fact for fact in result.facts if fact.fact_id == binding.fact_id]
+            if (
+                result.resolver_use is not None
+                and binding.fact_id == result.resolver_use.identity_fact_id
+            ):
+                facts = list(_resolver_identity_facts(result))
             if binding.cardinality == "one":
                 if len(facts) != 1:
                     raise ApplicationError(
@@ -926,7 +1092,11 @@ class PlanExecutor:
             )
         if isinstance(binding, SlotBinding):
             slot = next(
-                (item for item in plan.interpretation.slots if item.slot_id == binding.slot_id),
+                (
+                    item
+                    for item in plan.interpretation.slots
+                    if item.slot_id == binding.slot_id
+                ),
                 None,
             )
             if slot is None or slot.binding is None:
@@ -947,12 +1117,14 @@ class PlanExecutor:
         context: ExecutionContext,
         results: tuple[StepResult, ...],
         outcome: Outcome,
+        selection_proofs: tuple[SelectionProof, ...],
+        filter_retention_proofs: tuple[FilterRetentionProof, ...],
     ) -> EvidenceBundle:
         facts = tuple(fact for result in results for fact in result.facts)
-        citations = tuple(citation for result in results for citation in result.citations)
-        errors = tuple(
-            result.error for result in results if result.error is not None
+        citations = tuple(
+            citation for result in results for citation in result.citations
         )
+        errors = tuple(result.error for result in results if result.error is not None)
         final_refs = (
             {(ref.step_id, ref.fact_id) for ref in plan.result.final_outputs}
             if isinstance(plan.result, ExecuteResult)
@@ -995,13 +1167,16 @@ class PlanExecutor:
                     ),
                 )
             )
-        exports = () if outcome is Outcome.CONTRACT_ERROR else _context_exports(facts)
+        exports = (
+            ()
+            if outcome is Outcome.CONTRACT_ERROR
+            else _context_exports(selection_proofs, filter_retention_proofs, facts)
+        )
         source_boundary = cast(
             Literal["data", "documentation", "mixed", "none"],
             (
                 plan.interpretation.intent_kind
-                if plan.interpretation.intent_kind
-                in {"data", "documentation", "mixed"}
+                if plan.interpretation.intent_kind in {"data", "documentation", "mixed"}
                 else "none"
             ),
         )
@@ -1116,9 +1291,7 @@ def _page_request(
                 "Prefix continuation достиг declared maximum_total.",
                 409,
             )
-        return _PageRequest(
-            "prefix", page_size, request_limit, shown, shown, {}
-        )
+        return _PageRequest("prefix", page_size, request_limit, shown, shown, {})
     if not isinstance(pagination, KeysetPagination):
         raise TypeError("unknown pagination policy")
     query_params: dict[str, JsonValue] = {
@@ -1130,9 +1303,7 @@ def _page_request(
         )
         shown = 0
     else:
-        expected = {
-            binding.query_parameter for binding in pagination.cursor_bindings
-        }
+        expected = {binding.query_parameter for binding in pagination.cursor_bindings}
         if set(continuation.cursor_values) != expected:
             raise ApplicationError(
                 "CONTINUATION_PLAN_INVALID",
@@ -1141,9 +1312,7 @@ def _page_request(
             )
         query_params.update(dict(continuation.cursor_values))
         shown = continuation.shown
-    return _PageRequest(
-        "keyset", page_size, page_size + 1, 0, shown, query_params
-    )
+    return _PageRequest("keyset", page_size, page_size + 1, 0, shown, query_params)
 
 
 def _validate_response_columns(skill: Skill, envelope: object) -> None:
@@ -1211,8 +1380,7 @@ def _validate_projected_rows(
         )
         sentinel_set = any(
             all(
-                row[bindings[fact_id].column] is None
-                and definitions[fact_id].nullable
+                row[bindings[fact_id].column] is None and definitions[fact_id].nullable
                 for fact_id in required_set
             )
             for required_set in skill.output_contract.sufficiency.required_fact_sets
@@ -1288,9 +1456,7 @@ def _empty_step(
         finished,
         attempts,
         collection_scope=collection_scope_for_skill(skill),
-        empty_reason=(
-            "not_found" if semantics == "confirmed_not_found" else "no_rows"
-        ),
+        empty_reason=("not_found" if semantics == "confirmed_not_found" else "no_rows"),
     )
 
 
@@ -1307,9 +1473,7 @@ def _continuation_values(
         )
         return values, {}
     if isinstance(pagination, KeysetPagination):
-        values = tuple(
-            row[bindings[item.fact_id].column] for item in pagination.sort
-        )
+        values = tuple(row[bindings[item.fact_id].column] for item in pagination.sort)
         cursor_values = {
             item.query_parameter: row[bindings[item.fact_id].column]
             for item in pagination.cursor_bindings
@@ -1347,6 +1511,8 @@ def _validate_runtime_arguments(
                 f"Источник parameter {parameter.name} запрещен skill contract.",
                 422,
             )
+        if resolved.source == "session_context":
+            _validate_context_argument(parameter, resolved)
         if parameter.value_type.value == "entity_ref":
             _validate_entity_argument(parameter, resolved)
         elif parameter.value_type.value == "entity_ref_list":
@@ -1361,6 +1527,63 @@ def _validate_runtime_arguments(
                 _validate_entity_argument(
                     parameter,
                     ResolvedBinding(value, resolved.source, (origin,)),
+                )
+
+
+def _validate_context_argument(parameter: object, resolved: ResolvedBinding) -> None:
+    from chatbot1c.domain.skill import Parameter
+
+    if not isinstance(parameter, Parameter):
+        raise TypeError("expected Parameter")
+    items = resolved.context_items
+    if not items:
+        raise ApplicationError(
+            "CONTEXT_PROVENANCE_MISSING",
+            "Session context parameter не имеет active slot provenance.",
+            409,
+        )
+    slot_keys = set(parameter.context_slot_keys or ())
+    if not slot_keys or any(item.slot_key not in slot_keys for item in items):
+        raise ApplicationError(
+            "CONTEXT_FILTER_CONTRACT_MISMATCH",
+            "Context slot key не разрешен consumer parameter.",
+            409,
+        )
+    if any(item.semantic_type != parameter.semantic_type for item in items):
+        raise ApplicationError(
+            "ENTITY_REF_CONTRACT_MISMATCH",
+            "Context semantic type не совпадает с consumer parameter.",
+            409,
+        )
+    expects_many = parameter.value_type is ParameterValueType.ENTITY_REF_LIST
+    if expects_many != any(item.cardinality == "many" for item in items):
+        raise ApplicationError(
+            "ENTITY_REF_CONTRACT_MISMATCH",
+            "Context cardinality не совпадает с consumer parameter.",
+            409,
+        )
+    for item in items:
+        digest = hashlib.sha256(canonicalize(item.value)).hexdigest()
+        if item.value_digest is not None and item.value_digest != digest:
+            raise ApplicationError(
+                "CONTEXT_PROVENANCE_MISSING",
+                "Context canonical value digest поврежден.",
+                409,
+            )
+        if item.policy_mode == "confirmed_filter":
+            if item.value_type.value != parameter.value_type.value:
+                raise ApplicationError(
+                    "CONTEXT_FILTER_CONTRACT_MISMATCH",
+                    "Scalar context value_type не совпадает с consumer parameter.",
+                    409,
+                )
+            if parameter.value_type is ParameterValueType.ENUM and str(
+                item.value
+            ) not in (parameter.allowed_values or ()):
+                raise ApplicationError(
+                    "CONTEXT_FILTER_CONTRACT_MISMATCH",
+                    "Scalar context enum не входит в consumer domain.",
+                    409,
                 )
 
 
@@ -1427,9 +1650,7 @@ def _validate_bound_entity_identity(
                     502,
                 )
             expected = tuple(EntityRef.model_validate(item) for item in raw_expected)
-        allowed_identities = {
-            (item.object_type, item.unique_id) for item in expected
-        }
+        allowed_identities = {(item.object_type, item.unique_id) for item in expected}
         for fact in matching:
             if (
                 fact.semantic_type != definition.semantic_type
@@ -1488,9 +1709,12 @@ def _normalize_data_facts(
             if raw is None:
                 continue
             value = _convert_value(raw, binding.converter)
-            if isinstance(value, EntityRef) and value.object_type not in binding.accepted_mcp_types:
+            if (
+                isinstance(value, EntityRef)
+                and value.object_type not in binding.accepted_mcp_types
+            ):
                 raise ApplicationError(
-                    "ENTITY_REF_TYPE_MISMATCH",
+                    "ENTITY_REF_CONTRACT_MISMATCH",
                     "MCP _objectRef type не совпадает с column binding.",
                     502,
                 )
@@ -1517,7 +1741,9 @@ def _normalize_data_facts(
                     ),
                 )
             )
-        moment = next((fact.moment for fact in row_facts if fact.moment is not None), None)
+        moment = next(
+            (fact.moment for fact in row_facts if fact.moment is not None), None
+        )
         period = next(
             (fact.value for fact in row_facts if isinstance(fact.value, Period)), None
         )
@@ -1641,7 +1867,9 @@ def _fact_unit(
         return UnitResolved(mode="resolved", code=contract.code, label_ru=contract.code)
     if isinstance(contract, UnitFromFact):
         binding = next(
-            item for item in operation.column_bindings if item.fact_id == contract.fact_id
+            item
+            for item in operation.column_bindings
+            if item.fact_id == contract.fact_id
         )
         value = row[binding.column]
         label = str(value)
@@ -1666,7 +1894,9 @@ def _encode_parameter(value: JsonValue, encoding: str) -> JsonValue:
     return value
 
 
-def _runtime_requirement_covered(requirement: object, candidates: tuple[Fact, ...]) -> bool:
+def _runtime_requirement_covered(
+    requirement: object, candidates: tuple[Fact, ...]
+) -> bool:
     from chatbot1c.domain.plan import FactRequirement
 
     item = cast(FactRequirement, requirement)
@@ -1694,24 +1924,339 @@ def _runtime_requirement_covered(requirement: object, candidates: tuple[Fact, ..
     return True
 
 
-def _context_exports(facts: tuple[Fact, ...]) -> tuple[ContextExport, ...]:
-    unique: dict[tuple[str, str, UUID], Fact] = {}
-    for fact in facts:
-        if fact.value_type is FactValueType.ENTITY_REF and isinstance(fact.value, EntityRef):
-            unique[(fact.semantic_type, fact.value.object_type, fact.value.unique_id)] = fact
-    return tuple(
-        ContextExport(
-            context_handle=f"ctx_{fact.fact_instance_id.hex[:24]}",
-            fact_instance_id=fact.fact_instance_id,
-            semantic_type=fact.semantic_type,
+def _derive_resolver_use_proofs(
+    plan: PlannerOutput, catalog: PinnedCatalog
+) -> dict[str, ResolverUseProof]:
+    if not isinstance(plan.result, ExecuteResult):
+        return {}
+    proofs: dict[str, ResolverUseProof] = {}
+    for step in plan.result.steps:
+        if not isinstance(step, SkillCall):
+            continue
+        skill = catalog.skills.get(step.skill_id)
+        if skill is None or skill.output_contract.resolution is None:
+            continue
+        resolution = skill.output_contract.resolution
+        uses: list[tuple[Literal["select_one", "select_set"], str]] = []
+        for consumer in plan.result.steps:
+            if not isinstance(consumer, SkillCall):
+                continue
+            consumer_skill = catalog.skills.get(consumer.skill_id)
+            if consumer_skill is None:
+                continue
+            parameter_map = {item.name: item for item in consumer_skill.parameters}
+            for argument in consumer.arguments:
+                binding = argument.binding
+                if (
+                    isinstance(binding, StepBinding)
+                    and binding.step_id == step.step_id
+                    and binding.fact_id == resolution.identity_fact_id
+                ):
+                    parameter = parameter_map.get(argument.parameter)
+                    if parameter is None:
+                        continue
+                    derived_mode: Literal["select_one", "select_set"] = (
+                        "select_set"
+                        if binding.cardinality == "many"
+                        and parameter.value_type is ParameterValueType.ENTITY_REF_LIST
+                        else "select_one"
+                    )
+                    uses.append(
+                        (derived_mode, f"{consumer.step_id}.{argument.parameter}")
+                    )
+        identity_is_final = any(
+            output.step_id == step.step_id
+            and output.fact_id == resolution.identity_fact_id
+            for output in plan.result.final_outputs
         )
-        for fact in unique.values()
+        if identity_is_final:
+            identity_definition = next(
+                item
+                for item in skill.output_contract.facts
+                if item.fact_id == resolution.identity_fact_id
+            )
+            for requirement in plan.interpretation.required_facts:
+                if (
+                    requirement.required
+                    and requirement.semantic_type == identity_definition.semantic_type
+                    and requirement.cardinality == "one"
+                ):
+                    uses.append(("select_one", f"final:{requirement.requirement_id}"))
+        modes = {mode for mode, _ in uses}
+        if len(modes) > 1:
+            raise ApplicationError(
+                "PLAN_RESOLVER_MODE_AMBIGUOUS",
+                "Один resolver не может одновременно выбирать один объект и множество.",
+                422,
+            )
+        use_mode: Literal["select_one", "select_set", "display_only"] = (
+            next(iter(modes)) if modes else "display_only"
+        )
+        proofs[step.step_id] = ResolverUseProof(
+            step_id=step.step_id,
+            skill_id=skill.skill_id,
+            mode=use_mode,
+            identity_fact_id=resolution.identity_fact_id,
+            slot_key=resolution.default_slot_key,
+            consumer_parameters=tuple(name for _, name in uses),
+        )
+    return proofs
+
+
+def _resolver_identity_facts(result: StepResult) -> tuple[Fact, ...]:
+    proof = result.resolver_use
+    if proof is None:
+        return ()
+    unique: dict[tuple[str, str, UUID], Fact] = {}
+    for fact in result.facts:
+        if fact.fact_id != proof.identity_fact_id or not isinstance(
+            fact.value, EntityRef
+        ):
+            continue
+        if not _resolver_role_proofs_satisfied(result, fact.row_id):
+            continue
+        identity = (fact.semantic_type, fact.value.object_type, fact.value.unique_id)
+        unique.setdefault(identity, fact)
+    return tuple(unique.values())
+
+
+def _resolver_role_proofs_satisfied(result: StepResult, row_id: str) -> bool:
+    skill = result.skill
+    if skill is None:
+        return False
+    resolution = skill.output_contract.resolution
+    if resolution is None:
+        return False
+    definitions = {
+        item.fact_id: item for item in skill.output_contract.facts
+    }
+    for fact_id in resolution.role_proof_fact_ids:
+        definition = definitions.get(fact_id)
+        matches = [
+            fact
+            for fact in result.facts
+            if fact.row_id == row_id and fact.fact_id == fact_id
+        ]
+        if definition is None or len(matches) != 1:
+            return False
+        value = matches[0].value
+        if definition.value_type is FactValueType.BOOLEAN:
+            if value is not True:
+                return False
+        elif definition.value_type is FactValueType.ENUM:
+            allowed = definition.allowed_values or ()
+            if len(allowed) != 1 or value != allowed[0]:
+                return False
+        else:
+            return False
+    return True
+
+
+def _apply_resolver_state(result: StepResult, proof: ResolverUseProof) -> StepResult:
+    typed = replace(result, resolver_use=proof)
+    identities = _resolver_identity_facts(typed)
+    if (
+        proof.mode in {"select_one", "select_set"}
+        and identities
+        and not typed.has_more
+        and not typed.truncated
+    ):
+        typed = replace(typed, collection_scope="complete_set")
+    if proof.mode == "select_one" and (
+        len(identities) > 1
+        or (bool(identities) and (typed.has_more or typed.truncated))
+    ):
+        # A probe/truncation flag means the visible rows are not the complete
+        # candidate universe, even when those rows deduplicate to one identity.
+        # Resolver ambiguity is narrowed through its typed pending protocol, not
+        # through the ordinary list continuation channel.
+        return replace(
+            typed,
+            outcome=Outcome.CLARIFICATION_REQUIRED,
+            continuation=None,
+        )
+    if proof.mode == "select_set" and identities:
+        policy = _selected_policy(typed.skill, proof.identity_fact_id, proof.slot_key)
+        # An initial keyset request uses one probe row.  No probe row means the
+        # bounded resolver result is complete even though ordinary paged lists
+        # retain ``visible_page`` scope.  Only the resolver protocol may promote
+        # that result to a selected set.
+        complete = typed.collection_scope == "complete_set"
+        if policy is None or not complete or len(identities) > policy.max_members:
+            return replace(typed, outcome=Outcome.PARTIAL)
+    return typed
+
+
+def _selected_policy(
+    skill: Skill | None, fact_id: str, slot_key: str
+) -> SelectedOnlyContextPolicy | None:
+    if skill is None:
+        return None
+    return next(
+        (
+            item
+            for item in (skill.output_contract.context_export_policy or ())
+            if isinstance(item, SelectedOnlyContextPolicy)
+            and item.fact_id == fact_id
+            and item.slot_key == slot_key
+        ),
+        None,
     )
+
+
+def _selection_proofs(
+    results: tuple[StepResult, ...],
+    *,
+    allowed_step_ids: frozenset[str] | None = None,
+) -> tuple[SelectionProof, ...]:
+    proofs: list[SelectionProof] = []
+    for result in results:
+        if allowed_step_ids is not None and result.step_id not in allowed_step_ids:
+            continue
+        use = result.resolver_use
+        if use is None or use.mode == "display_only":
+            continue
+        identities = _resolver_identity_facts(result)
+        policy = _selected_policy(result.skill, use.identity_fact_id, use.slot_key)
+        selected = (use.mode == "select_one" and len(identities) == 1) or (
+            use.mode == "select_set"
+            and bool(identities)
+            and policy is not None
+            and len(identities) <= policy.max_members
+            and result.collection_scope == "complete_set"
+            and not result.has_more
+            and result.outcome not in {Outcome.PARTIAL, Outcome.CONTRACT_ERROR}
+        )
+        if use.mode == "select_one" and (
+            result.has_more
+            or result.truncated
+            or result.outcome is Outcome.CLARIFICATION_REQUIRED
+        ):
+            selected = False
+        if not selected:
+            continue
+        identity_values = tuple(
+            EntityIdentity(
+                semantic_type=fact.semantic_type,
+                physical_type=cast(EntityRef, fact.value).object_type,
+                unique_id=cast(EntityRef, fact.value).unique_id,
+            )
+            for fact in identities
+        )
+        state: Literal["selected_one", "selected_set"] = (
+            "selected_one" if use.mode == "select_one" else "selected_set"
+        )
+        payload = {
+            "resolver": use.model_dump(mode="json"),
+            "state": state,
+            "fact_instance_ids": [str(fact.fact_instance_id) for fact in identities],
+            "identities": [item.model_dump(mode="json") for item in identity_values],
+            "complete": True,
+        }
+        proofs.append(
+            SelectionProof(
+                resolver=use,
+                state=state,
+                fact_instance_ids=tuple(fact.fact_instance_id for fact in identities),
+                identities=identity_values,
+                complete=True,
+                proof_digest=hashlib.sha256(canonicalize(payload)).hexdigest(),
+            )
+        )
+    return tuple(proofs)
+
+
+def _filter_retention_proofs(
+    plan: PlannerOutput,
+    coverage: PlanCoverageProof,
+    results: tuple[StepResult, ...],
+) -> tuple[FilterRetentionProof, ...]:
+    if not isinstance(plan.result, ExecuteResult):
+        return ()
+    final_refs = {(item.step_id, item.fact_id) for item in plan.result.final_outputs}
+    required_steps = set(coverage.required_steps)
+    proofs: list[FilterRetentionProof] = []
+    for result in results:
+        if result.skill is None or result.step_id not in required_steps:
+            continue
+        for policy in result.skill.output_contract.context_export_policy or ():
+            if not isinstance(policy, ConfirmedFilterContextPolicy):
+                continue
+            candidates = tuple(
+                fact
+                for fact in result.facts
+                if fact.fact_id == policy.fact_id
+                and (fact.step_id, fact.fact_id) in final_refs
+            )
+            if len(candidates) != 1:
+                continue
+            fact = candidates[0]
+            value_digest = hashlib.sha256(
+                canonicalize(_json_value(fact.value))
+            ).hexdigest()
+            payload = {
+                "step_id": fact.step_id,
+                "fact_instance_id": str(fact.fact_instance_id),
+                "fact_id": fact.fact_id,
+                "slot_key": policy.slot_key,
+                "semantic_type": policy.semantic_type,
+                "value_type": policy.value_type,
+                "canonical_value_digest": value_digest,
+            }
+            proofs.append(
+                FilterRetentionProof(
+                    step_id=fact.step_id,
+                    fact_instance_id=fact.fact_instance_id,
+                    fact_id=fact.fact_id,
+                    slot_key=policy.slot_key,
+                    semantic_type=policy.semantic_type,
+                    value_type=policy.value_type,
+                    canonical_value_digest=value_digest,
+                    proof_digest=hashlib.sha256(canonicalize(payload)).hexdigest(),
+                )
+            )
+    return tuple(proofs)
+
+
+def _context_exports(
+    selection_proofs: tuple[SelectionProof, ...],
+    filter_proofs: tuple[FilterRetentionProof, ...],
+    facts: tuple[Fact, ...],
+) -> tuple[ContextExport, ...]:
+    fact_index = {fact.fact_instance_id: fact for fact in facts}
+    exports: list[ContextExport] = []
+    for proof in selection_proofs:
+        handle = f"ctx_{secrets.token_urlsafe(24)}"
+        for fact_instance_id in proof.fact_instance_ids:
+            fact = fact_index[fact_instance_id]
+            exports.append(
+                ContextExport(
+                    context_handle=handle,
+                    fact_instance_id=fact_instance_id,
+                    semantic_type=fact.semantic_type,
+                )
+            )
+    for filter_proof in filter_proofs:
+        fact = fact_index[filter_proof.fact_instance_id]
+        exports.append(
+            ContextExport(
+                context_handle=f"ctx_{secrets.token_urlsafe(24)}",
+                fact_instance_id=fact.fact_instance_id,
+                semantic_type=fact.semantic_type,
+            )
+        )
+    return tuple(exports)
 
 
 def _evidence_pagination(
     results: tuple[StepResult, ...], default_page_size: int
 ) -> Pagination | None:
+    if any(
+        result.resolver_use is not None
+        and result.outcome is Outcome.CLARIFICATION_REQUIRED
+        for result in results
+    ):
+        return None
     paged = next(
         (
             result
@@ -1719,6 +2264,11 @@ def _evidence_pagination(
             if result.skill is not None
             and isinstance(result.skill.operation, DataQueryOperation)
             and result.skill.operation.pagination.strategy != "none"
+            and not (
+                result.resolver_use is not None
+                and result.resolver_use.mode == "select_one"
+                and result.outcome is Outcome.CLARIFICATION_REQUIRED
+            )
         ),
         None,
     )
@@ -1740,14 +2290,28 @@ def _context_facts(
     evidence: EvidenceBundle,
     turn_id: UUID,
     results: tuple[StepResult, ...],
+    selection_proofs: tuple[SelectionProof, ...],
+    filter_proofs: tuple[FilterRetentionProof, ...],
 ) -> tuple[ContextFact, ...]:
     facts = {fact.fact_instance_id: fact for fact in evidence.facts}
     result_by_step = {result.step_id: result for result in results}
+    selection_by_fact = {
+        fact_id: proof
+        for proof in selection_proofs
+        for fact_id in proof.fact_instance_ids
+    }
+    filter_by_fact = {proof.fact_instance_id: proof for proof in filter_proofs}
+    member_counts = {
+        proof.proof_digest: len(proof.fact_instance_ids) for proof in selection_proofs
+    }
+    member_indexes = {
+        fact_id: index
+        for proof in selection_proofs
+        for index, fact_id in enumerate(proof.fact_instance_ids)
+    }
     context_items: list[ContextFact] = []
     for exported in evidence.context_exports:
         fact = facts[exported.fact_instance_id]
-        if not isinstance(fact.value, EntityRef):
-            continue
         producer_result = result_by_step.get(fact.step_id)
         if producer_result is None or producer_result.skill is None:
             raise ApplicationError(
@@ -1755,19 +2319,216 @@ def _context_facts(
                 "Context export не имеет producer skill.",
                 500,
             )
-        origin = _entity_fact_origin(fact, producer_result.skill)
-        context_items.append(
-            ContextFact(
-                handle=exported.context_handle,
-                semantic_type=exported.semantic_type,
-                value=cast(JsonValue, fact.value.model_dump(mode="json", by_alias=True)),
-                presentation=fact.value.presentation,
-                origin_turn_id=turn_id,
-                origin_fact_instance_id=fact.fact_instance_id,
-                origin=origin,
+        selection = selection_by_fact.get(fact.fact_instance_id)
+        retained = filter_by_fact.get(fact.fact_instance_id)
+        if selection is not None and isinstance(fact.value, EntityRef):
+            policy = _selected_policy(
+                producer_result.skill,
+                fact.fact_id,
+                selection.resolver.slot_key,
             )
+            if policy is None:
+                raise ApplicationError(
+                    "CONTEXT_EXPORT_POLICY_INVALID",
+                    "Selection proof не имеет matching portable policy.",
+                    500,
+                )
+            expires_at = _context_expiry(policy, producer_result.facts)
+            context_items.append(
+                ContextFact(
+                    handle=exported.context_handle,
+                    semantic_type=exported.semantic_type,
+                    value=cast(
+                        JsonValue,
+                        fact.value.model_dump(mode="json", by_alias=True),
+                    ),
+                    presentation=fact.value.presentation,
+                    origin_turn_id=turn_id,
+                    origin_fact_instance_id=fact.fact_instance_id,
+                    origin=_entity_fact_origin(fact, producer_result.skill),
+                    slot_key=selection.resolver.slot_key,
+                    value_type=FactValueType.ENTITY_REF,
+                    policy_mode="selected_only",
+                    cardinality=(
+                        "many"
+                        if member_counts[selection.proof_digest] > 1
+                        or selection.state == "selected_set"
+                        else "one"
+                    ),
+                    member_index=member_indexes[fact.fact_instance_id],
+                    value_digest=hashlib.sha256(
+                        canonicalize(fact.value.model_dump(mode="json", by_alias=True))
+                    ).hexdigest(),
+                    lifetime_mode=policy.lifetime.mode,
+                    expires_at=expires_at,
+                    proof_digest=selection.proof_digest,
+                )
+            )
+            continue
+        if retained is not None:
+            filter_policy = next(
+                (
+                    item
+                    for item in (
+                        producer_result.skill.output_contract.context_export_policy
+                        or ()
+                    )
+                    if isinstance(item, ConfirmedFilterContextPolicy)
+                    and item.fact_id == retained.fact_id
+                    and item.slot_key == retained.slot_key
+                ),
+                None,
+            )
+            if filter_policy is None:
+                raise ApplicationError(
+                    "CONTEXT_FILTER_CONTRACT_INVALID",
+                    "Filter proof не имеет matching portable policy.",
+                    500,
+                )
+            value = _json_value(fact.value)
+            context_items.append(
+                ContextFact(
+                    handle=exported.context_handle,
+                    semantic_type=exported.semantic_type,
+                    value=value,
+                    presentation=f"Сохраненный фильтр: {fact.semantic_type}",
+                    origin_turn_id=turn_id,
+                    origin_fact_instance_id=fact.fact_instance_id,
+                    origin=_scalar_fact_origin(fact, producer_result.skill),
+                    slot_key=retained.slot_key,
+                    value_type=fact.value_type,
+                    policy_mode="confirmed_filter",
+                    cardinality="one",
+                    member_index=0,
+                    value_digest=retained.canonical_value_digest,
+                    lifetime_mode=filter_policy.lifetime.mode,
+                    expires_at=_context_expiry(filter_policy, producer_result.facts),
+                    proof_digest=retained.proof_digest,
+                )
+            )
+            continue
+        raise ApplicationError(
+            "CONTEXT_EXPORT_NOT_SELECTED",
+            "Context export не подтвержден selection/filter proof.",
+            500,
         )
     return tuple(context_items)
+
+
+def _context_expiry(
+    policy: SelectedOnlyContextPolicy | ConfirmedFilterContextPolicy,
+    facts: tuple[Fact, ...],
+) -> datetime | None:
+    if policy.lifetime.mode != "until":
+        return None
+    matches = [
+        fact for fact in facts if fact.fact_id == policy.lifetime.expires_at_fact_id
+    ]
+    if len(matches) != 1:
+        raise ApplicationError(
+            "CONTEXT_EXPORT_POLICY_INVALID",
+            "until lifetime не имеет exact expiry fact.",
+            500,
+        )
+    return _parse_datetime(matches[0].value)
+
+
+def _scalar_fact_origin(fact: Fact, skill: Skill) -> ScalarFactOrigin:
+    definition = next(
+        (item for item in skill.output_contract.facts if item.fact_id == fact.fact_id),
+        None,
+    )
+    if (
+        definition is None
+        or definition.semantic_type != fact.semantic_type
+        or definition.value_type is not fact.value_type
+        or fact.source_locator.kind
+        not in {"query_column_binding", "operator_result", "system_value"}
+    ):
+        raise ApplicationError(
+            "CONTEXT_FILTER_CONTRACT_MISMATCH",
+            "Scalar fact не совпадает с producer contract.",
+            500,
+        )
+    return ScalarFactOrigin(
+        fact=fact,
+        skill_id=skill.skill_id,
+        skill_version=skill.version,
+        skill_digest=skill.integrity.digest,
+        source_kind=cast(
+            Literal["query_column_binding", "operator_result", "system_value"],
+            fact.source_locator.kind,
+        ),
+        source_reference=fact.source_locator.reference,
+        allowed_values=definition.allowed_values,
+    )
+
+
+def _pending_from_resolver(
+    plan: PlannerOutput,
+    context: ExecutionContext,
+    results: tuple[StepResult, ...],
+) -> PendingClarificationDraft | None:
+    ambiguous = next(
+        (
+            result
+            for result in results
+            if result.resolver_use is not None
+            and result.resolver_use.mode == "select_one"
+            and result.outcome is Outcome.CLARIFICATION_REQUIRED
+        ),
+        None,
+    )
+    if ambiguous is None or ambiguous.skill is None:
+        return None
+    use = cast(ResolverUseProof, ambiguous.resolver_use)
+    resolution = ambiguous.skill.output_contract.resolution
+    if resolution is None:
+        return None
+    identity_facts = _resolver_identity_facts(ambiguous)
+    has_more = ambiguous.has_more or ambiguous.truncated or len(identity_facts) > 5
+    choices: list[PendingChoice] = []
+    if not has_more:
+        by_row: dict[str, tuple[Fact, ...]] = {}
+        for fact in ambiguous.facts:
+            by_row[fact.row_id] = (*by_row.get(fact.row_id, ()), fact)
+        for index, identity in enumerate(identity_facts, 1):
+            row = by_row.get(identity.row_id, (identity,))
+            labels = [
+                str(fact.value)
+                for fact in row
+                if fact.fact_id in resolution.candidate_label_fact_ids
+                and fact.value not in {None, ""}
+            ]
+            label = " · ".join(labels) or cast(EntityRef, identity.value).presentation
+            choices.append(
+                PendingChoice(
+                    choice_id=f"c{index}",
+                    label_ru=label[:160],
+                    binding={
+                        "source": "step",
+                        "step_id": use.step_id,
+                        "fact_id": use.identity_fact_id,
+                    },
+                    facts=row,
+                )
+            )
+    return PendingClarificationDraft(
+        kind="resolver_choice",
+        question_ru=(
+            "Найдено несколько подходящих вариантов. Уточните критерий поиска."
+            if has_more
+            else "Выберите один из найденных вариантов."
+        ),
+        original_question=plan.interpretation.goal_ru,
+        plan_json=plan.model_dump_json(by_alias=True),
+        resolver_step_id=use.step_id,
+        choices=tuple(choices),
+        has_more_candidates=has_more,
+        catalog_snapshot_id=context.catalog.snapshot_id,
+        catalog_revision=context.catalog.revision,
+        database_marker=context.database_state_marker.digest,
+    )
 
 
 def _entity_fact_origin(fact: Fact, skill: Skill) -> EntityFactOrigin:
@@ -1884,7 +2645,12 @@ def _failed_step(
 def _evidence_error(
     code: str,
     stage: Literal[
-        "request", "planning", "coverage", "execution", "evidence_validation", "answering"
+        "request",
+        "planning",
+        "coverage",
+        "execution",
+        "evidence_validation",
+        "answering",
     ],
     dependency: Literal[
         "none", "deepseek", "mcp", "documentation_index", "skill_catalog", "database"
@@ -1963,6 +2729,22 @@ def _overall_outcome(
         }:
             return Outcome.SUCCESS_EMPTY
     return combine_step_outcomes(outcomes, has_facts=False)
+
+
+def _context_commit_allowed(
+    results: tuple[StepResult, ...], outcome: Outcome
+) -> bool:
+    if outcome is Outcome.CONTRACT_ERROR:
+        return False
+    technical_failures = {
+        Outcome.QUERY_ERROR,
+        Outcome.MCP_UNAVAILABLE,
+        Outcome.CONTRACT_ERROR,
+    }
+    return not any(
+        result.criticality == "required" and result.outcome in technical_failures
+        for result in results
+    )
 
 
 def _finalize_coverage_outcome(

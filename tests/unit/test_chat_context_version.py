@@ -15,6 +15,10 @@ class _ClarifyingPlanner:
     def __init__(self) -> None:
         self.requests: list[PlannerRequest] = []
 
+    def outbound_http_request(self, request: PlannerRequest) -> bytes | None:
+        del request
+        return None
+
     async def plan(self, request: PlannerRequest) -> PlannerOutput:
         self.requests.append(request)
         return PlannerOutput.model_validate(

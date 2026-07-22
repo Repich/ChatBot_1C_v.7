@@ -142,6 +142,36 @@
       "if": {
         "properties": {
           "schema_version": {
+            "const": "1.0.0"
+          }
+        },
+        "required": [
+          "schema_version"
+        ]
+      },
+      "then": {
+        "properties": {
+          "facts": {
+            "items": {
+              "not": {
+                "properties": {
+                  "value_type": {
+                    "const": "enum"
+                  }
+                },
+                "required": [
+                  "value_type"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "schema_version": {
             "const": "1.1.0"
           }
         },
@@ -448,6 +478,7 @@
             "date",
             "datetime",
             "period",
+            "enum",
             "entity_ref",
             "money",
             "quantity",

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from datetime import datetime
 from types import MappingProxyType
@@ -12,7 +13,22 @@ from pydantic import Field, JsonValue, model_validator
 
 from chatbot1c.contracts.digest import canonicalize
 from chatbot1c.domain.base import ClosedModel
-from chatbot1c.domain.evidence import Fact
+from chatbot1c.domain.evidence import (
+    EntityIdentity as EntityIdentity,
+)
+from chatbot1c.domain.evidence import (
+    Fact,
+)
+from chatbot1c.domain.evidence import (
+    FilterRetentionProof as FilterRetentionProof,
+)
+from chatbot1c.domain.evidence import (
+    ResolverUseProof as ResolverUseProof,
+)
+from chatbot1c.domain.evidence import (
+    SelectionProof as SelectionProof,
+)
+from chatbot1c.domain.plan import Binding, Interpretation
 from chatbot1c.domain.skill import (
     DataQueryOperation,
     FactValueType,
@@ -57,6 +73,7 @@ class SkillParameterCard(ClosedModel):
     constraints: SkillParameterConstraintsCard | None = None
     allowed_values: tuple[str, ...] | None = None
     default: JsonValue = None
+    context_slot_keys: tuple[str, ...] = ()
 
 
 class SkillUnitCard(ClosedModel):
@@ -83,6 +100,8 @@ class SkillOutputCard(ClosedModel):
     truncation_policy: Literal[
         "page_is_complete", "partial_until_all_pages", "error_if_truncated"
     ]
+    resolution: dict[str, JsonValue] | None = None
+    context_export_policy: tuple[dict[str, JsonValue], ...] = ()
 
 
 class SkillLimitsCard(ClosedModel):
@@ -137,6 +156,16 @@ class EntityFactOrigin(ClosedModel):
     accepted_mcp_types: Annotated[tuple[str, ...], Field(min_length=1)]
 
 
+class ScalarFactOrigin(ClosedModel):
+    fact: Fact
+    skill_id: str
+    skill_version: str
+    skill_digest: str
+    source_kind: Literal["query_column_binding", "operator_result", "system_value"]
+    source_reference: str
+    allowed_values: tuple[str, ...] | None = None
+
+
 class ContextFact(ClosedModel):
     handle: Annotated[str, Field(pattern=r"^ctx_[A-Za-z0-9_-]{8,100}$")]
     semantic_type: str
@@ -144,31 +173,183 @@ class ContextFact(ClosedModel):
     presentation: Annotated[str, Field(min_length=1, max_length=500)]
     origin_turn_id: UUID
     origin_fact_instance_id: UUID
-    origin: EntityFactOrigin
+    origin: EntityFactOrigin | ScalarFactOrigin
+    slot_key: str = "legacy.selection_unproved"
+    value_type: FactValueType = FactValueType.ENTITY_REF
+    policy_mode: Literal["selected_only", "confirmed_filter"] = "selected_only"
+    cardinality: Literal["one", "many"] = "one"
+    member_index: Annotated[int, Field(ge=0, le=99)] = 0
+    value_digest: str | None = None
+    lifetime_mode: Literal["session", "until", "turn"] = "session"
+    expires_at: datetime | None = None
+    proof_digest: str | None = None
 
     @model_validator(mode="after")
     def exact_origin(self) -> "ContextFact":
+        if (self.lifetime_mode == "until") != (self.expires_at is not None):
+            raise ValueError("until context lifetime requires exact expires_at")
+        if self.lifetime_mode == "turn" and self.expires_at is not None:
+            raise ValueError("turn context lifetime expires at commit, not before")
         fact = self.origin.fact
         if self.origin_fact_instance_id != fact.fact_instance_id:
             raise ValueError("context origin_fact_instance_id mismatch")
         if self.semantic_type != fact.semantic_type:
             raise ValueError("context semantic type differs from origin fact")
-        if (
-            fact.confirmation != "confirmed"
-            or fact.value_type is not FactValueType.ENTITY_REF
-            or not isinstance(fact.value, EntityRef)
-        ):
-            raise ValueError("context exports accept entity facts only")
-        expected = fact.value.model_dump(mode="json", by_alias=True)
-        if self.value != expected or self.presentation != fact.value.presentation:
+        if fact.confirmation != "confirmed" or self.value_type is not fact.value_type:
+            raise ValueError("context value type differs from confirmed origin fact")
+        expected: JsonValue
+        if self.policy_mode == "selected_only":
+            if not isinstance(self.origin, EntityFactOrigin):
+                raise ValueError("selected_only requires entity origin")
+            if fact.value_type is not FactValueType.ENTITY_REF or not isinstance(
+                fact.value, EntityRef
+            ):
+                raise ValueError("selected_only accepts entity facts only")
+            expected = fact.value.model_dump(mode="json", by_alias=True)
+            if self.presentation != fact.value.presentation:
+                raise ValueError("context presentation differs from entity fact")
+            if (
+                fact.source_locator.kind != "query_column_binding"
+                or fact.source_locator.reference != self.origin.column
+            ):
+                raise ValueError("context origin column mismatch")
+            if fact.value.object_type not in self.origin.accepted_mcp_types:
+                raise ValueError("context physical type is not proven by producer")
+        else:
+            if not isinstance(self.origin, ScalarFactOrigin):
+                raise ValueError("confirmed_filter requires scalar origin")
+            if fact.value_type not in {
+                FactValueType.DATETIME,
+                FactValueType.PERIOD,
+                FactValueType.ENUM,
+            } or isinstance(fact.value, EntityRef):
+                raise ValueError(
+                    "confirmed_filter accepts closed safe scalar facts only"
+                )
+            expected = fact.model_dump(mode="json")["value"]
+            if fact.source_locator.kind != self.origin.source_kind:
+                raise ValueError("scalar context source kind mismatch")
+            if fact.source_locator.reference != self.origin.source_reference:
+                raise ValueError("scalar context source reference mismatch")
+            if fact.value_type is FactValueType.ENUM and str(fact.value) not in (
+                self.origin.allowed_values or ()
+            ):
+                raise ValueError("scalar enum is outside producer domain")
+        if self.value != expected:
             raise ValueError("context value differs from origin fact")
-        if (
-            fact.source_locator.kind != "query_column_binding"
-            or fact.source_locator.reference != self.origin.column
+        digest = hashlib.sha256(canonicalize(self.value)).hexdigest()
+        if self.value_digest is not None and self.value_digest != digest:
+            raise ValueError("context canonical value digest mismatch")
+        return self
+
+
+class ClarificationChoicePublic(ClosedModel):
+    choice_id: str
+    label_ru: str
+
+
+class ClarificationPublic(ClosedModel):
+    handle: Annotated[str, Field(pattern=r"^clar_[A-Za-z0-9_-]{32}$")]
+    question_ru: str
+    choices: tuple[ClarificationChoicePublic, ...]
+    has_more_candidates: bool
+    expires_at: datetime
+
+
+class ClarificationResponse(ClosedModel):
+    handle: Annotated[str, Field(pattern=r"^clar_[A-Za-z0-9_-]{32}$")]
+    action: Literal["choose", "narrow", "cancel"]
+    choice_id: str | None = None
+
+    @model_validator(mode="after")
+    def exact_action_shape(self) -> "ClarificationResponse":
+        if (self.action == "choose") != (self.choice_id is not None):
+            raise ValueError("choice_id is required only for choose")
+        return self
+
+
+class ContextRemoveAction(ClosedModel):
+    kind: Literal["remove"]
+    handle: Annotated[str, Field(pattern=r"^ctx_[A-Za-z0-9_-]{32}$")]
+
+
+class PendingChoice(ClosedModel):
+    choice_id: str
+    label_ru: str
+    binding: dict[str, JsonValue]
+    facts: tuple[Fact, ...] = ()
+    target_step_id: str | None = None
+    target_parameter: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PendingClarificationDraft:
+    kind: Literal["resolver_choice", "interpretation_choice", "context_binding"]
+    question_ru: str
+    original_question: str
+    plan_json: str
+    resolver_step_id: str | None
+    choices: tuple[PendingChoice, ...]
+    has_more_candidates: bool
+    catalog_snapshot_id: UUID
+    catalog_revision: int
+    database_marker: str
+
+
+@dataclass(frozen=True, slots=True)
+class PendingClarification:
+    handle: str
+    session_id: UUID
+    origin_turn_id: UUID
+    kind: Literal["resolver_choice", "interpretation_choice", "context_binding"]
+    question_ru: str
+    original_question: str
+    plan_json: str
+    resolver_step_id: str | None
+    choices: tuple[PendingChoice, ...]
+    has_more_candidates: bool
+    context_version: int
+    catalog_snapshot_id: UUID
+    catalog_revision: int
+    database_marker: str
+    issued_at: datetime
+    expires_at: datetime
+    consumed_at: datetime | None = None
+    superseded_at: datetime | None = None
+    claim_turn_id: UUID | None = None
+    claimed_action: Literal["choose", "narrow", "cancel"] | None = None
+    claimed_choice_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ContextSlotSummary:
+    slot_key: str
+    handle: str
+    semantic_type: str
+    value_type: str
+    policy_mode: Literal["selected_only", "confirmed_filter"]
+    cardinality: Literal["one", "many"]
+    member_count: int
+    presentation: str
+    expires_at: datetime | None
+
+
+class InterpretationResumeContext(ClosedModel):
+    """Frozen server-side choice passed to one bounded resume planner call."""
+
+    original_question: Annotated[str, Field(min_length=1, max_length=8000)]
+    frozen_interpretation: Interpretation
+    selected_choice_id: Annotated[str, Field(pattern=r"^c[1-9][0-9]{0,2}$")]
+    selected_slot_id: Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{1,63}$")]
+    selected_binding: Binding
+
+    @model_validator(mode="after")
+    def selected_slot_exists(self) -> "InterpretationResumeContext":
+        if not any(
+            slot.slot_id == self.selected_slot_id
+            for slot in self.frozen_interpretation.slots
         ):
-            raise ValueError("context origin column mismatch")
-        if fact.value.object_type not in self.origin.accepted_mcp_types:
-            raise ValueError("context physical type is not proven by producer")
+            raise ValueError("selected interpretation slot is absent from frozen state")
         return self
 
 
@@ -183,6 +364,7 @@ class PlannerRequest(ClosedModel):
     confirmed_facts: tuple[ContextFact, ...]
     recent_user_messages: Annotated[tuple[str, ...], Field(max_length=8)]
     skill_cards: Annotated[tuple[SkillCard, ...], Field(max_length=16)]
+    interpretation_resume: InterpretationResumeContext | None = None
     deadline_at: datetime | None = Field(default=None, exclude=True)
 
 
@@ -215,9 +397,7 @@ class ExecuteQueryEnvelope(ClosedModel):
 
 
 class ContinuationRequest(ClosedModel):
-    continuation_handle: Annotated[
-        str, Field(pattern=r"^page_[A-Za-z0-9_-]{32}$")
-    ]
+    continuation_handle: Annotated[str, Field(pattern=r"^page_[A-Za-z0-9_-]{32}$")]
 
 
 class MaintenancePreviewRequest(ClosedModel):
@@ -234,9 +414,7 @@ class MaintenancePreviewRequest(ClosedModel):
 class MaintenanceConfirmRequest(ClosedModel):
     mode: Literal["confirm"]
     scopes: Annotated[tuple[MaintenanceScope, ...], Field(min_length=1, max_length=3)]
-    confirmation_token: Annotated[
-        str, Field(pattern=r"^clear_[A-Za-z0-9_-]{32}$")
-    ]
+    confirmation_token: Annotated[str, Field(pattern=r"^clear_[A-Za-z0-9_-]{32}$")]
 
     @model_validator(mode="after")
     def unique_scopes(self) -> "MaintenanceConfirmRequest":
@@ -323,7 +501,9 @@ class PinnedCatalog:
 
     def cards(self, *, limit: int = 16) -> tuple[SkillCard, ...]:
         cards: list[SkillCard] = []
-        for skill in sorted(self.skills.values(), key=lambda item: item.skill_id)[:limit]:
+        for skill in sorted(self.skills.values(), key=lambda item: item.skill_id)[
+            :limit
+        ]:
             cards.append(
                 SkillCard(
                     skill_id=skill.skill_id,
@@ -393,6 +573,7 @@ def _parameter_card(parameter: object) -> SkillParameterCard:
         constraints=constraints,
         allowed_values=parameter.allowed_values,
         default=parameter.default,
+        context_slot_keys=parameter.context_slot_keys or (),
     )
 
 
@@ -422,6 +603,15 @@ def _output_card(skill: Skill) -> SkillOutputCard:
         cardinality=skill.output_contract.cardinality,
         facts=facts,
         truncation_policy=skill.output_contract.sufficiency.truncation_policy,
+        resolution=(
+            None
+            if skill.output_contract.resolution is None
+            else skill.output_contract.resolution.model_dump(mode="json")
+        ),
+        context_export_policy=tuple(
+            item.model_dump(mode="json")
+            for item in (skill.output_contract.context_export_policy or ())
+        ),
     )
 
 

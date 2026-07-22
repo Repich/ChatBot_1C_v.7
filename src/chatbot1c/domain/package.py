@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import AwareDatetime, Field
+from pydantic import AwareDatetime, Field, model_validator
 
 from chatbot1c.domain.base import ClosedModel
 from chatbot1c.domain.skill import Skill, SourceReference
@@ -39,7 +39,7 @@ class PackageProvenance(ClosedModel):
 
 
 class SkillPackage(ClosedModel):
-    schema_version: Literal["1.0.0"]
+    schema_version: Literal["1.0.0", "1.1.0"]
     document_type: Literal["skill_package"]
     package_id: Annotated[
         str,
@@ -53,8 +53,14 @@ class SkillPackage(ClosedModel):
     display: PackageDisplay
     target: PackageTarget
     skills: Annotated[tuple[Skill, ...], Field(min_length=1, max_length=500)]
-    dependency_lock: Annotated[
-        tuple[DependencyLockEntry, ...], Field(max_length=1000)
-    ]
+    dependency_lock: Annotated[tuple[DependencyLockEntry, ...], Field(max_length=1000)]
     provenance: PackageProvenance
     integrity: Integrity
+
+    @model_validator(mode="after")
+    def embedded_versions_match_package(self) -> "SkillPackage":
+        if self.schema_version == "1.0.0" and any(
+            skill.schema_version != "1.0.0" for skill in self.skills
+        ):
+            raise ValueError("skill package 1.0.0 accepts only skill 1.0.0")
+        return self

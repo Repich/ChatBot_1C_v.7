@@ -11,9 +11,16 @@ import pytest
 
 from chatbot1c.adapters.deepseek import DeepSeekPlanner
 from chatbot1c.application.errors import ApplicationError
-from chatbot1c.application.models import PinnedCatalog, PlannerRequest
+from chatbot1c.application.models import (
+    ContextFact,
+    InterpretationResumeContext,
+    PinnedCatalog,
+    PlannerRequest,
+)
 from chatbot1c.contracts.harness import ContractHarness
 from chatbot1c.domain.package import SkillPackage
+from chatbot1c.domain.plan import Interpretation, LiteralBinding
+from chatbot1c.domain.skill import FactValueType
 
 ROOT = Path(__file__).resolve().parents[2]
 PACKAGE = ROOT / "skills/ut-11.5.27.56/ut.starter.slice-one.package.json"
@@ -152,4 +159,78 @@ def test_invalid_planner_json_gets_one_bounded_repair_then_fails() -> None:
         asyncio.run(planner.plan(_request()))
     assert rejected.value.code == "DEEPSEEK_STRUCTURED_OUTPUT_INVALID"
     assert calls == 2
+    asyncio.run(client.aclose())
+
+
+def test_resume_payload_is_typed_and_context_summary_contains_no_internal_uuid() -> None:
+    internal_turn_id = uuid4()
+    internal_entity_id = uuid4()
+    frozen = Interpretation.model_validate(
+        {
+            "intent_kind": "data",
+            "goal_ru": "Получить выбранный пользователем показатель.",
+            "required_facts": [
+                {
+                    "requirement_id": "r1",
+                    "semantic_type": "measure.synthetic",
+                    "value_type": "decimal",
+                    "cardinality": "aggregate",
+                    "required": True,
+                }
+            ],
+            "slots": [
+                {
+                    "slot_id": "metric",
+                    "semantic_type": "filter.synthetic.metric",
+                    "value_type": "enum",
+                    "status": "ambiguous",
+                    "mentions": ["показатель"],
+                }
+            ],
+        }
+    )
+    resume = InterpretationResumeContext(
+        original_question="Какой показатель показать?",
+        frozen_interpretation=frozen,
+        selected_choice_id="c1",
+        selected_slot_id="metric",
+        selected_binding=LiteralBinding(
+            source="literal", value_type="enum", value="amount"
+        ),
+    )
+    context = ContextFact.model_construct(
+        handle="ctx_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef",
+        slot_key="selection.synthetic",
+        semantic_type="synthetic.entity",
+        value_type=FactValueType.ENTITY_REF,
+        cardinality="one",
+        member_index=0,
+        presentation=f"Безопасное имя {internal_entity_id}",
+        origin_turn_id=internal_turn_id,
+    )
+    request = _request(resume.original_question).model_copy(
+        update={"confirmed_facts": (context,), "interpretation_resume": resume}
+    )
+    client = httpx.AsyncClient()
+    planner = _planner(client)
+    outbound = json.loads(planner.outbound_http_request(request))
+    planner_payload = json.loads(outbound["messages"][1]["content"])
+    summary = planner_payload["context"]["confirmed_facts"]
+    assert summary == [
+        {
+            "handle": context.handle,
+            "slot_key": context.slot_key,
+            "semantic_type": context.semantic_type,
+            "value_type": "entity_ref",
+            "cardinality": "one",
+            "member_count": 1,
+            "presentation": "Безопасное имя [идентификатор скрыт]",
+        }
+    ]
+    serialized_summary = json.dumps(summary, ensure_ascii=False)
+    assert str(internal_turn_id) not in serialized_summary
+    assert str(internal_entity_id) not in serialized_summary
+    assert "origin_turn_id" not in serialized_summary
+    assert planner_payload["question_ru"] == resume.original_question
+    assert planner_payload["interpretation_resume"] == resume.model_dump(mode="json")
     asyncio.run(client.aclose())

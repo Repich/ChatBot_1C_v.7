@@ -217,6 +217,47 @@ class ContextExport(ClosedModel):
     semantic_type: SemanticType
 
 
+class EntityIdentity(ClosedModel):
+    semantic_type: SemanticType
+    physical_type: Annotated[str, Field(min_length=3, max_length=240)]
+    unique_id: UUID
+
+
+class ResolverUseProof(ClosedModel):
+    step_id: Annotated[str, Field(pattern=r"^s[1-9][0-9]{0,2}$")]
+    skill_id: Annotated[str, Field(pattern=r"^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)+$")]
+    mode: Literal["select_one", "select_set", "display_only"]
+    identity_fact_id: FactId
+    slot_key: Annotated[
+        str, Field(pattern=r"^[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+$")
+    ]
+    consumer_parameters: Annotated[tuple[str, ...], Field(max_length=50)]
+
+
+class SelectionProof(ClosedModel):
+    resolver: ResolverUseProof
+    state: Literal["selected_one", "selected_set"]
+    fact_instance_ids: Annotated[tuple[UUID, ...], Field(min_length=1, max_length=100)]
+    identities: Annotated[
+        tuple[EntityIdentity, ...], Field(min_length=1, max_length=100)
+    ]
+    complete: Literal[True]
+    proof_digest: Sha256
+
+
+class FilterRetentionProof(ClosedModel):
+    step_id: Annotated[str, Field(pattern=r"^s[1-9][0-9]{0,2}$")]
+    fact_instance_id: UUID
+    fact_id: FactId
+    slot_key: Annotated[
+        str, Field(pattern=r"^[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+$")
+    ]
+    semantic_type: SemanticType
+    value_type: Literal["datetime", "period", "enum"]
+    canonical_value_digest: Sha256
+    proof_digest: Sha256
+
+
 class EvidenceError(ClosedModel):
     error_id: UUID
     code: Annotated[str, Field(pattern=r"^[A-Z][A-Z0-9_]+$")]
@@ -262,7 +303,17 @@ class EvidenceBundle(ClosedModel):
     @model_validator(mode="before")
     @classmethod
     def require_explicit_v11_fields(cls, value: object) -> object:
-        if not isinstance(value, Mapping) or value.get("schema_version") != "1.1.0":
+        if not isinstance(value, Mapping):
+            return value
+        if value.get("schema_version") == "1.0.0":
+            facts = value.get("facts")
+            if isinstance(facts, (list, tuple)) and any(
+                isinstance(fact, Mapping) and fact.get("value_type") == "enum"
+                for fact in facts
+            ):
+                raise ValueError("evidence 1.0.0 cannot contain enum facts")
+            return value
+        if value.get("schema_version") != "1.1.0":
             return value
         steps = value.get("steps")
         if isinstance(steps, (list, tuple)) and any(

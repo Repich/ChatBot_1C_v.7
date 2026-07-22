@@ -40,9 +40,10 @@ red tests до реализации slice 3:
 
 `PlannerRequest` внутри core и защищенный diagnostic trace вправе содержать
 полный `ContextFact` для воспроизводимости. Это не baseline defect.
-`DeepSeekPlanner._messages` уже строит внешний context из `handle`,
-`semantic_type`, `presentation`, `origin_turn_id`. Slice 3 закрепляет это
-black-box gate: фактический outbound HTTP body не содержит `value`, `_objectRef`,
+`DeepSeekPlanner._messages` строит внешний context из opaque `handle`,
+`slot_key`, `semantic_type`, `value_type`, cardinality/member count и
+безопасного `presentation`. Slice 3 закрепляет это black-box gate: фактический
+outbound HTTP body не содержит `origin_turn_id`, `value`, `_objectRef`,
 `ТипОбъекта`, `УникальныйИдентификатор` или server-side member UUID.
 
 ## 3. Термины и неизменяемые инварианты
@@ -358,9 +359,9 @@ value, not a parser result or current system value.
 For `time.moment`, storage records both canonical JSON bytes and digest. Q091,
 Q092 and Q093 fixture transports must observe byte-for-byte identical parameter
 bytes. In particular Q092/Q093 cannot refresh from turn time, `now()`, a new MCP
-response or LLM output. Planner sees only handle, semantic type, `value_type`,
-safe presentation and origin turn; raw scalar value remains server-side exactly
-like an entity ref.
+response or LLM output. Planner sees only handle, slot key, semantic type,
+`value_type`, cardinality/member count и safe presentation; origin turn и raw
+scalar value остаются server-side exactly like an entity ref.
 
 ## 7. Context slot ledger
 

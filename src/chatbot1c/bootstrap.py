@@ -42,6 +42,10 @@ class Application:
 class UnavailablePlanner(PlannerPort):
     """Fail closed when the server was intentionally started without an API key."""
 
+    def outbound_http_request(self, request: PlannerRequest) -> bytes | None:
+        del request
+        return None
+
     async def plan(self, request: PlannerRequest) -> PlannerOutput:
         del request
         raise ApplicationError(

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from importlib.resources import files
 from pathlib import Path
@@ -16,12 +16,14 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pydantic import Field
+from pydantic import Field, model_validator
 from starlette.responses import StreamingResponse
 
 from chatbot1c import __version__
 from chatbot1c.application.errors import ApplicationError
 from chatbot1c.application.models import (
+    ClarificationResponse,
+    ContextRemoveAction,
     ContinuationRequest,
     MaintenanceClearRequest,
     MaintenanceConfirmRequest,
@@ -42,9 +44,28 @@ class SessionCreate(ClosedModel):
 
 
 class MessageCreate(ClosedModel):
-    text: Annotated[str, Field(min_length=1, max_length=8000)]
+    text: Annotated[str, Field(max_length=8000)] | None = None
     client_message_id: Annotated[str, Field(min_length=8, max_length=120)] | None = None
     expected_context_version: Annotated[int, Field(ge=1)] | None = None
+    clarification_response: ClarificationResponse | None = None
+    context_action: ContextRemoveAction | None = None
+
+    @model_validator(mode="after")
+    def exclusive_action(self) -> "MessageCreate":
+        text = (self.text or "").strip()
+        if self.context_action is not None:
+            if text or self.clarification_response is not None:
+                raise ValueError(
+                    "context_action cannot be combined with text/clarification"
+                )
+            return self
+        if self.clarification_response is not None:
+            if self.clarification_response.action == "narrow" and not text:
+                raise ValueError("narrow clarification requires text")
+            return self
+        if not text:
+            raise ValueError("ordinary message requires text")
+        return self
 
 
 def create_app(
@@ -168,7 +189,10 @@ def create_app(
                     else "unavailable"
                 )
             },
-            "mcp": {"status": "configured", "tool_allowlist": ["execute_query", "get_metadata"]},
+            "mcp": {
+                "status": "configured",
+                "tool_allowlist": ["execute_query", "get_metadata"],
+            },
         }
 
     @app.post(f"{API_PREFIX}/sessions", status_code=201)
@@ -215,6 +239,7 @@ def create_app(
                 )
         result = _session_summary(session)
         result["messages"] = messages
+        result["context"] = _context_public(composed, session_id)
         return result
 
     @app.delete(f"{API_PREFIX}/sessions/{{session_id}}", status_code=204)
@@ -230,16 +255,38 @@ def create_app(
         session = composed.store.get_session(session_id)
         if session is None:
             raise ApplicationError("SESSION_NOT_FOUND", "Диалог не найден.", 404)
-        turn, created = composed.chat.submit_message(
-            session_id=session_id,
-            text=body.text,
-            client_message_id=body.client_message_id or str(uuid4()),
-            expected_context_version=(
-                body.expected_context_version
-                if body.expected_context_version is not None
-                else session.context_version
-            ),
+        expected_version = (
+            body.expected_context_version
+            if body.expected_context_version is not None
+            else session.context_version
         )
+        if body.context_action is not None:
+            updated, audit_turn = composed.store.remove_context(
+                session_id, body.context_action.handle, expected_version
+            )
+            return {
+                "status": "accepted",
+                "turn_id": str(audit_turn.turn_id),
+                "trace_id": str(audit_turn.trace_id),
+                "context_version": updated.context_version,
+                "context": _context_public(composed, session_id),
+            }
+        if body.clarification_response is not None:
+            turn = composed.chat.submit_clarification(
+                session_id=session_id,
+                text=body.text or "",
+                client_message_id=body.client_message_id or str(uuid4()),
+                expected_context_version=expected_version,
+                response=body.clarification_response,
+            )
+            created = True
+        else:
+            turn, created = composed.chat.submit_message(
+                session_id=session_id,
+                text=body.text or "",
+                client_message_id=body.client_message_id or str(uuid4()),
+                expected_context_version=expected_version,
+            )
         if created:
             task = asyncio.create_task(composed.chat.process_turn(turn.turn_id))
             task_set.add(task)
@@ -250,9 +297,7 @@ def create_app(
             "status": turn.status,
         }
 
-    @app.post(
-        f"{API_PREFIX}/sessions/{{session_id}}/continuations", status_code=202
-    )
+    @app.post(f"{API_PREFIX}/sessions/{{session_id}}/continuations", status_code=202)
     async def continue_list(
         session_id: UUID, body: ContinuationRequest
     ) -> JSONResponse:
@@ -288,18 +333,29 @@ def create_app(
         if turn is None:
             raise ApplicationError("TURN_NOT_FOUND", "Ход диалога не найден.", 404)
         evidence = _evidence(turn.evidence_json)
+        artifacts = composed.store.artifacts(turn.trace_id)
+        resolver_artifact = _json_artifact(artifacts, "resolver-proofs.json")
+        mutation_artifact = _json_artifact(artifacts, "context-mutations.json")
         return {
             "turn_id": str(turn.turn_id),
             "trace_id": str(turn.trace_id),
             "status": turn.status,
             "outcome": turn.outcome,
             "plan": None if turn.plan_json is None else json.loads(turn.plan_json),
-            "coverage": None if evidence is None else evidence.coverage.model_dump(mode="json"),
+            "coverage": None
+            if evidence is None
+            else evidence.coverage.model_dump(mode="json"),
             "skills": (
                 []
                 if evidence is None
-                else [skill.model_dump(mode="json") for skill in evidence.catalog_snapshot.skills]
+                else [
+                    skill.model_dump(mode="json")
+                    for skill in evidence.catalog_snapshot.skills
+                ]
             ),
+            "resolver_proofs": _resolver_proofs_public(resolver_artifact),
+            "filter_retention_proofs": _filter_proofs_public(resolver_artifact),
+            "context_mutations": mutation_artifact.get("exports", []),
         }
 
     @app.get(f"{API_PREFIX}/turns/{{turn_id}}/events")
@@ -329,7 +385,11 @@ def create_app(
                     if event.event_name in {"request.completed", "request.failed"}:
                         return
                 turn = composed.store.get_turn(turn_id)
-                if turn is None or turn.status in {"completed", "failed", "interrupted"}:
+                if turn is None or turn.status in {
+                    "completed",
+                    "failed",
+                    "interrupted",
+                }:
                     return
                 if await request.is_disconnected():
                     return
@@ -399,7 +459,9 @@ def create_app(
         return JSONResponse(status_code=200, content=_import_public(result))
 
     @app.get(f"{API_PREFIX}/skill-packages/export")
-    async def export_package(skill_id: list[str] | None = Query(default=None)) -> Response:
+    async def export_package(
+        skill_id: list[str] | None = Query(default=None),
+    ) -> Response:
         payload = composed.catalog_service.export_package(skill_id)
         return Response(
             payload,
@@ -455,9 +517,7 @@ def create_app(
                     "scopes": list(result.scopes),
                     "counts": dict(result.counts),
                     "confirmation_token": result.confirmation_token,
-                    "expires_at": result.expires_at.isoformat().replace(
-                        "+00:00", "Z"
-                    ),
+                    "expires_at": result.expires_at.isoformat().replace("+00:00", "Z"),
                 },
             )
         except ApplicationError as error:
@@ -480,9 +540,7 @@ def _session_summary(session: object) -> dict[str, object]:
     }
 
 
-def _turn_public(
-    turn: object, runtime: RuntimeApplication
-) -> dict[str, object]:
+def _turn_public(turn: object, runtime: RuntimeApplication) -> dict[str, object]:
     from chatbot1c.application.models import TurnRecord
 
     if not isinstance(turn, TurnRecord):
@@ -525,9 +583,7 @@ def _turn_public(
             if stored is not None:
                 continuation = {
                     "handle": stored.handle,
-                    "expires_at": stored.expires_at.isoformat().replace(
-                        "+00:00", "Z"
-                    ),
+                    "expires_at": stored.expires_at.isoformat().replace("+00:00", "Z"),
                 }
         result["pagination"] = {
             "shown": page.shown,
@@ -535,7 +591,57 @@ def _turn_public(
             "has_more": page.has_more,
             "continuation": continuation,
         }
+    pending = runtime.store.active_pending(turn.session_id)
+    if pending is not None and pending.origin_turn_id == turn.turn_id:
+        result["clarification"] = {
+            "handle": pending.handle,
+            "question_ru": pending.question_ru,
+            "choices": [
+                {"choice_id": item.choice_id, "label_ru": item.label_ru}
+                for item in pending.choices
+            ],
+            "has_more_candidates": pending.has_more_candidates,
+            "expires_at": pending.expires_at.isoformat().replace("+00:00", "Z"),
+        }
     return result
+
+
+def _context_public(runtime: RuntimeApplication, session_id: UUID) -> dict[str, object]:
+    pending = runtime.store.active_pending(session_id)
+    return {
+        "slots": [
+            {
+                "slot_key": item.slot_key,
+                "handle": item.handle,
+                "semantic_type": item.semantic_type,
+                "value_type": item.value_type,
+                "policy_mode": item.policy_mode,
+                "cardinality": item.cardinality,
+                "member_count": item.member_count,
+                "presentation": item.presentation,
+                "expires_at": (
+                    None
+                    if item.expires_at is None
+                    else item.expires_at.isoformat().replace("+00:00", "Z")
+                ),
+            }
+            for item in runtime.store.context_slots(session_id)
+        ],
+        "pending_clarification": (
+            None
+            if pending is None
+            else {
+                "handle": pending.handle,
+                "question_ru": pending.question_ru,
+                "choices": [
+                    {"choice_id": item.choice_id, "label_ru": item.label_ru}
+                    for item in pending.choices
+                ],
+                "has_more_candidates": pending.has_more_candidates,
+                "expires_at": pending.expires_at.isoformat().replace("+00:00", "Z"),
+            }
+        ),
+    }
 
 
 def _evidence(value: str | None) -> EvidenceBundle | None:
@@ -596,6 +702,60 @@ def _skill_public(skill: Skill) -> dict[str, object]:
     }
 
 
+def _json_artifact(artifacts: Mapping[str, bytes], name: str) -> dict[str, object]:
+    payload = artifacts.get(name)
+    if payload is None:
+        return {}
+    value = json.loads(payload)
+    return value if isinstance(value, dict) else {}
+
+
+def _resolver_proofs_public(artifact: Mapping[str, object]) -> list[dict[str, object]]:
+    raw = artifact.get("selection_proofs")
+    if not isinstance(raw, list):
+        return []
+    result: list[dict[str, object]] = []
+    for item in raw:
+        if not isinstance(item, dict) or not isinstance(item.get("resolver"), dict):
+            continue
+        resolver = item["resolver"]
+        identities = item.get("identities")
+        result.append(
+            {
+                "step_id": resolver.get("step_id"),
+                "skill_id": resolver.get("skill_id"),
+                "mode": resolver.get("mode"),
+                "identity_fact_id": resolver.get("identity_fact_id"),
+                "slot_key": resolver.get("slot_key"),
+                "state": item.get("state"),
+                "member_count": len(identities) if isinstance(identities, list) else 0,
+                "complete": item.get("complete"),
+                "proof_digest": item.get("proof_digest"),
+            }
+        )
+    return result
+
+
+def _filter_proofs_public(artifact: Mapping[str, object]) -> list[dict[str, object]]:
+    raw = artifact.get("filter_retention_proofs")
+    if not isinstance(raw, list):
+        return []
+    allowed = {
+        "step_id",
+        "fact_id",
+        "slot_key",
+        "semantic_type",
+        "value_type",
+        "canonical_value_digest",
+        "proof_digest",
+    }
+    return [
+        {key: value for key, value in item.items() if key in allowed}
+        for item in raw
+        if isinstance(item, dict)
+    ]
+
+
 def _import_public(result: object) -> dict[str, object]:
     from chatbot1c.application.models import ImportResult
 
@@ -634,9 +794,7 @@ def _issues(issues: tuple[ContractIssue, ...]) -> list[dict[str, object]]:
 def _application_issues(error: ApplicationError) -> list[dict[str, object]]:
     if error.issues:
         return _issues(error.issues)
-    return [
-        {"code": error.code, "json_pointer": "", "message_ru": error.message_ru}
-    ]
+    return [{"code": error.code, "json_pointer": "", "message_ru": error.message_ru}]
 
 
 def _public_rejection(error: ApplicationError) -> JSONResponse:
