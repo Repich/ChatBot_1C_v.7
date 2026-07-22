@@ -386,7 +386,7 @@ schema, нового protocol или entity-specific application code. Synthetic
 1.1 package уже доказывает импорт и выполнение неизвестной core semantic/physical
 пары в двух чистых data directories.
 
-До production gate необходимы следующие generic hardening changes текущего core:
+При review baseline были выявлены следующие generic hardening changes core:
 
 1. Package semantic validation должна отклонять второй embedded skill с тем же
    `skill_id` независимо от version. Сейчас проверяется только уникальность пары
@@ -398,14 +398,13 @@ schema, нового protocol или entity-specific application code. Synthetic
    переводит clarification в `narrow` без choices. Это generic state-machine rule,
    не справочник конкретных сущностей.
 4. Вывод resolver mode для final required entity должен соответствовать
-   нормативному `one|zero_or_one`. Текущая реализация явно распознает только
-   `one`; до исправления final-only `zero_or_one` нельзя использовать как
-   production selection path.
+   нормативному `one|zero_or_one`; оба варианта используют один строгий
+   `select_one` protocol.
 
-Пункты 1-2 реализуются semantic validation существующих деклараций, пункт 3
-использует существующие `candidate_label_fact_ids`, пункт 4 исправляет общий
-protocol. Ни один из них не требует semantic-to-physical map или новой версии
-wire schema.
+Пункты 1-2 закрыты generic semantic validation в commit `b2a16fc`; пункты 3-4
+закрыты generic resolver state-machine в commit `de8d7d4`. Их тесты остаются
+обязательными release gates. Ни один из них не потребовал semantic-to-physical
+map или новой версии wire schema.
 
 Единый import с mixed create/replace текущим CatalogService не поддержан. Для
 принятой двухшаговой upgrade topology это не blocker. Он становится generic core

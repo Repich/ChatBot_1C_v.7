@@ -161,10 +161,11 @@ label fact, wrong slot, entity under scalar policy, missing keyset proof, broken
 skill digest, duplicate `skill_id` across versions and broken package lock.
 Atomicity is asserted after every mutation.
 
-Четыре catalog production-hardening проверки являются заведомыми red gates
-текущего core и не могут быть отмечены `xfail`: duplicate `skill_id` независимо от
-version (`3B-CAT-011`), safe scalar label facts (`3B-CAT-005`), collision
-rendered label tuple (`3B-AMB-011`) и final `zero_or_one` mode
+Четыре catalog production-hardening проверки закрыты generic core commits
+`b2a16fc` и `de8d7d4`, но остаются обязательными regression gates и не могут
+быть отмечены `xfail`: duplicate `skill_id` независимо от version
+(`3B-CAT-011`), safe scalar label facts (`3B-CAT-005`), collision rendered label
+tuple (`3B-AMB-011`) и final `zero_or_one` mode
 (`3B-CAT-014`/`3B-SM-013`).
 Отдельный обязательный red gate для не реализованного executor path `rank`
 определен разделом 9; он также не может быть `xfail` или skip.
