@@ -19,6 +19,7 @@ from chatbot1c.application.execution import (
     _context_exports,
     _derive_resolver_use_proofs,
     _entity_fact_origin,
+    _pending_from_resolver,
     _selection_proofs,
 )
 from chatbot1c.application.models import (
@@ -379,6 +380,34 @@ def test_resolver_use_mode_is_derived_from_dag_not_words_or_planner_flag() -> No
     assert proof.consumer_parameters == ("s2.warehouse",)
 
 
+def test_required_final_zero_or_one_entity_uses_select_one_protocol() -> None:
+    resolver = _resolver()
+    plan = _plan(resolver, None)
+    payload = plan.model_dump(mode="json", by_alias=True)
+    payload["interpretation"]["required_facts"] = [
+        {
+            "requirement_id": "r1",
+            "semantic_type": "catalog.warehouse",
+            "value_type": "entity_ref",
+            "cardinality": "zero_or_one",
+            "required": True,
+            "unit_dimension": None,
+            "time_semantics": "none",
+        }
+    ]
+    plan = PlannerOutput.model_validate(payload)
+    catalog = PinnedCatalog.create(
+        plan.catalog_snapshot_id,
+        plan.catalog_revision,
+        {resolver.skill_id: resolver},
+    )
+
+    proof = _derive_resolver_use_proofs(plan, catalog)["s1"]
+
+    assert proof.mode == "select_one"
+    assert proof.consumer_parameters == ("final:r1",)
+
+
 def test_mixed_resolver_use_modes_have_stable_public_error_code() -> None:
     resolver = _resolver()
     consumer_document = _legacy("ut115.sales.shipment-list").model_dump(
@@ -461,6 +490,60 @@ def test_candidates_are_not_selection_and_selected_set_shares_one_random_handle(
     assert len(exports) == 2
     assert len({item.context_handle for item in exports}) == 1
     assert exports[0].context_handle.startswith("ctx_")
+
+
+def test_indistinguishable_resolver_labels_require_narrowing_without_choices() -> None:
+    resolver = _resolver()
+    plan = _plan(resolver, None)
+    payload = plan.model_dump(mode="json", by_alias=True)
+    payload["interpretation"]["required_facts"] = [
+        {
+            "requirement_id": "r1",
+            "semantic_type": "catalog.warehouse",
+            "value_type": "entity_ref",
+            "cardinality": "one",
+            "required": True,
+            "unit_dimension": None,
+            "time_semantics": "none",
+        }
+    ]
+    plan = PlannerOutput.model_validate(payload)
+    catalog = PinnedCatalog.create(
+        plan.catalog_snapshot_id,
+        plan.catalog_revision,
+        {resolver.skill_id: resolver},
+    )
+    use = _derive_resolver_use_proofs(plan, catalog)["s1"]
+    first = _ref(1).model_copy(update={"presentation": "Одинаковая подпись"})
+    second = _ref(2).model_copy(update={"presentation": "Одинаковая подпись"})
+    facts = _resolver_facts((first, second))
+    now = datetime.now(UTC)
+    ambiguous = _apply_resolver_state(
+        StepResult(
+            "s1",
+            resolver,
+            Outcome.SUCCESS_WITH_ROWS,
+            facts,
+            (),
+            2,
+            now,
+            now,
+            1,
+            collection_scope="complete_set",
+        ),
+        use,
+    )
+
+    pending = _pending_from_resolver(
+        plan,
+        _execution_context(plan, catalog),
+        (ambiguous,),
+    )
+
+    assert pending is not None
+    assert pending.has_more_candidates is True
+    assert pending.choices == ()
+    assert "Уточните критерий" in pending.question_ru
 
 
 def test_truncated_single_identity_requires_clarification_without_continuation() -> None:

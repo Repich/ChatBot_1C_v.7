@@ -1979,7 +1979,7 @@ def _derive_resolver_use_proofs(
                 if (
                     requirement.required
                     and requirement.semantic_type == identity_definition.semantic_type
-                    and requirement.cardinality == "one"
+                    and requirement.cardinality in {"one", "zero_or_one"}
                 ):
                     uses.append(("select_one", f"final:{requirement.requirement_id}"))
         modes = {mode for mode, _ in uses}
@@ -2486,13 +2486,14 @@ def _pending_from_resolver(
     if resolution is None:
         return None
     identity_facts = _resolver_identity_facts(ambiguous)
-    has_more = ambiguous.has_more or ambiguous.truncated or len(identity_facts) > 5
+    must_narrow = ambiguous.has_more or ambiguous.truncated or len(identity_facts) > 5
     choices: list[PendingChoice] = []
-    if not has_more:
+    if not must_narrow:
         by_row: dict[str, tuple[Fact, ...]] = {}
         for fact in ambiguous.facts:
             by_row[fact.row_id] = (*by_row.get(fact.row_id, ()), fact)
-        for index, identity in enumerate(identity_facts, 1):
+        prepared: list[tuple[tuple[Fact, ...], str]] = []
+        for identity in identity_facts:
             row = by_row.get(identity.row_id, (identity,))
             labels = [
                 str(fact.value)
@@ -2500,31 +2501,38 @@ def _pending_from_resolver(
                 if fact.fact_id in resolution.candidate_label_fact_ids
                 and fact.value not in {None, ""}
             ]
-            label = " · ".join(labels) or cast(EntityRef, identity.value).presentation
-            choices.append(
-                PendingChoice(
-                    choice_id=f"c{index}",
-                    label_ru=label[:160],
-                    binding={
-                        "source": "step",
-                        "step_id": use.step_id,
-                        "fact_id": use.identity_fact_id,
-                    },
-                    facts=row,
+            label = (
+                " · ".join(labels) or cast(EntityRef, identity.value).presentation
+            )[:160]
+            prepared.append((row, label))
+        rendered_labels = [label for _, label in prepared]
+        must_narrow = len(set(rendered_labels)) != len(rendered_labels)
+        if not must_narrow:
+            for index, (row, label) in enumerate(prepared, 1):
+                choices.append(
+                    PendingChoice(
+                        choice_id=f"c{index}",
+                        label_ru=label,
+                        binding={
+                            "source": "step",
+                            "step_id": use.step_id,
+                            "fact_id": use.identity_fact_id,
+                        },
+                        facts=row,
+                    )
                 )
-            )
     return PendingClarificationDraft(
         kind="resolver_choice",
         question_ru=(
             "Найдено несколько подходящих вариантов. Уточните критерий поиска."
-            if has_more
+            if must_narrow
             else "Выберите один из найденных вариантов."
         ),
         original_question=plan.interpretation.goal_ru,
         plan_json=plan.model_dump_json(by_alias=True),
         resolver_step_id=use.step_id,
         choices=tuple(choices),
-        has_more_candidates=has_more,
+        has_more_candidates=must_narrow,
         catalog_snapshot_id=context.catalog.snapshot_id,
         catalog_revision=context.catalog.revision,
         database_marker=context.database_state_marker.digest,
