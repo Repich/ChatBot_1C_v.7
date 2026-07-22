@@ -1,0 +1,670 @@
+{
+  "schema_version": "1.1.0",
+  "document_type": "skill",
+  "skill_id": "ut115.ref.customer.details",
+  "version": "1.0.1",
+  "display": {
+    "name_ru": "Реквизиты: клиент",
+    "purpose_ru": "Возвращает exact реквизиты выбранной semantic role без subtype inference.",
+    "limitations_ru": [
+      "Не выбирает первый результат без доказанного SelectionProof."
+    ]
+  },
+  "provides": {
+    "capability_ids": [
+      "CAP-COMMON-DETAIL",
+      "CAP-REF-PARTNER-DETAILS"
+    ],
+    "fact_types": [
+      "party.contact.kind",
+      "party.contact.presentation",
+      "party.contractor",
+      "party.contractor.inn",
+      "party.contractor.kpp",
+      "party.contractor.name",
+      "party.customer",
+      "party.partner.code",
+      "party.partner.name"
+    ]
+  },
+  "compatibility": {
+    "configuration_id": "УправлениеТорговлейБазовая",
+    "configuration_name": "1С:Управление торговлей (базовая), редакция 11",
+    "release_range": {
+      "minimum": "11.5.27.56",
+      "maximum": "11.5.27.56",
+      "include_minimum": true,
+      "include_maximum": true
+    },
+    "compatibility_modes": [
+      "8.3.27"
+    ],
+    "required_metadata": [
+      {
+        "object_name": "Справочник.Партнеры",
+        "attributes": [
+          "Ссылка",
+          "Код",
+          "Наименование",
+          "КонтактнаяИнформация.Вид",
+          "КонтактнаяИнформация.Представление"
+        ]
+      },
+      {
+        "object_name": "Справочник.Контрагенты",
+        "attributes": [
+          "Ссылка",
+          "Наименование",
+          "Партнер",
+          "ИНН",
+          "КПП"
+        ]
+      }
+    ],
+    "metadata_snapshot_sha256": "08d055d5d06328e351e3c3c72df0c196cdaae0505d3b30d8b9aa2efcc7ebe251"
+  },
+  "selection": {
+    "intent_kinds": [
+      "data"
+    ],
+    "aliases_ru": [
+      "покажи реквизиты этого клиента"
+    ],
+    "anti_examples_ru": [
+      "изменить или удалить найденный объект"
+    ],
+    "required_context_fact_types": [
+      "party.customer"
+    ]
+  },
+  "parameters": [
+    {
+      "name": "customer",
+      "title_ru": "Клиент",
+      "description_ru": "Проверенный параметр: клиент.",
+      "value_type": "entity_ref",
+      "required": true,
+      "allowed_sources": [
+        "previous_step",
+        "session_context"
+      ],
+      "normalization": "object_ref",
+      "context_slot_keys": [
+        "selection.customer"
+      ],
+      "semantic_type": "party.customer",
+      "entity_types": [
+        "party.customer"
+      ]
+    }
+  ],
+  "operation": {
+    "kind": "data_query",
+    "tool": "execute_query",
+    "read_only": true,
+    "query_template": {
+      "template_id": "ut115.ref.customer.details.v1",
+      "language": "1c-query",
+      "text": "ВЫБРАТЬ\n  Партнеры.Ссылка КАК Клиент,\n  Партнеры.Наименование КАК Наименование,\n  Партнеры.Код КАК Код,\n  ЕСТЬNULL(Контрагенты.Ссылка, ЗНАЧЕНИЕ(Справочник.Контрагенты.ПустаяСсылка)) КАК Контрагент,\n  Контрагенты.Наименование КАК КонтрагентНаименование,\n  Контрагенты.ИНН КАК ИНН,\n  Контрагенты.КПП КАК КПП,\n  ЕСТЬNULL(ПРЕДСТАВЛЕНИЕ(Контакты.Вид), \"\") КАК ВидКонтакта,\n  ЕСТЬNULL(Контакты.Представление, \"\") КАК Контакт\nИЗ Справочник.Партнеры КАК Партнеры\n  ЛЕВОЕ СОЕДИНЕНИЕ Справочник.Контрагенты КАК Контрагенты\n  ПО Контрагенты.Партнер = Партнеры.Ссылка\n  ЛЕВОЕ СОЕДИНЕНИЕ Справочник.Партнеры.КонтактнаяИнформация КАК Контакты\n  ПО Контакты.Ссылка = Партнеры.Ссылка\nГДЕ Партнеры.Ссылка = &Клиент",
+      "execution": {
+        "kind": "single_select",
+        "statement_count": 1,
+        "final_statement": 1
+      },
+      "invariant_constants": [
+        {
+          "kind": "metadata_constant",
+          "statement": 1,
+          "constant_kind": "empty_reference",
+          "symbol": "Справочник.Контрагенты.ПустаяСсылка",
+          "role": "computed_value",
+          "occurrences": 1
+        },
+        {
+          "kind": "empty_literal",
+          "statement": 1,
+          "value": "",
+          "role": "null_substitution",
+          "occurrences": 2
+        }
+      ],
+      "include_schema": true,
+      "mcp_limit": {
+        "default": 20,
+        "maximum": 1000
+      }
+    },
+    "parameter_bindings": [
+      {
+        "parameter": "customer",
+        "query_parameter": "Клиент",
+        "encoding": "object_ref"
+      }
+    ],
+    "column_bindings": [
+      {
+        "column": "Клиент",
+        "fact_id": "customer.ref",
+        "accepted_mcp_types": [
+          "СправочникСсылка.Партнеры"
+        ],
+        "converter": "object_ref"
+      },
+      {
+        "column": "Наименование",
+        "fact_id": "partner.name",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "Код",
+        "fact_id": "partner.code",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "Контрагент",
+        "fact_id": "contractor.ref",
+        "accepted_mcp_types": [
+          "СправочникСсылка.Контрагенты"
+        ],
+        "converter": "object_ref"
+      },
+      {
+        "column": "КонтрагентНаименование",
+        "fact_id": "contractor.name",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "ИНН",
+        "fact_id": "contractor.inn",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "КПП",
+        "fact_id": "contractor.kpp",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "ВидКонтакта",
+        "fact_id": "contact.kind",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "Контакт",
+        "fact_id": "contact.presentation",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      }
+    ],
+    "pagination": {
+      "strategy": "none"
+    }
+  },
+  "output_contract": {
+    "contract_id": "ut115.ref.customer.details.v1",
+    "contract_version": "1.1.0",
+    "cardinality": "many",
+    "facts": [
+      {
+        "fact_id": "customer.ref",
+        "semantic_type": "party.customer",
+        "value_type": "entity_ref",
+        "role": "entity",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Клиент",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "partner.name",
+        "semantic_type": "party.partner.name",
+        "value_type": "string",
+        "role": "attribute",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Наименование",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "partner.code",
+        "semantic_type": "party.partner.code",
+        "value_type": "string",
+        "role": "attribute",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Код",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "contractor.ref",
+        "semantic_type": "party.contractor",
+        "value_type": "entity_ref",
+        "role": "dimension",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Контрагент",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "contractor.name",
+        "semantic_type": "party.contractor.name",
+        "value_type": "string",
+        "role": "attribute",
+        "required": false,
+        "nullable": true,
+        "title_ru": "Контрагент",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "contractor.inn",
+        "semantic_type": "party.contractor.inn",
+        "value_type": "string",
+        "role": "attribute",
+        "required": false,
+        "nullable": true,
+        "title_ru": "ИНН",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "contractor.kpp",
+        "semantic_type": "party.contractor.kpp",
+        "value_type": "string",
+        "role": "attribute",
+        "required": false,
+        "nullable": true,
+        "title_ru": "КПП",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "contact.kind",
+        "semantic_type": "party.contact.kind",
+        "value_type": "string",
+        "role": "dimension",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Вид контакта",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "contact.presentation",
+        "semantic_type": "party.contact.presentation",
+        "value_type": "string",
+        "role": "dimension",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Контакт",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      }
+    ],
+    "sufficiency": {
+      "required_fact_sets": [
+        [
+          "customer.ref",
+          "partner.name",
+          "partner.code"
+        ]
+      ],
+      "empty_semantics": "confirmed_not_found",
+      "zero_fact_ids": [],
+      "truncation_policy": "page_is_complete"
+    },
+    "renderer": {
+      "kind": "table",
+      "primary_fact_ids": [
+        "partner.code"
+      ],
+      "column_fact_ids": [
+        "customer.ref",
+        "partner.name",
+        "partner.code",
+        "contractor.ref",
+        "contractor.name",
+        "contractor.inn",
+        "contractor.kpp",
+        "contact.kind",
+        "contact.presentation"
+      ]
+    },
+    "row_identity_fact_ids": [
+      "customer.ref",
+      "contractor.ref",
+      "contact.kind",
+      "contact.presentation"
+    ],
+    "resolution": null,
+    "context_export_policy": []
+  },
+  "result_constraints": [
+    {
+      "kind": "fact_equals_parameter",
+      "fact_id": "customer.ref",
+      "parameter": "customer"
+    }
+  ],
+  "dependencies": {
+    "runtime_contracts": [
+      {
+        "contract": "skill-runtime",
+        "version_range": "^1.0.0"
+      },
+      {
+        "contract": "mcp.execute_query",
+        "version_range": "^1.0.0"
+      }
+    ],
+    "skills": [
+      {
+        "skill_id": "ut115.ref.customer.resolve-name-contains",
+        "version_range": "=1.0.1",
+        "required_fact_types": [
+          "party.customer"
+        ]
+      }
+    ]
+  },
+  "examples": [
+    {
+      "question_ru": "покажи реквизиты этого клиента?",
+      "applicability": "applicable",
+      "reason_ru": "Вопрос соответствует точному typed-контракту навыка."
+    },
+    {
+      "question_ru": "изменить найденный объект?",
+      "applicability": "not_applicable",
+      "reason_ru": "Навык выполняет только чтение данных."
+    }
+  ],
+  "tests": [
+    {
+      "test_id": "ut.customer.details.positive",
+      "case_kind": "positive",
+      "bindings": [
+        {
+          "parameter": "customer",
+          "value": {
+            "_objectRef": true,
+            "УникальныйИдентификатор": "00000000-0000-4000-8000-000000001300",
+            "ТипОбъекта": "СправочникСсылка.Партнеры",
+            "Представление": "Клиент"
+          }
+        }
+      ],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": true,
+          "data": [
+            {
+              "Клиент": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000001300",
+                "ТипОбъекта": "СправочникСсылка.Партнеры",
+                "Представление": "Клиент"
+              },
+              "Наименование": "Клиент",
+              "Код": "P-1",
+              "Контрагент": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000001301",
+                "ТипОбъекта": "СправочникСсылка.Контрагенты",
+                "Представление": "ООО Клиент"
+              },
+              "КонтрагентНаименование": "ООО Клиент",
+              "ИНН": "7701000000",
+              "КПП": "770101001",
+              "ВидКонтакта": "Юридический адрес",
+              "Контакт": "Москва"
+            }
+          ],
+          "schema": {
+            "columns": [
+              {
+                "name": "Клиент",
+                "types": [
+                  "СправочникСсылка.Партнеры"
+                ]
+              },
+              {
+                "name": "Наименование",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Код",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Контрагент",
+                "types": [
+                  "СправочникСсылка.Контрагенты"
+                ]
+              },
+              {
+                "name": "КонтрагентНаименование",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "ИНН",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "КПП",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "ВидКонтакта",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Контакт",
+                "types": [
+                  "Строка"
+                ]
+              }
+            ]
+          },
+          "count": 1
+        }
+      },
+      "expected": {
+        "status": "success_with_rows",
+        "required_fact_ids": [
+          "customer.ref",
+          "partner.name",
+          "partner.code"
+        ]
+      }
+    },
+    {
+      "test_id": "ut.customer.details.empty",
+      "case_kind": "negative",
+      "bindings": [
+        {
+          "parameter": "customer",
+          "value": {
+            "_objectRef": true,
+            "УникальныйИдентификатор": "00000000-0000-4000-8000-000000001300",
+            "ТипОбъекта": "СправочникСсылка.Партнеры",
+            "Представление": "Клиент"
+          }
+        }
+      ],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": true,
+          "data": [],
+          "schema": {
+            "columns": [
+              {
+                "name": "Клиент",
+                "types": [
+                  "СправочникСсылка.Партнеры"
+                ]
+              },
+              {
+                "name": "Наименование",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Код",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Контрагент",
+                "types": [
+                  "СправочникСсылка.Контрагенты"
+                ]
+              },
+              {
+                "name": "КонтрагентНаименование",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "ИНН",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "КПП",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "ВидКонтакта",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Контакт",
+                "types": [
+                  "Строка"
+                ]
+              }
+            ]
+          },
+          "count": 0
+        }
+      },
+      "expected": {
+        "status": "success_empty",
+        "required_fact_ids": []
+      }
+    },
+    {
+      "test_id": "ut.customer.details.malformed",
+      "case_kind": "negative",
+      "bindings": [
+        {
+          "parameter": "customer",
+          "value": {
+            "_objectRef": true,
+            "УникальныйИдентификатор": "00000000-0000-4000-8000-000000001300",
+            "ТипОбъекта": "СправочникСсылка.Партнеры",
+            "Представление": "Клиент"
+          }
+        }
+      ],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": false,
+          "error": "MCP_SCHEMA_MISMATCH: incompatible identity column type"
+        }
+      },
+      "expected": {
+        "status": "query_error",
+        "required_fact_ids": [],
+        "error_code": "MCP_SCHEMA_MISMATCH"
+      }
+    }
+  ],
+  "provenance": {
+    "author": "ChatBot 1C slice 3B",
+    "created_at": "2026-07-22T00:00:00Z",
+    "reviewed_by": "Metadata-proven resolver catalog",
+    "reviewed_at": "2026-07-22T00:00:00Z",
+    "source_configuration": {
+      "configuration_id": "УправлениеТорговлейБазовая",
+      "release": "11.5.27.56",
+      "compatibility_mode": "8.3.27",
+      "metadata_snapshot_sha256": "08d055d5d06328e351e3c3c72df0c196cdaae0505d3b30d8b9aa2efcc7ebe251"
+    },
+    "source_references": [
+      {
+        "kind": "configuration_metadata",
+        "uri": "ut-config://11.5.27.56/Catalogs/Партнеры.xml",
+        "sha256": "e1621de92d0e0c2fcbf6779c6060b06e57c6eb39a4333bbf7a5fe4ae55f471a2"
+      },
+      {
+        "kind": "configuration_metadata",
+        "uri": "ut-config://11.5.27.56/Catalogs/Контрагенты.xml",
+        "sha256": "af02379381c5c0514831b8a9282f1733716d4c714411c678b100d27e3f6e450e"
+      }
+    ],
+    "change_note_ru": "Production typed resolver/consumer contract без object-specific core logic."
+  },
+  "integrity": {
+    "algorithm": "sha256",
+    "canonicalization": "RFC8785",
+    "scope": "document_without_integrity",
+    "digest": "d8dc98aca2805040bc34a0624f9c5856c61f8524e21ade946426a59e425f0590"
+  }
+}

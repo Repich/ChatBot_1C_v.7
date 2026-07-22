@@ -1,0 +1,632 @@
+{
+  "schema_version": "1.1.0",
+  "document_type": "skill",
+  "skill_id": "ut115.ref.warehouse.resolve",
+  "version": "1.1.1",
+  "display": {
+    "name_ru": "Поиск склада",
+    "purpose_ru": "Разрешает exact сущность поиск склада по проверенным metadata.",
+    "limitations_ru": [
+      "Не выбирает первый результат без доказанного SelectionProof."
+    ]
+  },
+  "provides": {
+    "capability_ids": [
+      "CAP-REF-WAREHOUSE-FIND"
+    ],
+    "fact_types": [
+      "catalog.department",
+      "catalog.department.name",
+      "catalog.warehouse",
+      "catalog.warehouse.is_retail",
+      "catalog.warehouse.name",
+      "catalog.warehouse.type"
+    ]
+  },
+  "compatibility": {
+    "configuration_id": "УправлениеТорговлейБазовая",
+    "configuration_name": "1С:Управление торговлей (базовая), редакция 11",
+    "release_range": {
+      "minimum": "11.5.27.56",
+      "maximum": "11.5.27.56",
+      "include_minimum": true,
+      "include_maximum": true
+    },
+    "compatibility_modes": [
+      "8.3.27"
+    ],
+    "required_metadata": [
+      {
+        "object_name": "Справочник.Склады",
+        "attributes": [
+          "Ссылка",
+          "Наименование",
+          "ТипСклада",
+          "Подразделение"
+        ]
+      }
+    ],
+    "metadata_snapshot_sha256": "f5ed42f385cbd1b4efeffa216178e20f7266e84a08bd10e3b1995874af01d768"
+  },
+  "selection": {
+    "intent_kinds": [
+      "data"
+    ],
+    "aliases_ru": [
+      "найди склад"
+    ],
+    "anti_examples_ru": [
+      "изменить или удалить найденный объект"
+    ],
+    "required_context_fact_types": []
+  },
+  "parameters": [
+    {
+      "name": "name_fragment",
+      "title_ru": "Наименование склада",
+      "description_ru": "Проверенный параметр: наименование склада.",
+      "value_type": "normalized_text",
+      "required": false,
+      "allowed_sources": [
+        "user_slot",
+        "system"
+      ],
+      "normalization": "like_contains",
+      "context_slot_keys": [],
+      "default": ""
+    },
+    {
+      "name": "retail_only",
+      "title_ru": "Только розничные",
+      "description_ru": "Проверенный параметр: только розничные.",
+      "value_type": "boolean",
+      "required": false,
+      "allowed_sources": [
+        "user_slot",
+        "system"
+      ],
+      "normalization": "none",
+      "context_slot_keys": [],
+      "default": false
+    },
+    {
+      "name": "department",
+      "title_ru": "Подразделение",
+      "description_ru": "Проверенный параметр: подразделение.",
+      "value_type": "entity_ref",
+      "required": false,
+      "allowed_sources": [
+        "previous_step"
+      ],
+      "normalization": "object_ref",
+      "context_slot_keys": [],
+      "semantic_type": "catalog.department",
+      "entity_types": [
+        "catalog.department"
+      ]
+    }
+  ],
+  "operation": {
+    "kind": "data_query",
+    "tool": "execute_query",
+    "read_only": true,
+    "query_template": {
+      "template_id": "ut115.ref.warehouse.resolve.v1",
+      "language": "1c-query",
+      "text": "ВЫБРАТЬ\n  Склады.Ссылка КАК Склад,\n  Склады.Наименование КАК Наименование,\n  ПРЕДСТАВЛЕНИЕ(Склады.ТипСклада) КАК ТипСклада,\n  Склады.ТипСклада = ЗНАЧЕНИЕ(Перечисление.ТипыСкладов.РозничныйМагазин) КАК ЭтоРозничный,\n  Склады.Подразделение КАК Подразделение,\n  ПРЕДСТАВЛЕНИЕ(Склады.Подразделение) КАК ПодразделениеНаименование\nИЗ Справочник.Склады КАК Склады\nГДЕ Склады.Наименование ПОДОБНО &Шаблон СПЕЦСИМВОЛ \"~\"\n  И (НЕ &ТолькоРозничные ИЛИ Склады.ТипСклада = ЗНАЧЕНИЕ(Перечисление.ТипыСкладов.РозничныйМагазин))\n  И (&Подразделение ЕСТЬ NULL ИЛИ Склады.Подразделение = &Подразделение)\n  И (НЕ &ЕстьКурсор\n    ИЛИ Склады.Наименование > &ИмяКурсора\n    ИЛИ (Склады.Наименование = &ИмяКурсора\n      И Склады.Ссылка > &СсылкаКурсора))\nУПОРЯДОЧИТЬ ПО Склады.Наименование, Склады.Ссылка",
+      "execution": {
+        "kind": "single_select",
+        "statement_count": 1,
+        "final_statement": 1
+      },
+      "invariant_constants": [
+        {
+          "kind": "metadata_constant",
+          "statement": 1,
+          "constant_kind": "enum_member",
+          "symbol": "Перечисление.ТипыСкладов.РозничныйМагазин",
+          "role": "state_filter",
+          "occurrences": 2
+        },
+        {
+          "kind": "null_literal",
+          "statement": 1,
+          "value": "NULL",
+          "role": "absence_filter",
+          "occurrences": 1
+        }
+      ],
+      "include_schema": true,
+      "mcp_limit": {
+        "default": 20,
+        "maximum": 1000
+      }
+    },
+    "parameter_bindings": [
+      {
+        "parameter": "name_fragment",
+        "query_parameter": "Шаблон",
+        "encoding": "like_contains"
+      },
+      {
+        "parameter": "retail_only",
+        "query_parameter": "ТолькоРозничные",
+        "encoding": "boolean"
+      },
+      {
+        "parameter": "department",
+        "query_parameter": "Подразделение",
+        "encoding": "object_ref"
+      }
+    ],
+    "column_bindings": [
+      {
+        "column": "Склад",
+        "fact_id": "warehouse.ref",
+        "accepted_mcp_types": [
+          "СправочникСсылка.Склады"
+        ],
+        "converter": "object_ref"
+      },
+      {
+        "column": "Наименование",
+        "fact_id": "warehouse.name",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "ТипСклада",
+        "fact_id": "warehouse.type",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "ЭтоРозничный",
+        "fact_id": "warehouse.is_retail",
+        "accepted_mcp_types": [
+          "Булево"
+        ],
+        "converter": "boolean"
+      },
+      {
+        "column": "Подразделение",
+        "fact_id": "warehouse.department",
+        "accepted_mcp_types": [
+          "СправочникСсылка.СтруктураПредприятия"
+        ],
+        "converter": "object_ref"
+      },
+      {
+        "column": "ПодразделениеНаименование",
+        "fact_id": "warehouse.department_name",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      }
+    ],
+    "pagination": {
+      "strategy": "keyset",
+      "has_cursor_query_parameter": "ЕстьКурсор",
+      "sort": [
+        {
+          "fact_id": "warehouse.name",
+          "direction": "asc"
+        },
+        {
+          "fact_id": "warehouse.ref",
+          "direction": "asc"
+        }
+      ],
+      "cursor_bindings": [
+        {
+          "fact_id": "warehouse.name",
+          "query_parameter": "ИмяКурсора",
+          "encoding": "string"
+        },
+        {
+          "fact_id": "warehouse.ref",
+          "query_parameter": "СсылкаКурсора",
+          "encoding": "object_ref"
+        }
+      ]
+    }
+  },
+  "output_contract": {
+    "contract_id": "ut115.ref.warehouse.resolve.v1",
+    "contract_version": "1.1.0",
+    "cardinality": "many",
+    "facts": [
+      {
+        "fact_id": "warehouse.ref",
+        "semantic_type": "catalog.warehouse",
+        "value_type": "entity_ref",
+        "role": "entity",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Поиск склада",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "warehouse.name",
+        "semantic_type": "catalog.warehouse.name",
+        "value_type": "string",
+        "role": "attribute",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Наименование",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "warehouse.type",
+        "semantic_type": "catalog.warehouse.type",
+        "value_type": "string",
+        "role": "attribute",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Тип склада",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "warehouse.is_retail",
+        "semantic_type": "catalog.warehouse.is_retail",
+        "value_type": "boolean",
+        "role": "attribute",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Розничный склад",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "warehouse.department",
+        "semantic_type": "catalog.department",
+        "value_type": "entity_ref",
+        "role": "dimension",
+        "required": false,
+        "nullable": true,
+        "title_ru": "Подразделение",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "warehouse.department_name",
+        "semantic_type": "catalog.department.name",
+        "value_type": "string",
+        "role": "dimension",
+        "required": false,
+        "nullable": true,
+        "title_ru": "Подразделение",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      }
+    ],
+    "sufficiency": {
+      "required_fact_sets": [
+        [
+          "warehouse.ref",
+          "warehouse.name",
+          "warehouse.type",
+          "warehouse.is_retail"
+        ]
+      ],
+      "empty_semantics": "confirmed_not_found",
+      "zero_fact_ids": [],
+      "truncation_policy": "page_is_complete"
+    },
+    "renderer": {
+      "kind": "table",
+      "primary_fact_ids": [
+        "warehouse.is_retail"
+      ],
+      "column_fact_ids": [
+        "warehouse.ref",
+        "warehouse.name",
+        "warehouse.type",
+        "warehouse.is_retail",
+        "warehouse.department",
+        "warehouse.department_name"
+      ]
+    },
+    "row_identity_fact_ids": [
+      "warehouse.ref"
+    ],
+    "resolution": {
+      "protocol": "typed_entity_resolver_v1",
+      "identity_fact_id": "warehouse.ref",
+      "candidate_label_fact_ids": [
+        "warehouse.name",
+        "warehouse.type"
+      ],
+      "role_proof_fact_ids": [],
+      "default_slot_key": "selection.warehouse"
+    },
+    "context_export_policy": [
+      {
+        "fact_id": "warehouse.ref",
+        "slot_key": "selection.warehouse",
+        "mode": "selected_only",
+        "lifetime": {
+          "mode": "session"
+        },
+        "max_members": 100
+      }
+    ]
+  },
+  "result_constraints": [],
+  "dependencies": {
+    "runtime_contracts": [
+      {
+        "contract": "skill-runtime",
+        "version_range": "^1.0.0"
+      },
+      {
+        "contract": "mcp.execute_query",
+        "version_range": "^1.0.0"
+      }
+    ],
+    "skills": []
+  },
+  "examples": [
+    {
+      "question_ru": "найди склад?",
+      "applicability": "applicable",
+      "reason_ru": "Вопрос соответствует точному typed-контракту навыка."
+    },
+    {
+      "question_ru": "изменить найденный объект?",
+      "applicability": "not_applicable",
+      "reason_ru": "Навык выполняет только чтение данных."
+    }
+  ],
+  "tests": [
+    {
+      "test_id": "ut.ref.warehouse.resolve.positive",
+      "case_kind": "positive",
+      "bindings": [
+        {
+          "parameter": "name_fragment",
+          "value": ""
+        },
+        {
+          "parameter": "retail_only",
+          "value": true
+        },
+        {
+          "parameter": "department",
+          "value": {
+            "_objectRef": true,
+            "УникальныйИдентификатор": "00000000-0000-4000-8000-000000001402",
+            "ТипОбъекта": "СправочникСсылка.СтруктураПредприятия",
+            "Представление": "Розница"
+          }
+        }
+      ],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": true,
+          "data": [
+            {
+              "Склад": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000001401",
+                "ТипОбъекта": "СправочникСсылка.Склады",
+                "Представление": "Розничный склад"
+              },
+              "Наименование": "Розничный склад",
+              "ТипСклада": "Розничный магазин",
+              "ЭтоРозничный": true,
+              "Подразделение": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000001402",
+                "ТипОбъекта": "СправочникСсылка.СтруктураПредприятия",
+                "Представление": "Розница"
+              },
+              "ПодразделениеНаименование": "Розница"
+            }
+          ],
+          "schema": {
+            "columns": [
+              {
+                "name": "Склад",
+                "types": [
+                  "СправочникСсылка.Склады"
+                ]
+              },
+              {
+                "name": "Наименование",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "ТипСклада",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "ЭтоРозничный",
+                "types": [
+                  "Булево"
+                ]
+              },
+              {
+                "name": "Подразделение",
+                "types": [
+                  "СправочникСсылка.СтруктураПредприятия"
+                ]
+              },
+              {
+                "name": "ПодразделениеНаименование",
+                "types": [
+                  "Строка"
+                ]
+              }
+            ]
+          },
+          "count": 1
+        }
+      },
+      "expected": {
+        "status": "success_with_rows",
+        "required_fact_ids": [
+          "warehouse.ref",
+          "warehouse.name",
+          "warehouse.type",
+          "warehouse.is_retail"
+        ]
+      }
+    },
+    {
+      "test_id": "ut.ref.warehouse.resolve.empty",
+      "case_kind": "negative",
+      "bindings": [
+        {
+          "parameter": "name_fragment",
+          "value": ""
+        },
+        {
+          "parameter": "retail_only",
+          "value": true
+        },
+        {
+          "parameter": "department",
+          "value": {
+            "_objectRef": true,
+            "УникальныйИдентификатор": "00000000-0000-4000-8000-000000001402",
+            "ТипОбъекта": "СправочникСсылка.СтруктураПредприятия",
+            "Представление": "Розница"
+          }
+        }
+      ],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": true,
+          "data": [],
+          "schema": {
+            "columns": [
+              {
+                "name": "Склад",
+                "types": [
+                  "СправочникСсылка.Склады"
+                ]
+              },
+              {
+                "name": "Наименование",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "ТипСклада",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "ЭтоРозничный",
+                "types": [
+                  "Булево"
+                ]
+              },
+              {
+                "name": "Подразделение",
+                "types": [
+                  "СправочникСсылка.СтруктураПредприятия"
+                ]
+              },
+              {
+                "name": "ПодразделениеНаименование",
+                "types": [
+                  "Строка"
+                ]
+              }
+            ]
+          },
+          "count": 0
+        }
+      },
+      "expected": {
+        "status": "success_empty",
+        "required_fact_ids": []
+      }
+    },
+    {
+      "test_id": "ut.ref.warehouse.resolve.malformed",
+      "case_kind": "negative",
+      "bindings": [
+        {
+          "parameter": "name_fragment",
+          "value": ""
+        },
+        {
+          "parameter": "retail_only",
+          "value": true
+        },
+        {
+          "parameter": "department",
+          "value": {
+            "_objectRef": true,
+            "УникальныйИдентификатор": "00000000-0000-4000-8000-000000001402",
+            "ТипОбъекта": "СправочникСсылка.СтруктураПредприятия",
+            "Представление": "Розница"
+          }
+        }
+      ],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": false,
+          "error": "MCP_SCHEMA_MISMATCH: incompatible identity column type"
+        }
+      },
+      "expected": {
+        "status": "query_error",
+        "required_fact_ids": [],
+        "error_code": "MCP_SCHEMA_MISMATCH"
+      }
+    }
+  ],
+  "provenance": {
+    "author": "ChatBot 1C slice 3B",
+    "created_at": "2026-07-22T00:00:00Z",
+    "reviewed_by": "Metadata-proven resolver catalog",
+    "reviewed_at": "2026-07-22T00:00:00Z",
+    "source_configuration": {
+      "configuration_id": "УправлениеТорговлейБазовая",
+      "release": "11.5.27.56",
+      "compatibility_mode": "8.3.27",
+      "metadata_snapshot_sha256": "f5ed42f385cbd1b4efeffa216178e20f7266e84a08bd10e3b1995874af01d768"
+    },
+    "source_references": [
+      {
+        "kind": "configuration_metadata",
+        "uri": "ut-config://11.5.27.56/Catalogs/Склады.xml",
+        "sha256": "f5ed42f385cbd1b4efeffa216178e20f7266e84a08bd10e3b1995874af01d768"
+      }
+    ],
+    "change_note_ru": "Production typed resolver/consumer contract без object-specific core logic."
+  },
+  "integrity": {
+    "algorithm": "sha256",
+    "canonicalization": "RFC8785",
+    "scope": "document_without_integrity",
+    "digest": "e943c776caa417b7a44abfc03509ce44c48d8f4ab457d9fe8dc006799f63630a"
+  }
+}

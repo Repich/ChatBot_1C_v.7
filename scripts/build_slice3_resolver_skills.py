@@ -10,6 +10,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import re
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, cast
@@ -21,6 +22,7 @@ from chatbot1c.domain.skill import Skill
 ROOT = Path(__file__).resolve().parents[1]
 TARGET = ROOT / "skills" / "ut-11.5.27.56"
 PROFILE = ROOT / "src/chatbot1c/resources/ut-11.5.27.56-profile.json"
+SKILL_CATALOG = ROOT / "docs/requirements/skill_catalog.md"
 CREATED = "2026-07-22T00:00:00Z"
 CONFIG_ID = "УправлениеТорговлейБазовая"
 CONFIG_NAME = "1С:Управление торговлей (базовая), редакция 11"
@@ -109,6 +111,174 @@ DOCUMENT_PRODUCER_IDS = {
     "ut115.logistics.transfer-list",
 }
 
+# Product capability IDs are an explicit contract, not a derivative of skill_id.
+# Selector-only support skills advertise the atomic common entity operation; they
+# do not claim a downstream detail, list, status, or composition capability.
+CAPABILITY_IDS_BY_SKILL_ID = {
+    "ut115.logistics.transfer-list": (
+        "CAP-COMMON-ENTITY",
+        "CAP-MOVE-DIRECTION",
+        "CAP-MOVE-LIST",
+    ),
+    "ut115.purchase.order-list": ("CAP-PURCHASE-ORDER-LIST",),
+    "ut115.purchase.receipt-list": ("CAP-PURCHASE-RECEIPT-LIST",),
+    "ut115.ref.cash-desk.enterprise.resolve": ("CAP-REF-CASH-DESK-FIND",),
+    "ut115.ref.cash-desk.pos.resolve": ("CAP-REF-CASH-DESK-FIND",),
+    "ut115.ref.customer.details": (
+        "CAP-COMMON-DETAIL",
+        "CAP-REF-PARTNER-DETAILS",
+    ),
+    "ut115.ref.customer.resolve-code-exact": (
+        "CAP-COMMON-ENTITY",
+        "CAP-REF-PARTNER-FIND",
+    ),
+    "ut115.ref.customer.resolve-inn-exact": (
+        "CAP-COMMON-ENTITY",
+        "CAP-REF-PARTNER-FIND",
+    ),
+    "ut115.ref.customer.resolve-name-contains": (
+        "CAP-COMMON-ENTITY",
+        "CAP-REF-PARTNER-FIND",
+    ),
+    "ut115.ref.inventory-purpose.resolve-name-contains": ("CAP-COMMON-ENTITY",),
+    "ut115.ref.item-characteristic.resolve-name-contains": (
+        "CAP-COMMON-ENTITY",
+    ),
+    "ut115.ref.item-group.resolve-code-exact": ("CAP-COMMON-ENTITY",),
+    "ut115.ref.item-group.resolve-name-contains": ("CAP-COMMON-ENTITY",),
+    "ut115.ref.item-series.resolve-name-contains": ("CAP-COMMON-ENTITY",),
+    "ut115.ref.item-series.resolve-number-exact": ("CAP-COMMON-ENTITY",),
+    "ut115.ref.item.details": (
+        "CAP-COMMON-DETAIL",
+        "CAP-REF-ITEM-DETAILS",
+    ),
+    "ut115.ref.item.group-members": ("CAP-REF-ITEM-GROUP",),
+    "ut115.ref.item.resolve-article-exact": ("CAP-REF-ITEM-FIND",),
+    "ut115.ref.item.resolve-barcode-exact": ("CAP-REF-ITEM-FIND",),
+    "ut115.ref.item.resolve-code-exact": ("CAP-REF-ITEM-FIND",),
+    "ut115.ref.item.resolve-name-contains": ("CAP-REF-ITEM-FIND",),
+    "ut115.ref.organization.resolve-inn-exact": ("CAP-COMMON-ENTITY",),
+    "ut115.ref.organization.resolve-kpp-exact": ("CAP-COMMON-ENTITY",),
+    "ut115.ref.organization.resolve-name-contains": ("CAP-COMMON-ENTITY",),
+    "ut115.ref.partner.details": (
+        "CAP-COMMON-DETAIL",
+        "CAP-REF-PARTNER-DETAILS",
+    ),
+    "ut115.ref.partner.resolve-code-exact": (
+        "CAP-COMMON-ENTITY",
+        "CAP-REF-PARTNER-FIND",
+    ),
+    "ut115.ref.partner.resolve-inn-exact": (
+        "CAP-COMMON-ENTITY",
+        "CAP-REF-PARTNER-FIND",
+    ),
+    "ut115.ref.partner.resolve-name-contains": (
+        "CAP-COMMON-ENTITY",
+        "CAP-REF-PARTNER-FIND",
+    ),
+    "ut115.ref.price-type.resolve": ("CAP-REF-PRICE-TYPE-FIND",),
+    "ut115.ref.supplier.details": (
+        "CAP-COMMON-DETAIL",
+        "CAP-REF-PARTNER-DETAILS",
+    ),
+    "ut115.ref.supplier.resolve-code-exact": (
+        "CAP-COMMON-ENTITY",
+        "CAP-REF-PARTNER-FIND",
+    ),
+    "ut115.ref.supplier.resolve-inn-exact": (
+        "CAP-COMMON-ENTITY",
+        "CAP-REF-PARTNER-FIND",
+    ),
+    "ut115.ref.supplier.resolve-name-contains": (
+        "CAP-COMMON-ENTITY",
+        "CAP-REF-PARTNER-FIND",
+    ),
+    "ut115.ref.warehouse.resolve": ("CAP-REF-WAREHOUSE-FIND",),
+    "ut115.sales.order-header-status-by-number": (
+        "CAP-COMMON-ENTITY",
+        "CAP-SALES-ORDER-HEADER",
+        "CAP-SALES-ORDER-STATUS",
+    ),
+    "ut115.sales.shipment-list": ("CAP-SALES-SHIPMENT-LIST",),
+}
+
+PREVIOUS_SKILL_VERSIONS = {
+    "ut115.logistics.transfer-list": "1.0.0",
+    "ut115.purchase.order-list": "1.0.0",
+    "ut115.purchase.receipt-list": "1.0.0",
+    "ut115.ref.cash-desk.enterprise.resolve": "1.0.0",
+    "ut115.ref.cash-desk.pos.resolve": "1.0.0",
+    "ut115.ref.customer.details": "1.0.0",
+    "ut115.ref.customer.resolve-code-exact": "1.0.0",
+    "ut115.ref.customer.resolve-inn-exact": "1.0.0",
+    "ut115.ref.customer.resolve-name-contains": "1.0.0",
+    "ut115.ref.inventory-purpose.resolve-name-contains": "1.0.0",
+    "ut115.ref.item-characteristic.resolve-name-contains": "1.0.0",
+    "ut115.ref.item-group.resolve-code-exact": "1.0.0",
+    "ut115.ref.item-group.resolve-name-contains": "1.0.0",
+    "ut115.ref.item-series.resolve-name-contains": "1.0.0",
+    "ut115.ref.item-series.resolve-number-exact": "1.0.0",
+    "ut115.ref.item.details": "1.0.0",
+    "ut115.ref.item.group-members": "1.0.0",
+    "ut115.ref.item.resolve-article-exact": "1.2.0",
+    "ut115.ref.item.resolve-barcode-exact": "1.2.0",
+    "ut115.ref.item.resolve-code-exact": "1.2.0",
+    "ut115.ref.item.resolve-name-contains": "1.2.0",
+    "ut115.ref.organization.resolve-inn-exact": "1.0.0",
+    "ut115.ref.organization.resolve-kpp-exact": "1.0.0",
+    "ut115.ref.organization.resolve-name-contains": "1.0.0",
+    "ut115.ref.partner.details": "1.0.0",
+    "ut115.ref.partner.resolve-code-exact": "1.0.0",
+    "ut115.ref.partner.resolve-inn-exact": "1.0.0",
+    "ut115.ref.partner.resolve-name-contains": "1.0.0",
+    "ut115.ref.price-type.resolve": "1.0.0",
+    "ut115.ref.supplier.details": "1.0.0",
+    "ut115.ref.supplier.resolve-code-exact": "1.0.0",
+    "ut115.ref.supplier.resolve-inn-exact": "1.0.0",
+    "ut115.ref.supplier.resolve-name-contains": "1.0.0",
+    "ut115.ref.warehouse.resolve": "1.1.0",
+    "ut115.sales.order-header-status-by-number": "1.2.0",
+    "ut115.sales.shipment-list": "1.1.0",
+}
+
+REFERENCE_PACKAGE_NAME = "ut115-reference-1.1.1.package.json"
+UPGRADE_PACKAGE_NAME = "ut115-reference-existing-upgrade-1.1.1.package.json"
+ADDITIONS_PACKAGE_NAME = "ut115-reference-slice3-additions-1.0.1.package.json"
+STARTER_PACKAGE_NAME = "ut.starter.slice-three.package.json"
+
+
+def _canonical_capability_ids() -> frozenset[str]:
+    ids = re.findall(
+        r"^\| `(CAP-[A-Z0-9]+(?:-[A-Z0-9]+)+)` \|",
+        SKILL_CATALOG.read_text(encoding="utf-8"),
+        flags=re.MULTILINE,
+    )
+    if len(ids) != 87 or len(set(ids)) != 87:
+        raise RuntimeError("Canonical skill catalog must contain exactly 87 unique IDs")
+    return frozenset(ids)
+
+
+def _capabilities_for(skill_id: str) -> list[str]:
+    try:
+        capability_ids = CAPABILITY_IDS_BY_SKILL_ID[skill_id]
+    except KeyError as error:
+        raise RuntimeError(f"Missing capability mapping for {skill_id}") from error
+    unknown = set(capability_ids) - _canonical_capability_ids()
+    if unknown:
+        raise RuntimeError(f"Noncanonical capability IDs for {skill_id}: {unknown}")
+    return list(capability_ids)
+
+
+def _capability_migration_version(skill_id: str, previous_version: str) -> str:
+    expected = PREVIOUS_SKILL_VERSIONS.get(skill_id)
+    if expected != previous_version:
+        raise RuntimeError(
+            f"Unexpected pre-migration version for {skill_id}: "
+            f"{previous_version!r} != {expected!r}"
+        )
+    major, minor, patch = (int(part) for part in previous_version.split("."))
+    return f"{major}.{minor}.{patch + 1}"
+
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -131,6 +301,24 @@ def _verify_legacy_bytes() -> None:
 
 def _encode(document: dict[str, Any]) -> bytes:
     return (json.dumps(document, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+
+
+def _write_artifact(path: Path, document: dict[str, Any]) -> None:
+    payload = _encode(document)
+    if path.is_file():
+        existing = cast(
+            dict[str, Any], json.loads(path.read_text(encoding="utf-8"))
+        )
+        identity_key = (
+            "skill_id" if document["document_type"] == "skill" else "package_id"
+        )
+        existing_tuple = (existing.get(identity_key), existing.get("version"))
+        generated_tuple = (document[identity_key], document["version"])
+        if existing_tuple == generated_tuple and path.read_bytes() != payload:
+            raise RuntimeError(
+                f"Refusing to rewrite immutable tuple {generated_tuple!r} at {path}"
+            )
+    path.write_bytes(payload)
 
 
 def _ref(kind: str, ordinal: int, presentation: str) -> dict[str, Any]:
@@ -341,6 +529,7 @@ def _base_skill(
     invariants: Sequence[dict[str, Any]] = (),
     default_limit: int = 20,
 ) -> dict[str, Any]:
+    version = _capability_migration_version(skill_id, version)
     fact_types = sorted({fact["semantic_type"] for fact in facts})
     document: dict[str, Any] = {
         "schema_version": "1.1.0",
@@ -355,7 +544,7 @@ def _base_skill(
             ],
         },
         "provides": {
-            "capability_ids": ["CAP-REF-" + skill_id.upper().replace(".", "-")[-70:]],
+            "capability_ids": _capabilities_for(skill_id),
             "fact_types": fact_types,
         },
         "compatibility": {
@@ -496,7 +685,7 @@ def _resolver_contract(
 def _dependency(skill_id: str, version: str, fact_type: str) -> dict[str, Any]:
     return {
         "skill_id": skill_id,
-        "version_range": f"={version}",
+        "version_range": f"={_capability_migration_version(skill_id, version)}",
         "required_fact_types": [fact_type],
     }
 
@@ -506,7 +695,12 @@ def _upgrade_item_resolver(path: Path) -> dict[str, Any]:
     document = copy.deepcopy(original)
     document.pop("integrity", None)
     document["schema_version"] = "1.1.0"
-    document["version"] = "1.2.0"
+    document["version"] = _capability_migration_version(
+        document["skill_id"], "1.2.0"
+    )
+    document["provides"]["capability_ids"] = _capabilities_for(
+        document["skill_id"]
+    )
     for parameter in document["parameters"]:
         parameter["context_slot_keys"] = []
     query = document["operation"]["query_template"]["text"]
@@ -1362,6 +1556,10 @@ def build_skills() -> list[dict[str, Any]]:
     expected = R01_IDS | R02_R12_IDS | DOCUMENT_PRODUCER_IDS
     if set(ids) != expected:
         raise RuntimeError(f"Generated inventory mismatch: missing={expected-set(ids)}, extra={set(ids)-expected}")
+    if set(ids) != set(CAPABILITY_IDS_BY_SKILL_ID):
+        raise RuntimeError("Capability mapping must exactly cover generated skills")
+    if set(ids) != set(PREVIOUS_SKILL_VERSIONS):
+        raise RuntimeError("Version migration must exactly cover generated skills")
     if len(R02_R12_IDS) != 27 or len(R02_R12_IDS - CONSUMER_IDS) != 22:
         raise RuntimeError("Frozen R02-R12 inventory is not 27/22/5")
     return skills
@@ -1410,10 +1608,10 @@ def build_packages(skills: Sequence[dict[str, Any]]) -> dict[str, dict[str, Any]
     if len({item["skill_id"] for item in starter}) != len(starter):
         raise RuntimeError("Starter package contains duplicate skill_id")
     return {
-        "ut115-reference-1.1.0.package.json": _package("ut115.reference", "1.1.0", reference, "Self-contained production R01-R12 typed reference catalog."),
-        "ut115-reference-existing-upgrade-1.1.0.package.json": _package("ut115.reference.existing-upgrade", "1.1.0", upgrade, "Replace-only typed upgrade for existing R01A-D and R06 skills."),
-        "ut115-reference-slice3-additions-1.0.0.package.json": _package("ut115.reference.slice3-additions", "1.0.0", additions, "Create-only 26-document R02-R05/R07-R12 additions.", external=upgrade),
-        "ut.starter.slice-three.package.json": _package("ut.starter.slice-three", "1.0.0", starter, "Built-in slice-three starter with typed reference catalog, five document producers and preserved legacy consumers."),
+        REFERENCE_PACKAGE_NAME: _package("ut115.reference", "1.1.1", reference, "Self-contained production R01-R12 typed reference catalog."),
+        UPGRADE_PACKAGE_NAME: _package("ut115.reference.existing-upgrade", "1.1.1", upgrade, "Replace-only typed upgrade for existing R01A-D and R06 skills."),
+        ADDITIONS_PACKAGE_NAME: _package("ut115.reference.slice3-additions", "1.0.1", additions, "Create-only 26-document R02-R05/R07-R12 additions.", external=upgrade),
+        STARTER_PACKAGE_NAME: _package("ut.starter.slice-three", "1.0.1", starter, "Built-in slice-three starter with typed reference catalog, five document producers and preserved legacy consumers."),
     }
 
 
@@ -1428,7 +1626,7 @@ def _validate(skills: Sequence[dict[str, Any]], packages: dict[str, dict[str, An
     by_name = {item.skill_id: item for item in typed_skills}
     for name, package in packages.items():
         available: list[Skill] = []
-        if name == "ut115-reference-slice3-additions-1.0.0.package.json":
+        if name == ADDITIONS_PACKAGE_NAME:
             available = [by_name[skill_id] for skill_id in sorted(R01_IDS | {"ut115.ref.warehouse.resolve"})]
         harness.validate_document(package, available_skills=available)
 
@@ -1439,9 +1637,9 @@ def main() -> None:
     packages = build_packages(skills)
     _validate(skills, packages)
     for skill in skills:
-        (TARGET / _filename(skill)).write_bytes(_encode(skill))
+        _write_artifact(TARGET / _filename(skill), skill)
     for name, package in packages.items():
-        (TARGET / name).write_bytes(_encode(package))
+        _write_artifact(TARGET / name, package)
     _verify_legacy_bytes()
     print(f"generated {len(skills)} skills and {len(packages)} packages")
     print(f"R02-R12: {len(R02_R12_IDS)} ({len(R02_R12_IDS-CONSUMER_IDS)} resolvers, {len(CONSUMER_IDS)} consumers)")

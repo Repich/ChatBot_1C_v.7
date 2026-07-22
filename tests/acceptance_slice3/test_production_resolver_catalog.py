@@ -4,8 +4,11 @@ import asyncio
 import hashlib
 import importlib.util
 import json
+import re
 from pathlib import Path
 from types import ModuleType
+
+import pytest
 
 from chatbot1c.bootstrap import build_runtime
 from chatbot1c.config import Settings
@@ -16,9 +19,10 @@ from chatbot1c.domain.skill import Skill
 ROOT = Path(__file__).resolve().parents[2]
 SKILLS = ROOT / "skills/ut-11.5.27.56"
 PROFILE = ROOT / "src/chatbot1c/resources/ut-11.5.27.56-profile.json"
-REFERENCE = SKILLS / "ut115-reference-1.1.0.package.json"
-UPGRADE = SKILLS / "ut115-reference-existing-upgrade-1.1.0.package.json"
-ADDITIONS = SKILLS / "ut115-reference-slice3-additions-1.0.0.package.json"
+SKILL_CATALOG = ROOT / "docs/requirements/skill_catalog.md"
+REFERENCE = SKILLS / "ut115-reference-1.1.1.package.json"
+UPGRADE = SKILLS / "ut115-reference-existing-upgrade-1.1.1.package.json"
+ADDITIONS = SKILLS / "ut115-reference-slice3-additions-1.0.1.package.json"
 STARTER = SKILLS / "ut.starter.slice-three.package.json"
 ANALYTICS_SHA = "4f88fd400e114ac936b34c710bee40efb7abe4a9f8c833b2a32619e90e52880e"
 
@@ -34,9 +38,11 @@ def _load_generator() -> ModuleType:
 
 
 GENERATOR = _load_generator()
+CAPABILITY_IDS_BY_SKILL_ID = GENERATOR.CAPABILITY_IDS_BY_SKILL_ID
 CONSUMER_IDS = GENERATOR.CONSUMER_IDS
 DOCUMENT_PRODUCER_IDS = GENERATOR.DOCUMENT_PRODUCER_IDS
 LEGACY_BYTES = GENERATOR.LEGACY_BYTES
+PREVIOUS_SKILL_VERSIONS = GENERATOR.PREVIOUS_SKILL_VERSIONS
 R01_IDS = GENERATOR.R01_IDS
 R02_R12_IDS = GENERATOR.R02_R12_IDS
 build_packages = GENERATOR.build_packages
@@ -51,6 +57,16 @@ def _generated_skills() -> dict[str, dict]:
     return {item["skill_id"]: item for item in build_skills()}
 
 
+def _canonical_capability_ids() -> set[str]:
+    return set(
+        re.findall(
+            r"^\| `(CAP-[A-Z0-9]+(?:-[A-Z0-9]+)+)` \|",
+            SKILL_CATALOG.read_text(encoding="utf-8"),
+            flags=re.MULTILINE,
+        )
+    )
+
+
 def test_frozen_inventory_is_exact_27_22_5_plus_typed_closure() -> None:
     assert len(R02_R12_IDS) == 27
     assert len(CONSUMER_IDS) == 5
@@ -60,6 +76,91 @@ def test_frozen_inventory_is_exact_27_22_5_plus_typed_closure() -> None:
     generated = _generated_skills()
     assert set(generated) == R01_IDS | R02_R12_IDS | DOCUMENT_PRODUCER_IDS
     assert len(generated) == 36
+
+
+def test_generated_capabilities_are_explicit_and_within_87_id_baseline() -> None:
+    canonical = _canonical_capability_ids()
+    generated = _generated_skills()
+
+    assert len(canonical) == 87
+    assert set(CAPABILITY_IDS_BY_SKILL_ID) == set(generated)
+    for skill_id, skill in generated.items():
+        advertised = tuple(skill["provides"]["capability_ids"])
+        assert advertised == CAPABILITY_IDS_BY_SKILL_ID[skill_id]
+        assert set(advertised) <= canonical
+
+    for package in build_packages(list(generated.values())).values():
+        for skill in package["skills"]:
+            assert set(skill["provides"]["capability_ids"]) <= canonical
+
+
+def test_resolver_detail_and_document_capabilities_are_not_overclaimed() -> None:
+    skills = _generated_skills()
+    expected_producers = {
+        "ut115.sales.order-header-status-by-number": {
+            "CAP-COMMON-ENTITY",
+            "CAP-SALES-ORDER-HEADER",
+            "CAP-SALES-ORDER-STATUS",
+        },
+        "ut115.sales.shipment-list": {"CAP-SALES-SHIPMENT-LIST"},
+        "ut115.purchase.receipt-list": {"CAP-PURCHASE-RECEIPT-LIST"},
+        "ut115.purchase.order-list": {"CAP-PURCHASE-ORDER-LIST"},
+        "ut115.logistics.transfer-list": {
+            "CAP-COMMON-ENTITY",
+            "CAP-MOVE-DIRECTION",
+            "CAP-MOVE-LIST",
+        },
+    }
+    for skill_id, expected in expected_producers.items():
+        assert set(skills[skill_id]["provides"]["capability_ids"]) == expected
+
+    for criterion in ("code-exact", "name-contains"):
+        group_resolver = skills[f"ut115.ref.item-group.resolve-{criterion}"]
+        assert group_resolver["provides"]["capability_ids"] == [
+            "CAP-COMMON-ENTITY"
+        ]
+    assert skills["ut115.ref.item.group-members"]["provides"][
+        "capability_ids"
+    ] == ["CAP-REF-ITEM-GROUP"]
+    assert skills["ut115.ref.item.details"]["provides"]["capability_ids"] == [
+        "CAP-COMMON-DETAIL",
+        "CAP-REF-ITEM-DETAILS",
+    ]
+
+
+def test_capability_fix_uses_new_patch_tuples_and_preserves_previous_files() -> None:
+    generated = _generated_skills()
+    for skill_id, previous_version in PREVIOUS_SKILL_VERSIONS.items():
+        major, minor, patch = (int(part) for part in previous_version.split("."))
+        expected_version = f"{major}.{minor}.{patch + 1}"
+        current = generated[skill_id]
+        previous_path = SKILLS / f"{skill_id}-{previous_version}.skill.json"
+
+        assert previous_path.is_file()
+        assert _load(previous_path)["version"] == previous_version
+        assert current["version"] == expected_version
+        assert current["integrity"]["digest"] != _load(previous_path)["integrity"][
+            "digest"
+        ]
+
+    assert _load(REFERENCE)["version"] == "1.1.1"
+    assert _load(UPGRADE)["version"] == "1.1.1"
+    assert _load(ADDITIONS)["version"] == "1.0.1"
+    assert _load(STARTER)["version"] == "1.0.1"
+    assert (SKILLS / "ut115-reference-1.1.0.package.json").is_file()
+    assert (SKILLS / "ut115-reference-existing-upgrade-1.1.0.package.json").is_file()
+    assert (SKILLS / "ut115-reference-slice3-additions-1.0.0.package.json").is_file()
+
+
+def test_generator_refuses_to_rewrite_an_immutable_tuple(tmp_path: Path) -> None:
+    original = _generated_skills()["ut115.ref.item.details"]
+    path = tmp_path / "immutable.skill.json"
+    path.write_bytes(GENERATOR._encode(original))
+    changed = json.loads(json.dumps(original))
+    changed["display"]["name_ru"] = "Другой заголовок"
+
+    with pytest.raises(RuntimeError, match="Refusing to rewrite immutable tuple"):
+        GENERATOR._write_artifact(path, changed)
 
 
 def test_every_generated_skill_is_strict_v11_and_has_three_fixture_outcomes() -> None:

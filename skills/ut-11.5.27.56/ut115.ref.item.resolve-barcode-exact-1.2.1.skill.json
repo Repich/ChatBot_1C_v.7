@@ -1,0 +1,550 @@
+{
+  "schema_version": "1.1.0",
+  "document_type": "skill",
+  "skill_id": "ut115.ref.item.resolve-barcode-exact",
+  "version": "1.2.1",
+  "display": {
+    "name_ru": "Поиск номенклатуры по точному штрихкоду",
+    "purpose_ru": "Находит связанную номенклатуру только по точному штрихкоду регистра УТ.",
+    "limitations_ru": [
+      "Не выполняет prefix/contains поиск по штрихкоду."
+    ]
+  },
+  "provides": {
+    "capability_ids": [
+      "CAP-REF-ITEM-FIND"
+    ],
+    "fact_types": [
+      "catalog.item",
+      "catalog.item.code",
+      "catalog.item.article",
+      "catalog.item.name",
+      "catalog.item.barcode",
+      "catalog.item.is_item"
+    ]
+  },
+  "compatibility": {
+    "configuration_id": "УправлениеТорговлейБазовая",
+    "configuration_name": "1С:Управление торговлей (базовая), редакция 11",
+    "release_range": {
+      "minimum": "11.5.27.56",
+      "maximum": "11.5.27.56",
+      "include_minimum": true,
+      "include_maximum": true
+    },
+    "compatibility_modes": [
+      "8.3.27"
+    ],
+    "required_metadata": [
+      {
+        "object_name": "РегистрСведений.ШтрихкодыНоменклатуры",
+        "attributes": [
+          "Штрихкод",
+          "Номенклатура",
+          "Характеристика",
+          "Серия",
+          "Упаковка"
+        ]
+      },
+      {
+        "object_name": "Справочник.Номенклатура",
+        "attributes": [
+          "Ссылка",
+          "Код",
+          "Артикул",
+          "Наименование"
+        ]
+      },
+      {
+        "object_name": "Справочник.Номенклатура",
+        "attributes": [
+          "Ссылка",
+          "Код",
+          "Артикул",
+          "Наименование",
+          "ЭтоГруппа"
+        ]
+      }
+    ],
+    "metadata_snapshot_sha256": "6520d25b27f8ce88ce8c2cc81523cf6c23e49e9e96d57f94e15330e79a7c6030"
+  },
+  "selection": {
+    "intent_kinds": [
+      "data"
+    ],
+    "aliases_ru": [
+      "найти номенклатуру по точному штрихкоду",
+      "товар со штрихкодом"
+    ],
+    "anti_examples_ru": [
+      "найти товар по части штрихкода или названия"
+    ],
+    "required_context_fact_types": []
+  },
+  "parameters": [
+    {
+      "name": "barcode",
+      "title_ru": "Штрихкод",
+      "description_ru": "Точное значение штрихкода номенклатуры.",
+      "value_type": "string",
+      "required": true,
+      "allowed_sources": [
+        "user_slot"
+      ],
+      "normalization": "trim",
+      "context_slot_keys": []
+    }
+  ],
+  "operation": {
+    "kind": "data_query",
+    "tool": "execute_query",
+    "read_only": true,
+    "query_template": {
+      "template_id": "ut115.ref.item.resolve-barcode-exact.v2",
+      "language": "1c-query",
+      "text": "ВЫБРАТЬ РАЗЛИЧНЫЕ\n  Штрихкоды.Номенклатура КАК Номенклатура,\n  Штрихкоды.Номенклатура.Код КАК Код,\n  Штрихкоды.Номенклатура.Артикул КАК Артикул,\n  Штрихкоды.Номенклатура.Наименование КАК Наименование,\n  Штрихкоды.Штрихкод КАК СовпавшийШтрихкод,\n  НЕ Штрихкоды.Номенклатура.ЭтоГруппа КАК ЭтоТовар\nИЗ РегистрСведений.ШтрихкодыНоменклатуры КАК Штрихкоды\nГДЕ Штрихкоды.Штрихкод = &Штрихкод\n  И НЕ Штрихкоды.Номенклатура.ЭтоГруппа\n  И (НЕ &ЕстьКурсор\n    ИЛИ Штрихкоды.Номенклатура.Наименование > &ИмяКурсора\n    ИЛИ (Штрихкоды.Номенклатура.Наименование = &ИмяКурсора\n      И Штрихкоды.Номенклатура > &СсылкаКурсора))\nУПОРЯДОЧИТЬ ПО Штрихкоды.Номенклатура.Наименование, Штрихкоды.Номенклатура",
+      "execution": {
+        "kind": "single_select",
+        "statement_count": 1,
+        "final_statement": 1
+      },
+      "invariant_constants": [],
+      "include_schema": true,
+      "mcp_limit": {
+        "default": 20,
+        "maximum": 1000
+      }
+    },
+    "parameter_bindings": [
+      {
+        "parameter": "barcode",
+        "query_parameter": "Штрихкод",
+        "encoding": "string"
+      }
+    ],
+    "column_bindings": [
+      {
+        "column": "Номенклатура",
+        "fact_id": "item.ref",
+        "accepted_mcp_types": [
+          "СправочникСсылка.Номенклатура"
+        ],
+        "converter": "object_ref"
+      },
+      {
+        "column": "Код",
+        "fact_id": "item.code",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "Артикул",
+        "fact_id": "item.article",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "Наименование",
+        "fact_id": "item.name",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "ЭтоТовар",
+        "fact_id": "item.is_item",
+        "accepted_mcp_types": [
+          "Булево"
+        ],
+        "converter": "boolean"
+      },
+      {
+        "column": "СовпавшийШтрихкод",
+        "fact_id": "item.matched_barcode",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      }
+    ],
+    "pagination": {
+      "strategy": "keyset",
+      "has_cursor_query_parameter": "ЕстьКурсор",
+      "sort": [
+        {
+          "fact_id": "item.name",
+          "direction": "asc"
+        },
+        {
+          "fact_id": "item.ref",
+          "direction": "asc"
+        }
+      ],
+      "cursor_bindings": [
+        {
+          "fact_id": "item.name",
+          "query_parameter": "ИмяКурсора",
+          "encoding": "string"
+        },
+        {
+          "fact_id": "item.ref",
+          "query_parameter": "СсылкаКурсора",
+          "encoding": "object_ref"
+        }
+      ]
+    }
+  },
+  "output_contract": {
+    "contract_id": "ut115.ref.item.resolve-barcode-exact.v2",
+    "contract_version": "1.1.0",
+    "cardinality": "many",
+    "facts": [
+      {
+        "fact_id": "item.ref",
+        "semantic_type": "catalog.item",
+        "value_type": "entity_ref",
+        "role": "entity",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Номенклатура",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "item.code",
+        "semantic_type": "catalog.item.code",
+        "value_type": "string",
+        "role": "attribute",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Код",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "item.article",
+        "semantic_type": "catalog.item.article",
+        "value_type": "string",
+        "role": "attribute",
+        "required": false,
+        "nullable": true,
+        "title_ru": "Артикул",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "item.name",
+        "semantic_type": "catalog.item.name",
+        "value_type": "string",
+        "role": "attribute",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Наименование",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "item.is_item",
+        "semantic_type": "catalog.item.is_item",
+        "value_type": "boolean",
+        "role": "attribute",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Это номенклатура, не группа",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "item.matched_barcode",
+        "semantic_type": "catalog.item.barcode",
+        "value_type": "string",
+        "role": "attribute",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Совпавший штрихкод",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      }
+    ],
+    "sufficiency": {
+      "required_fact_sets": [
+        [
+          "item.ref",
+          "item.code",
+          "item.name",
+          "item.is_item",
+          "item.matched_barcode"
+        ]
+      ],
+      "empty_semantics": "confirmed_no_rows",
+      "zero_fact_ids": [],
+      "truncation_policy": "page_is_complete"
+    },
+    "renderer": {
+      "kind": "table",
+      "primary_fact_ids": [
+        "item.name"
+      ],
+      "column_fact_ids": [
+        "item.ref",
+        "item.code",
+        "item.article",
+        "item.name",
+        "item.is_item",
+        "item.matched_barcode"
+      ]
+    },
+    "row_identity_fact_ids": [
+      "item.ref"
+    ],
+    "resolution": {
+      "protocol": "typed_entity_resolver_v1",
+      "identity_fact_id": "item.ref",
+      "candidate_label_fact_ids": [
+        "item.name",
+        "item.code",
+        "item.matched_barcode"
+      ],
+      "role_proof_fact_ids": [
+        "item.is_item"
+      ],
+      "default_slot_key": "selection.item"
+    },
+    "context_export_policy": [
+      {
+        "fact_id": "item.ref",
+        "slot_key": "selection.item",
+        "mode": "selected_only",
+        "lifetime": {
+          "mode": "session"
+        },
+        "max_members": 100
+      }
+    ]
+  },
+  "result_constraints": [],
+  "dependencies": {
+    "runtime_contracts": [
+      {
+        "contract": "skill-runtime",
+        "version_range": "^1.0.0"
+      },
+      {
+        "contract": "mcp.execute_query",
+        "version_range": "^1.0.0"
+      }
+    ],
+    "skills": []
+  },
+  "examples": [
+    {
+      "question_ru": "найти номенклатуру по точному штрихкоду?",
+      "applicability": "applicable",
+      "reason_ru": "Вопрос соответствует назначению и typed outputs навыка."
+    },
+    {
+      "question_ru": "найти товар по части штрихкода или названия?",
+      "applicability": "not_applicable",
+      "reason_ru": "Вопрос находится за явно объявленной границей навыка."
+    }
+  ],
+  "tests": [
+    {
+      "test_id": "ut.item-by-barcode.positive",
+      "case_kind": "positive",
+      "bindings": [
+        {
+          "parameter": "barcode",
+          "value": "4600000000001"
+        }
+      ],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": true,
+          "data": [
+            {
+              "Номенклатура": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000000101",
+                "ТипОбъекта": "СправочникСсылка.Номенклатура",
+                "Представление": "Куртка демисезонная"
+              },
+              "Код": "000000001",
+              "Артикул": "КР-01",
+              "Наименование": "Куртка демисезонная",
+              "ЭтоТовар": true,
+              "СовпавшийШтрихкод": "460000000001"
+            }
+          ],
+          "schema": {
+            "columns": [
+              {
+                "name": "Номенклатура",
+                "types": [
+                  "СправочникСсылка.Номенклатура"
+                ]
+              },
+              {
+                "name": "Код",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Артикул",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Наименование",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "ЭтоТовар",
+                "types": [
+                  "Булево"
+                ]
+              },
+              {
+                "name": "СовпавшийШтрихкод",
+                "types": [
+                  "Строка"
+                ]
+              }
+            ]
+          },
+          "count": 1
+        }
+      },
+      "expected": {
+        "status": "success_with_rows",
+        "required_fact_ids": [
+          "item.ref",
+          "item.code",
+          "item.name",
+          "item.is_item"
+        ]
+      }
+    },
+    {
+      "test_id": "ut.item-by-barcode.empty",
+      "case_kind": "negative",
+      "bindings": [],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": true,
+          "data": [],
+          "schema": {
+            "columns": [
+              {
+                "name": "Номенклатура",
+                "types": [
+                  "СправочникСсылка.Номенклатура"
+                ]
+              },
+              {
+                "name": "Код",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Артикул",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Наименование",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "ЭтоТовар",
+                "types": [
+                  "Булево"
+                ]
+              },
+              {
+                "name": "СовпавшийШтрихкод",
+                "types": [
+                  "Строка"
+                ]
+              }
+            ]
+          },
+          "count": 0
+        }
+      },
+      "expected": {
+        "status": "success_empty",
+        "required_fact_ids": []
+      }
+    },
+    {
+      "test_id": "ut.ref.item.resolve-barcode-exact.malformed",
+      "case_kind": "negative",
+      "bindings": [],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": false,
+          "error": "MCP_SCHEMA_MISMATCH: bad object reference"
+        }
+      },
+      "expected": {
+        "status": "query_error",
+        "required_fact_ids": [],
+        "error_code": "MCP_SCHEMA_MISMATCH"
+      }
+    }
+  ],
+  "provenance": {
+    "author": "ChatBot 1C slice 3B",
+    "created_at": "2026-07-22T00:00:00Z",
+    "reviewed_by": "Architecture and PM source proof",
+    "reviewed_at": "2026-07-22T00:00:00Z",
+    "source_configuration": {
+      "configuration_id": "УправлениеТорговлейБазовая",
+      "release": "11.5.27.56",
+      "compatibility_mode": "8.3.27",
+      "metadata_snapshot_sha256": "6520d25b27f8ce88ce8c2cc81523cf6c23e49e9e96d57f94e15330e79a7c6030"
+    },
+    "source_references": [
+      {
+        "kind": "configuration_metadata",
+        "uri": "ut-config://11.5.27.56/InformationRegisters/ШтрихкодыНоменклатуры.xml",
+        "sha256": "fdee46a99d1b44dfe590f6e4b1c1c468d92159e437b9285fcd3daa7a58521bd3"
+      },
+      {
+        "kind": "configuration_metadata",
+        "uri": "ut-config://11.5.27.56/Catalogs/Номенклатура.xml",
+        "sha256": "5fd976edf70c1dd0c65aeabce8362e6767876bcc9e33985d0aa47bdbbe8a86f4"
+      }
+    ],
+    "change_note_ru": "Typed item resolver 1.2 с role proof и selected-only context export."
+  },
+  "integrity": {
+    "algorithm": "sha256",
+    "canonicalization": "RFC8785",
+    "scope": "document_without_integrity",
+    "digest": "0f44e7fcfb6f1a788db52caecf3e35f2c108719f1c0919560db842441d26404e"
+  }
+}

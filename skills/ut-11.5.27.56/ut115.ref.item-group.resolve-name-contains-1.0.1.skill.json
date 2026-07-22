@@ -1,0 +1,462 @@
+{
+  "schema_version": "1.1.0",
+  "document_type": "skill",
+  "skill_id": "ut115.ref.item-group.resolve-name-contains",
+  "version": "1.0.1",
+  "display": {
+    "name_ru": "Поиск группы номенклатуры",
+    "purpose_ru": "Разрешает exact сущность поиск группы номенклатуры по проверенным metadata.",
+    "limitations_ru": [
+      "Не выбирает первый результат без доказанного SelectionProof."
+    ]
+  },
+  "provides": {
+    "capability_ids": [
+      "CAP-COMMON-ENTITY"
+    ],
+    "fact_types": [
+      "catalog.item.group",
+      "catalog.item.group.code",
+      "catalog.item.group.name",
+      "catalog.item.is_group"
+    ]
+  },
+  "compatibility": {
+    "configuration_id": "УправлениеТорговлейБазовая",
+    "configuration_name": "1С:Управление торговлей (базовая), редакция 11",
+    "release_range": {
+      "minimum": "11.5.27.56",
+      "maximum": "11.5.27.56",
+      "include_minimum": true,
+      "include_maximum": true
+    },
+    "compatibility_modes": [
+      "8.3.27"
+    ],
+    "required_metadata": [
+      {
+        "object_name": "Справочник.Номенклатура",
+        "attributes": [
+          "Ссылка",
+          "Код",
+          "Наименование",
+          "ЭтоГруппа"
+        ]
+      }
+    ],
+    "metadata_snapshot_sha256": "5fd976edf70c1dd0c65aeabce8362e6767876bcc9e33985d0aa47bdbbe8a86f4"
+  },
+  "selection": {
+    "intent_kinds": [
+      "data"
+    ],
+    "aliases_ru": [
+      "найди группу номенклатуры"
+    ],
+    "anti_examples_ru": [
+      "изменить или удалить найденный объект"
+    ],
+    "required_context_fact_types": []
+  },
+  "parameters": [
+    {
+      "name": "name_fragment",
+      "title_ru": "Критерий группы",
+      "description_ru": "Проверенный параметр: критерий группы.",
+      "value_type": "normalized_text",
+      "required": true,
+      "allowed_sources": [
+        "user_slot"
+      ],
+      "normalization": "like_contains",
+      "context_slot_keys": []
+    }
+  ],
+  "operation": {
+    "kind": "data_query",
+    "tool": "execute_query",
+    "read_only": true,
+    "query_template": {
+      "template_id": "ut115.ref.item-group.resolve-name-contains.v1",
+      "language": "1c-query",
+      "text": "ВЫБРАТЬ\n  Группы.Ссылка КАК Группа,\n  Группы.Наименование КАК Наименование,\n  Группы.Код КАК Код,\n  Группы.ЭтоГруппа КАК ЭтоГруппа\nИЗ Справочник.Номенклатура КАК Группы\nГДЕ Группы.ЭтоГруппа\n  И Группы.Наименование ПОДОБНО &Шаблон СПЕЦСИМВОЛ \"~\"\n  И (НЕ &ЕстьКурсор\n    ИЛИ Группы.Наименование > &ИмяКурсора\n    ИЛИ (Группы.Наименование = &ИмяКурсора\n      И Группы.Ссылка > &СсылкаКурсора))\nУПОРЯДОЧИТЬ ПО Группы.Наименование, Группы.Ссылка",
+      "execution": {
+        "kind": "single_select",
+        "statement_count": 1,
+        "final_statement": 1
+      },
+      "invariant_constants": [],
+      "include_schema": true,
+      "mcp_limit": {
+        "default": 20,
+        "maximum": 1000
+      }
+    },
+    "parameter_bindings": [
+      {
+        "parameter": "name_fragment",
+        "query_parameter": "Шаблон",
+        "encoding": "like_contains"
+      }
+    ],
+    "column_bindings": [
+      {
+        "column": "Группа",
+        "fact_id": "group.ref",
+        "accepted_mcp_types": [
+          "СправочникСсылка.Номенклатура"
+        ],
+        "converter": "object_ref"
+      },
+      {
+        "column": "Наименование",
+        "fact_id": "group.name",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "Код",
+        "fact_id": "group.code",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "ЭтоГруппа",
+        "fact_id": "group.is_group",
+        "accepted_mcp_types": [
+          "Булево"
+        ],
+        "converter": "boolean"
+      }
+    ],
+    "pagination": {
+      "strategy": "keyset",
+      "has_cursor_query_parameter": "ЕстьКурсор",
+      "sort": [
+        {
+          "fact_id": "group.name",
+          "direction": "asc"
+        },
+        {
+          "fact_id": "group.ref",
+          "direction": "asc"
+        }
+      ],
+      "cursor_bindings": [
+        {
+          "fact_id": "group.name",
+          "query_parameter": "ИмяКурсора",
+          "encoding": "string"
+        },
+        {
+          "fact_id": "group.ref",
+          "query_parameter": "СсылкаКурсора",
+          "encoding": "object_ref"
+        }
+      ]
+    }
+  },
+  "output_contract": {
+    "contract_id": "ut115.ref.item-group.resolve-name-contains.v1",
+    "contract_version": "1.1.0",
+    "cardinality": "many",
+    "facts": [
+      {
+        "fact_id": "group.ref",
+        "semantic_type": "catalog.item.group",
+        "value_type": "entity_ref",
+        "role": "entity",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Поиск группы номенклатуры",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "group.name",
+        "semantic_type": "catalog.item.group.name",
+        "value_type": "string",
+        "role": "attribute",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Наименование",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "group.code",
+        "semantic_type": "catalog.item.group.code",
+        "value_type": "string",
+        "role": "attribute",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Код",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "group.is_group",
+        "semantic_type": "catalog.item.is_group",
+        "value_type": "boolean",
+        "role": "attribute",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Это группа",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      }
+    ],
+    "sufficiency": {
+      "required_fact_sets": [
+        [
+          "group.ref",
+          "group.name",
+          "group.code",
+          "group.is_group"
+        ]
+      ],
+      "empty_semantics": "confirmed_not_found",
+      "zero_fact_ids": [],
+      "truncation_policy": "page_is_complete"
+    },
+    "renderer": {
+      "kind": "table",
+      "primary_fact_ids": [
+        "group.is_group"
+      ],
+      "column_fact_ids": [
+        "group.ref",
+        "group.name",
+        "group.code",
+        "group.is_group"
+      ]
+    },
+    "row_identity_fact_ids": [
+      "group.ref"
+    ],
+    "resolution": {
+      "protocol": "typed_entity_resolver_v1",
+      "identity_fact_id": "group.ref",
+      "candidate_label_fact_ids": [
+        "group.name",
+        "group.code"
+      ],
+      "role_proof_fact_ids": [
+        "group.is_group"
+      ],
+      "default_slot_key": "selection.item_group"
+    },
+    "context_export_policy": [
+      {
+        "fact_id": "group.ref",
+        "slot_key": "selection.item_group",
+        "mode": "selected_only",
+        "lifetime": {
+          "mode": "session"
+        },
+        "max_members": 100
+      }
+    ]
+  },
+  "result_constraints": [],
+  "dependencies": {
+    "runtime_contracts": [
+      {
+        "contract": "skill-runtime",
+        "version_range": "^1.0.0"
+      },
+      {
+        "contract": "mcp.execute_query",
+        "version_range": "^1.0.0"
+      }
+    ],
+    "skills": []
+  },
+  "examples": [
+    {
+      "question_ru": "найди группу номенклатуры?",
+      "applicability": "applicable",
+      "reason_ru": "Вопрос соответствует точному typed-контракту навыка."
+    },
+    {
+      "question_ru": "изменить найденный объект?",
+      "applicability": "not_applicable",
+      "reason_ru": "Навык выполняет только чтение данных."
+    }
+  ],
+  "tests": [
+    {
+      "test_id": "ut.ref.item-group.resolve-name-contains.positive",
+      "case_kind": "positive",
+      "bindings": [
+        {
+          "parameter": "name_fragment",
+          "value": "Верх"
+        }
+      ],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": true,
+          "data": [
+            {
+              "Группа": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000001101",
+                "ТипОбъекта": "СправочникСсылка.Номенклатура",
+                "Представление": "Верхняя одежда"
+              },
+              "Наименование": "Верхняя одежда",
+              "Код": "G-1",
+              "ЭтоГруппа": true
+            }
+          ],
+          "schema": {
+            "columns": [
+              {
+                "name": "Группа",
+                "types": [
+                  "СправочникСсылка.Номенклатура"
+                ]
+              },
+              {
+                "name": "Наименование",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Код",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "ЭтоГруппа",
+                "types": [
+                  "Булево"
+                ]
+              }
+            ]
+          },
+          "count": 1
+        }
+      },
+      "expected": {
+        "status": "success_with_rows",
+        "required_fact_ids": [
+          "group.ref",
+          "group.name",
+          "group.code",
+          "group.is_group"
+        ]
+      }
+    },
+    {
+      "test_id": "ut.ref.item-group.resolve-name-contains.empty",
+      "case_kind": "negative",
+      "bindings": [
+        {
+          "parameter": "name_fragment",
+          "value": "Верх"
+        }
+      ],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": true,
+          "data": [],
+          "schema": {
+            "columns": [
+              {
+                "name": "Группа",
+                "types": [
+                  "СправочникСсылка.Номенклатура"
+                ]
+              },
+              {
+                "name": "Наименование",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Код",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "ЭтоГруппа",
+                "types": [
+                  "Булево"
+                ]
+              }
+            ]
+          },
+          "count": 0
+        }
+      },
+      "expected": {
+        "status": "success_empty",
+        "required_fact_ids": []
+      }
+    },
+    {
+      "test_id": "ut.ref.item-group.resolve-name-contains.malformed",
+      "case_kind": "negative",
+      "bindings": [
+        {
+          "parameter": "name_fragment",
+          "value": "Верх"
+        }
+      ],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": false,
+          "error": "MCP_SCHEMA_MISMATCH: incompatible identity column type"
+        }
+      },
+      "expected": {
+        "status": "query_error",
+        "required_fact_ids": [],
+        "error_code": "MCP_SCHEMA_MISMATCH"
+      }
+    }
+  ],
+  "provenance": {
+    "author": "ChatBot 1C slice 3B",
+    "created_at": "2026-07-22T00:00:00Z",
+    "reviewed_by": "Metadata-proven resolver catalog",
+    "reviewed_at": "2026-07-22T00:00:00Z",
+    "source_configuration": {
+      "configuration_id": "УправлениеТорговлейБазовая",
+      "release": "11.5.27.56",
+      "compatibility_mode": "8.3.27",
+      "metadata_snapshot_sha256": "5fd976edf70c1dd0c65aeabce8362e6767876bcc9e33985d0aa47bdbbe8a86f4"
+    },
+    "source_references": [
+      {
+        "kind": "configuration_metadata",
+        "uri": "ut-config://11.5.27.56/Catalogs/Номенклатура.xml",
+        "sha256": "5fd976edf70c1dd0c65aeabce8362e6767876bcc9e33985d0aa47bdbbe8a86f4"
+      }
+    ],
+    "change_note_ru": "Production typed resolver/consumer contract без object-specific core logic."
+  },
+  "integrity": {
+    "algorithm": "sha256",
+    "canonicalization": "RFC8785",
+    "scope": "document_without_integrity",
+    "digest": "d27e1e177e56f546798b4afd3a39fb50d2d09f59d2bbb8837619b046d52d2e1f"
+  }
+}

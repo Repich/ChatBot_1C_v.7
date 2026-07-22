@@ -1,0 +1,793 @@
+{
+  "schema_version": "1.1.0",
+  "document_type": "skill",
+  "skill_id": "ut115.logistics.transfer-list",
+  "version": "1.0.1",
+  "display": {
+    "name_ru": "Список перемещений",
+    "purpose_ru": "Возвращает resolver-capable список документов с typed filters.",
+    "limitations_ru": [
+      "Не выбирает первый результат без доказанного SelectionProof."
+    ]
+  },
+  "provides": {
+    "capability_ids": [
+      "CAP-COMMON-ENTITY",
+      "CAP-MOVE-DIRECTION",
+      "CAP-MOVE-LIST"
+    ],
+    "fact_types": [
+      "catalog.warehouse",
+      "catalog.warehouse.name",
+      "document.number",
+      "document.stock_transfer",
+      "document.stock_transfer.status",
+      "time.document_moment"
+    ]
+  },
+  "compatibility": {
+    "configuration_id": "УправлениеТорговлейБазовая",
+    "configuration_name": "1С:Управление торговлей (базовая), редакция 11",
+    "release_range": {
+      "minimum": "11.5.27.56",
+      "maximum": "11.5.27.56",
+      "include_minimum": true,
+      "include_maximum": true
+    },
+    "compatibility_modes": [
+      "8.3.27"
+    ],
+    "required_metadata": [
+      {
+        "object_name": "Документ.ПеремещениеТоваров",
+        "attributes": [
+          "Ссылка",
+          "Номер",
+          "Дата",
+          "СкладОтправитель",
+          "СкладПолучатель",
+          "Статус"
+        ]
+      }
+    ],
+    "metadata_snapshot_sha256": "66cc7e484af93c58b058a89ce21996a09dbe1da45a260c5f35415e87263b5039"
+  },
+  "selection": {
+    "intent_kinds": [
+      "data"
+    ],
+    "aliases_ru": [
+      "покажи перемещения товаров"
+    ],
+    "anti_examples_ru": [
+      "изменить или удалить найденный объект"
+    ],
+    "required_context_fact_types": [
+      "catalog.warehouse"
+    ]
+  },
+  "parameters": [
+    {
+      "name": "period",
+      "title_ru": "Период",
+      "description_ru": "Проверенный параметр: период.",
+      "value_type": "period",
+      "required": true,
+      "allowed_sources": [
+        "user_slot",
+        "previous_step"
+      ],
+      "normalization": "normalize_period",
+      "context_slot_keys": []
+    },
+    {
+      "name": "document_number",
+      "title_ru": "Номер документа",
+      "description_ru": "Проверенный параметр: номер документа.",
+      "value_type": "string",
+      "required": false,
+      "allowed_sources": [
+        "user_slot",
+        "system"
+      ],
+      "normalization": "trim",
+      "context_slot_keys": [],
+      "default": ""
+    },
+    {
+      "name": "from_warehouse",
+      "title_ru": "Склад-отправитель",
+      "description_ru": "Проверенный параметр: склад-отправитель.",
+      "value_type": "entity_ref",
+      "required": false,
+      "allowed_sources": [
+        "previous_step",
+        "session_context"
+      ],
+      "normalization": "object_ref",
+      "context_slot_keys": [
+        "selection.warehouse"
+      ],
+      "semantic_type": "catalog.warehouse",
+      "entity_types": [
+        "catalog.warehouse"
+      ]
+    },
+    {
+      "name": "to_warehouse",
+      "title_ru": "Склад-получатель",
+      "description_ru": "Проверенный параметр: склад-получатель.",
+      "value_type": "entity_ref",
+      "required": false,
+      "allowed_sources": [
+        "previous_step",
+        "session_context"
+      ],
+      "normalization": "object_ref",
+      "context_slot_keys": [
+        "selection.warehouse"
+      ],
+      "semantic_type": "catalog.warehouse",
+      "entity_types": [
+        "catalog.warehouse"
+      ]
+    }
+  ],
+  "operation": {
+    "kind": "data_query",
+    "tool": "execute_query",
+    "read_only": true,
+    "query_template": {
+      "template_id": "ut115.logistics.transfer-list.v1",
+      "language": "1c-query",
+      "text": "ВЫБРАТЬ\n  Документ.Ссылка КАК Перемещение,\n  Документ.Номер КАК Номер,\n  Документ.Дата КАК Дата,\n  Документ.СкладОтправитель КАК СкладОтправитель,\n  ПРЕДСТАВЛЕНИЕ(Документ.СкладОтправитель) КАК СкладОтправительНаименование,\n  Документ.СкладПолучатель КАК СкладПолучатель,\n  ПРЕДСТАВЛЕНИЕ(Документ.СкладПолучатель) КАК СкладПолучательНаименование,\n  ПРЕДСТАВЛЕНИЕ(Документ.Статус) КАК Статус\nИЗ Документ.ПеремещениеТоваров КАК Документ\nГДЕ Документ.Дата >= &НачалоПериода\n  И Документ.Дата < &КонецПериода\n  И (&Номер = \"\" ИЛИ Документ.Номер = &Номер)\n  И (&СкладОтправитель ЕСТЬ NULL ИЛИ Документ.СкладОтправитель = &СкладОтправитель)\n  И (&СкладПолучатель ЕСТЬ NULL ИЛИ Документ.СкладПолучатель = &СкладПолучатель)\n  И (НЕ &ЕстьКурсор\n    ИЛИ Документ.Дата < &ДатаКурсора\n    ИЛИ (Документ.Дата = &ДатаКурсора\n      И Документ.Ссылка > &СсылкаКурсора))\nУПОРЯДОЧИТЬ ПО Документ.Дата УБЫВ, Документ.Ссылка",
+      "execution": {
+        "kind": "single_select",
+        "statement_count": 1,
+        "final_statement": 1
+      },
+      "invariant_constants": [
+        {
+          "kind": "empty_literal",
+          "statement": 1,
+          "value": "",
+          "role": "absence_filter",
+          "occurrences": 1
+        },
+        {
+          "kind": "null_literal",
+          "statement": 1,
+          "value": "NULL",
+          "role": "absence_filter",
+          "occurrences": 2
+        }
+      ],
+      "include_schema": true,
+      "mcp_limit": {
+        "default": 20,
+        "maximum": 1000
+      }
+    },
+    "parameter_bindings": [
+      {
+        "parameter": "period",
+        "query_parameter": "НачалоПериода",
+        "encoding": "period_start"
+      },
+      {
+        "parameter": "period",
+        "query_parameter": "КонецПериода",
+        "encoding": "period_end_exclusive"
+      },
+      {
+        "parameter": "document_number",
+        "query_parameter": "Номер",
+        "encoding": "string"
+      },
+      {
+        "parameter": "from_warehouse",
+        "query_parameter": "СкладОтправитель",
+        "encoding": "object_ref"
+      },
+      {
+        "parameter": "to_warehouse",
+        "query_parameter": "СкладПолучатель",
+        "encoding": "object_ref"
+      }
+    ],
+    "column_bindings": [
+      {
+        "column": "Перемещение",
+        "fact_id": "transfer.ref",
+        "accepted_mcp_types": [
+          "ДокументСсылка.ПеремещениеТоваров"
+        ],
+        "converter": "object_ref"
+      },
+      {
+        "column": "Номер",
+        "fact_id": "transfer.number",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "Дата",
+        "fact_id": "transfer.date",
+        "accepted_mcp_types": [
+          "Дата"
+        ],
+        "converter": "datetime"
+      },
+      {
+        "column": "СкладОтправитель",
+        "fact_id": "transfer.from_warehouse",
+        "accepted_mcp_types": [
+          "СправочникСсылка.Склады"
+        ],
+        "converter": "object_ref"
+      },
+      {
+        "column": "СкладОтправительНаименование",
+        "fact_id": "transfer.from_warehouse_name",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "СкладПолучатель",
+        "fact_id": "transfer.to_warehouse",
+        "accepted_mcp_types": [
+          "СправочникСсылка.Склады"
+        ],
+        "converter": "object_ref"
+      },
+      {
+        "column": "СкладПолучательНаименование",
+        "fact_id": "transfer.to_warehouse_name",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      },
+      {
+        "column": "Статус",
+        "fact_id": "transfer.status",
+        "accepted_mcp_types": [
+          "Строка"
+        ],
+        "converter": "string"
+      }
+    ],
+    "pagination": {
+      "strategy": "keyset",
+      "has_cursor_query_parameter": "ЕстьКурсор",
+      "sort": [
+        {
+          "fact_id": "transfer.date",
+          "direction": "desc"
+        },
+        {
+          "fact_id": "transfer.ref",
+          "direction": "asc"
+        }
+      ],
+      "cursor_bindings": [
+        {
+          "fact_id": "transfer.date",
+          "query_parameter": "ДатаКурсора",
+          "encoding": "datetime"
+        },
+        {
+          "fact_id": "transfer.ref",
+          "query_parameter": "СсылкаКурсора",
+          "encoding": "object_ref"
+        }
+      ]
+    }
+  },
+  "output_contract": {
+    "contract_id": "ut115.logistics.transfer-list.v1",
+    "contract_version": "1.1.0",
+    "cardinality": "many",
+    "facts": [
+      {
+        "fact_id": "transfer.ref",
+        "semantic_type": "document.stock_transfer",
+        "value_type": "entity_ref",
+        "role": "entity",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Список перемещений",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "transfer.number",
+        "semantic_type": "document.number",
+        "value_type": "string",
+        "role": "attribute",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Номер",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "transfer.date",
+        "semantic_type": "time.document_moment",
+        "value_type": "datetime",
+        "role": "time",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Дата",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "transfer.from_warehouse",
+        "semantic_type": "catalog.warehouse",
+        "value_type": "entity_ref",
+        "role": "dimension",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Склад-отправитель",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "transfer.from_warehouse_name",
+        "semantic_type": "catalog.warehouse.name",
+        "value_type": "string",
+        "role": "dimension",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Склад-отправитель",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "transfer.to_warehouse",
+        "semantic_type": "catalog.warehouse",
+        "value_type": "entity_ref",
+        "role": "dimension",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Склад-получатель",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "transfer.to_warehouse_name",
+        "semantic_type": "catalog.warehouse.name",
+        "value_type": "string",
+        "role": "dimension",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Склад-получатель",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      },
+      {
+        "fact_id": "transfer.status",
+        "semantic_type": "document.stock_transfer.status",
+        "value_type": "string",
+        "role": "attribute",
+        "required": true,
+        "nullable": false,
+        "title_ru": "Статус",
+        "unit_contract": {
+          "mode": "not_applicable"
+        }
+      }
+    ],
+    "sufficiency": {
+      "required_fact_sets": [
+        [
+          "transfer.ref",
+          "transfer.number",
+          "transfer.date",
+          "transfer.from_warehouse",
+          "transfer.from_warehouse_name",
+          "transfer.to_warehouse",
+          "transfer.to_warehouse_name",
+          "transfer.status"
+        ]
+      ],
+      "empty_semantics": "confirmed_not_found",
+      "zero_fact_ids": [],
+      "truncation_policy": "page_is_complete"
+    },
+    "renderer": {
+      "kind": "table",
+      "primary_fact_ids": [
+        "transfer.status"
+      ],
+      "column_fact_ids": [
+        "transfer.ref",
+        "transfer.number",
+        "transfer.date",
+        "transfer.from_warehouse",
+        "transfer.from_warehouse_name",
+        "transfer.to_warehouse",
+        "transfer.to_warehouse_name",
+        "transfer.status"
+      ]
+    },
+    "row_identity_fact_ids": [
+      "transfer.ref"
+    ],
+    "resolution": {
+      "protocol": "typed_entity_resolver_v1",
+      "identity_fact_id": "transfer.ref",
+      "candidate_label_fact_ids": [
+        "transfer.number",
+        "transfer.date"
+      ],
+      "role_proof_fact_ids": [],
+      "default_slot_key": "selection.stock_transfer"
+    },
+    "context_export_policy": [
+      {
+        "fact_id": "transfer.ref",
+        "slot_key": "selection.stock_transfer",
+        "mode": "selected_only",
+        "lifetime": {
+          "mode": "session"
+        },
+        "max_members": 100
+      }
+    ]
+  },
+  "result_constraints": [],
+  "dependencies": {
+    "runtime_contracts": [
+      {
+        "contract": "skill-runtime",
+        "version_range": "^1.0.0"
+      },
+      {
+        "contract": "mcp.execute_query",
+        "version_range": "^1.0.0"
+      }
+    ],
+    "skills": [
+      {
+        "skill_id": "ut115.ref.warehouse.resolve",
+        "version_range": "=1.1.1",
+        "required_fact_types": [
+          "catalog.warehouse"
+        ]
+      }
+    ]
+  },
+  "examples": [
+    {
+      "question_ru": "покажи перемещения товаров?",
+      "applicability": "applicable",
+      "reason_ru": "Вопрос соответствует точному typed-контракту навыка."
+    },
+    {
+      "question_ru": "изменить найденный объект?",
+      "applicability": "not_applicable",
+      "reason_ru": "Навык выполняет только чтение данных."
+    }
+  ],
+  "tests": [
+    {
+      "test_id": "ut.logistics.transfer-list.positive",
+      "case_kind": "positive",
+      "bindings": [
+        {
+          "parameter": "period",
+          "value": {
+            "start": "2026-01-01",
+            "end_exclusive": "2027-01-01"
+          }
+        },
+        {
+          "parameter": "document_number",
+          "value": ""
+        },
+        {
+          "parameter": "from_warehouse",
+          "value": {
+            "_objectRef": true,
+            "УникальныйИдентификатор": "00000000-0000-4000-8000-000000003501",
+            "ТипОбъекта": "СправочникСсылка.Склады",
+            "Представление": "Склад-отправитель"
+          }
+        },
+        {
+          "parameter": "to_warehouse",
+          "value": {
+            "_objectRef": true,
+            "УникальныйИдентификатор": "00000000-0000-4000-8000-000000003502",
+            "ТипОбъекта": "СправочникСсылка.Склады",
+            "Представление": "Склад-получатель"
+          }
+        }
+      ],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": true,
+          "data": [
+            {
+              "Перемещение": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000003500",
+                "ТипОбъекта": "ДокументСсылка.ПеремещениеТоваров",
+                "Представление": "Список перемещений"
+              },
+              "Номер": "0000-000001",
+              "Дата": "2026-01-15T12:00:00Z",
+              "СкладОтправитель": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000003501",
+                "ТипОбъекта": "СправочникСсылка.Склады",
+                "Представление": "Склад-отправитель"
+              },
+              "СкладОтправительНаименование": "Склад-отправитель",
+              "СкладПолучатель": {
+                "_objectRef": true,
+                "УникальныйИдентификатор": "00000000-0000-4000-8000-000000003502",
+                "ТипОбъекта": "СправочникСсылка.Склады",
+                "Представление": "Склад-получатель"
+              },
+              "СкладПолучательНаименование": "Склад-получатель",
+              "Статус": "Принято"
+            }
+          ],
+          "schema": {
+            "columns": [
+              {
+                "name": "Перемещение",
+                "types": [
+                  "ДокументСсылка.ПеремещениеТоваров"
+                ]
+              },
+              {
+                "name": "Номер",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Дата",
+                "types": [
+                  "Дата"
+                ]
+              },
+              {
+                "name": "СкладОтправитель",
+                "types": [
+                  "СправочникСсылка.Склады"
+                ]
+              },
+              {
+                "name": "СкладОтправительНаименование",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "СкладПолучатель",
+                "types": [
+                  "СправочникСсылка.Склады"
+                ]
+              },
+              {
+                "name": "СкладПолучательНаименование",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Статус",
+                "types": [
+                  "Строка"
+                ]
+              }
+            ]
+          },
+          "count": 1
+        }
+      },
+      "expected": {
+        "status": "success_with_rows",
+        "required_fact_ids": [
+          "transfer.ref",
+          "transfer.number",
+          "transfer.date",
+          "transfer.from_warehouse",
+          "transfer.from_warehouse_name",
+          "transfer.to_warehouse",
+          "transfer.to_warehouse_name",
+          "transfer.status"
+        ]
+      }
+    },
+    {
+      "test_id": "ut.logistics.transfer-list.empty",
+      "case_kind": "negative",
+      "bindings": [
+        {
+          "parameter": "period",
+          "value": {
+            "start": "2026-01-01",
+            "end_exclusive": "2027-01-01"
+          }
+        },
+        {
+          "parameter": "document_number",
+          "value": ""
+        },
+        {
+          "parameter": "from_warehouse",
+          "value": {
+            "_objectRef": true,
+            "УникальныйИдентификатор": "00000000-0000-4000-8000-000000003501",
+            "ТипОбъекта": "СправочникСсылка.Склады",
+            "Представление": "Склад-отправитель"
+          }
+        },
+        {
+          "parameter": "to_warehouse",
+          "value": {
+            "_objectRef": true,
+            "УникальныйИдентификатор": "00000000-0000-4000-8000-000000003502",
+            "ТипОбъекта": "СправочникСсылка.Склады",
+            "Представление": "Склад-получатель"
+          }
+        }
+      ],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": true,
+          "data": [],
+          "schema": {
+            "columns": [
+              {
+                "name": "Перемещение",
+                "types": [
+                  "ДокументСсылка.ПеремещениеТоваров"
+                ]
+              },
+              {
+                "name": "Номер",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Дата",
+                "types": [
+                  "Дата"
+                ]
+              },
+              {
+                "name": "СкладОтправитель",
+                "types": [
+                  "СправочникСсылка.Склады"
+                ]
+              },
+              {
+                "name": "СкладОтправительНаименование",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "СкладПолучатель",
+                "types": [
+                  "СправочникСсылка.Склады"
+                ]
+              },
+              {
+                "name": "СкладПолучательНаименование",
+                "types": [
+                  "Строка"
+                ]
+              },
+              {
+                "name": "Статус",
+                "types": [
+                  "Строка"
+                ]
+              }
+            ]
+          },
+          "count": 0
+        }
+      },
+      "expected": {
+        "status": "success_empty",
+        "required_fact_ids": []
+      }
+    },
+    {
+      "test_id": "ut.logistics.transfer-list.malformed",
+      "case_kind": "negative",
+      "bindings": [
+        {
+          "parameter": "period",
+          "value": {
+            "start": "2026-01-01",
+            "end_exclusive": "2027-01-01"
+          }
+        },
+        {
+          "parameter": "document_number",
+          "value": ""
+        },
+        {
+          "parameter": "from_warehouse",
+          "value": {
+            "_objectRef": true,
+            "УникальныйИдентификатор": "00000000-0000-4000-8000-000000003501",
+            "ТипОбъекта": "СправочникСсылка.Склады",
+            "Представление": "Склад-отправитель"
+          }
+        },
+        {
+          "parameter": "to_warehouse",
+          "value": {
+            "_objectRef": true,
+            "УникальныйИдентификатор": "00000000-0000-4000-8000-000000003502",
+            "ТипОбъекта": "СправочникСсылка.Склады",
+            "Представление": "Склад-получатель"
+          }
+        }
+      ],
+      "fixture": {
+        "kind": "mcp_execute_query",
+        "response": {
+          "success": false,
+          "error": "MCP_SCHEMA_MISMATCH: incompatible identity column type"
+        }
+      },
+      "expected": {
+        "status": "query_error",
+        "required_fact_ids": [],
+        "error_code": "MCP_SCHEMA_MISMATCH"
+      }
+    }
+  ],
+  "provenance": {
+    "author": "ChatBot 1C slice 3B",
+    "created_at": "2026-07-22T00:00:00Z",
+    "reviewed_by": "Metadata-proven resolver catalog",
+    "reviewed_at": "2026-07-22T00:00:00Z",
+    "source_configuration": {
+      "configuration_id": "УправлениеТорговлейБазовая",
+      "release": "11.5.27.56",
+      "compatibility_mode": "8.3.27",
+      "metadata_snapshot_sha256": "66cc7e484af93c58b058a89ce21996a09dbe1da45a260c5f35415e87263b5039"
+    },
+    "source_references": [
+      {
+        "kind": "configuration_metadata",
+        "uri": "ut-config://11.5.27.56/Documents/ПеремещениеТоваров.xml",
+        "sha256": "66cc7e484af93c58b058a89ce21996a09dbe1da45a260c5f35415e87263b5039"
+      }
+    ],
+    "change_note_ru": "Production typed resolver/consumer contract без object-specific core logic."
+  },
+  "integrity": {
+    "algorithm": "sha256",
+    "canonicalization": "RFC8785",
+    "scope": "document_without_integrity",
+    "digest": "0ba2469b0045e7d13f4b58e4ed25b9fd35366bef30695e3ab1ba23b6cb14e753"
+  }
+}
