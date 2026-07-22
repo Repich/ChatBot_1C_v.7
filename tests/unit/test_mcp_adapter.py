@@ -14,7 +14,7 @@ from chatbot1c.adapters.mcp import (
     McpTransportError,
 )
 from chatbot1c.application.errors import ApplicationError
-from chatbot1c.application.models import ExecuteQueryRequest
+from chatbot1c.application.models import ExecuteQueryRequest, GetMetadataRequest
 
 
 def _request(*, limit: int = 20) -> ExecuteQueryRequest:
@@ -151,3 +151,38 @@ def test_live_transport_does_not_swallow_cancellation(
     transport = LiveMcpTransport("http://127.0.0.1:1/mcp", channel="default")
     with pytest.raises(asyncio.CancelledError):
         asyncio.run(transport.call_tool("execute_query", {}))
+
+
+def test_metadata_mode_is_local_and_not_sent_to_toolkit() -> None:
+    captured: dict[str, object] = {}
+
+    def metadata(arguments: dict[str, object]) -> dict[str, object]:
+        captured.update(arguments)
+        return {"success": True, "data": {"objects": []}}
+
+    adapter = McpReadOnlyAdapter(InMemoryMcpTransport({"get_metadata": metadata}))
+    result = asyncio.run(
+        adapter.get_metadata(
+            GetMetadataRequest(
+                mode="list",
+                meta_type="Справочник",
+                name_mask="Номенклатура",
+                sections=("attributes",),
+                limit=25,
+                offset=10,
+            )
+        )
+    )
+
+    assert result.success
+    assert "mode" not in captured
+    assert captured == {
+        "filter": None,
+        "meta_type": "Справочник",
+        "name_mask": "Номенклатура",
+        "attribute_mask": None,
+        "sections": ["attributes"],
+        "limit": 25,
+        "offset": 10,
+        "extension_name": None,
+    }

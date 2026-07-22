@@ -192,9 +192,10 @@ class McpReadOnlyAdapter(ReadOnly1CPort):
         return normalized
 
     async def get_metadata(self, request: GetMetadataRequest) -> MetadataEnvelope:
+        arguments = request.model_dump(mode="json", exclude={"mode"})
         raw, _ = await self._call_tool(
             "get_metadata",
-            cast(dict[str, JsonValue], request.model_dump(mode="json")),
+            cast(dict[str, JsonValue], arguments),
             timeout=self._metadata_timeout,
             deadline_at=None,
         )
