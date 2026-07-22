@@ -724,8 +724,8 @@ Deliver:
 
 - complete M06-M09 allowlist with closed typed input/output contracts;
 - stage the skills required for genuine E2E operator tests: PR03, SP02, SP06,
-  SP09-SP10, SP14-SP16, SL02, SL08, SE02, SE04 and CF03; reuse already staged
-  SP04, SP11-SP13, SL01/SL05 and SE01;
+  SP09-SP10, SP14-SP16, SL02, SL08, SE01-SE02, SE04 and CF03; reuse already
+  staged SP04, SP11-SP13 and SL01/SL05;
 - deterministic Decimal/currency arithmetic, half-open periods, stable rank
   ties, distinct identity definitions and typed join coordinates;
 - plan coverage proof before execution and evidence coverage after every

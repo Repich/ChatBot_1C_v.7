@@ -152,6 +152,12 @@ Q092/Q093 без refresh от нового turn time или MCP.
 
 ## 4. Generic operators and composition slice
 
+Нормативные решения и приемка:
+
+- [ADR-0004](../adr/0004-typed-relational-operators.md);
+- [требования Slice 4](../requirements/slice4_operator_requirements.md);
+- [acceptance contract Slice 4](../testing/slice4_acceptance_contract.md).
+
 Реализовать allowlist operators полностью:
 
 - count distinct semantics с обязательным `visible_page|complete_set` scope;
