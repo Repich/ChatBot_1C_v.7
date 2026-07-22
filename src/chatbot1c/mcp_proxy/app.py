@@ -13,6 +13,7 @@ from fastapi import FastAPI, Query, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from .config import ProxySettings
+from .events import STARTUP_EVENT, log_event
 from .jsonio import PayloadError, load_json_object
 from .state import (
     BridgeCommand,
@@ -72,6 +73,19 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        log_event(
+            STARTUP_EVENT,
+            status="ready",
+            command_timeout_seconds=settings.command_timeout_seconds,
+            heartbeat_seconds=settings.heartbeat_seconds,
+            poll_wait_seconds=settings.poll_wait_seconds,
+            max_pending_per_channel=settings.max_pending_per_channel,
+            max_channels=settings.max_channels,
+            max_result_bytes=settings.max_result_bytes,
+            max_rows=settings.max_rows,
+            max_json_depth=settings.max_json_depth,
+            max_json_nodes=settings.max_json_nodes,
+        )
         try:
             yield
         finally:

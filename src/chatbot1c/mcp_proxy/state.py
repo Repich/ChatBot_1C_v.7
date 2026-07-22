@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 import time
 from collections import deque
@@ -12,6 +13,17 @@ from typing import Any, Literal
 from uuid import uuid4
 
 from .config import ProxySettings
+from .events import (
+    COMMAND_CANCELLED_EVENT,
+    COMMAND_COMPLETED_EVENT,
+    COMMAND_EXPIRED_EVENT,
+    COMMAND_LEASED_EVENT,
+    COMMAND_QUEUED_EVENT,
+    HEARTBEAT_EVENT,
+    RESULT_REJECTED_EVENT,
+    SHUTDOWN_EVENT,
+    log_event,
+)
 
 _CHANNEL_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
@@ -64,6 +76,7 @@ class ChannelState:
     tombstones: set[str] = field(default_factory=set)
     tombstone_order: deque[str] = field(default_factory=deque)
     last_one_c_poll: float | None = None
+    one_c_connected: bool = False
 
 
 class ProxyState:
@@ -86,10 +99,12 @@ class ProxyState:
             state = self._channels.get(channel)
             if state is None or state.last_one_c_poll is None:
                 return False
-            return (
-                time.monotonic() - state.last_one_c_poll
-                <= self.settings.heartbeat_seconds
+            now = time.monotonic()
+            connected = (
+                now - state.last_one_c_poll <= self.settings.heartbeat_seconds
             )
+            self._set_heartbeat(channel, state, connected=connected, now=now)
+            return connected
 
     async def enqueue(
         self,
@@ -123,6 +138,7 @@ class ProxyState:
             state.active[command.command_id] = command
             state.request_index[index_key] = command.command_id
             state.queue.append(command.command_id)
+            _log_command(COMMAND_QUEUED_EVENT, command, status=command.status.value)
             self._condition.notify_all()
             return command
 
@@ -130,12 +146,26 @@ class ProxyState:
         deadline = time.monotonic() + self.settings.poll_wait_seconds
         async with self._condition:
             state = self._get_or_create_channel(channel)
-            state.last_one_c_poll = time.monotonic()
+            now = time.monotonic()
+            if (
+                state.one_c_connected
+                and state.last_one_c_poll is not None
+                and now - state.last_one_c_poll > self.settings.heartbeat_seconds
+            ):
+                self._set_heartbeat(channel, state, connected=False, now=now)
+            self._set_heartbeat(channel, state, connected=True, now=now)
+            state.last_one_c_poll = now
             while True:
                 command = self._take_queued(state)
                 if command is not None:
                     command.status = CommandStatus.LEASED
                     command.leased_at = time.monotonic()
+                    _log_command(
+                        COMMAND_LEASED_EVENT,
+                        command,
+                        status=command.status.value,
+                        now=command.leased_at,
+                    )
                     return command
                 remaining = deadline - time.monotonic()
                 if remaining <= 0 or self._closed:
@@ -161,6 +191,13 @@ class ProxyState:
                 status=CommandStatus.COMPLETED,
                 outcome=CommandOutcome(kind="result", payload=payload),
             )
+            successful = payload.get("success") is True
+            _log_command(
+                COMMAND_COMPLETED_EVENT,
+                command,
+                status="success" if successful else "query_error",
+                level=logging.INFO if successful else logging.WARNING,
+            )
             return True
 
     async def fail_result(
@@ -179,6 +216,12 @@ class ProxyState:
                 status=CommandStatus.COMPLETED,
                 outcome=CommandOutcome(kind="error", message=message),
             )
+            _log_command(
+                RESULT_REJECTED_EVENT,
+                command,
+                status="invalid_result",
+                level=logging.WARNING,
+            )
             return True
 
     async def expire(self, command: BridgeCommand) -> bool:
@@ -188,6 +231,9 @@ class ProxyState:
             outcome=CommandOutcome(
                 kind="error", message="MCP bridge transport timeout"
             ),
+            event_name=COMMAND_EXPIRED_EVENT,
+            event_status="expired",
+            level=logging.WARNING,
         )
 
     async def cancel(self, command: BridgeCommand, message: str) -> bool:
@@ -195,6 +241,8 @@ class ProxyState:
             command,
             status=CommandStatus.CANCELLED,
             outcome=CommandOutcome(kind="cancelled", message=message),
+            event_name=COMMAND_CANCELLED_EVENT,
+            event_status="cancelled",
         )
 
     async def cancel_request(
@@ -213,6 +261,9 @@ class ProxyState:
                 command,
                 status=CommandStatus.CANCELLED,
                 outcome=CommandOutcome(kind="cancelled", message="MCP request cancelled"),
+            )
+            _log_command(
+                COMMAND_CANCELLED_EVENT, command, status="cancelled"
             )
             return True
 
@@ -236,6 +287,9 @@ class ProxyState:
                         kind="cancelled", message="MCP session cancelled"
                     ),
                 )
+                _log_command(
+                    COMMAND_CANCELLED_EVENT, command, status="cancelled"
+                )
 
     async def command_for_result(
         self, channel: str, command_id: str
@@ -252,9 +306,13 @@ class ProxyState:
 
     async def shutdown(self) -> None:
         async with self._condition:
+            if self._closed:
+                return
             self._closed = True
+            active_commands = 0
             for state in self._channels.values():
                 for command in tuple(state.active.values()):
+                    active_commands += 1
                     self._finish(
                         state,
                         command,
@@ -263,7 +321,16 @@ class ProxyState:
                             kind="error", message="MCP bridge transport unavailable"
                         ),
                     )
+                    _log_command(
+                        COMMAND_CANCELLED_EVENT, command, status="cancelled"
+                    )
             self._condition.notify_all()
+            log_event(
+                SHUTDOWN_EVENT,
+                status="complete",
+                channel_count=len(self._channels),
+                active_commands=active_commands,
+            )
 
     @staticmethod
     def validate_channel(channel: str) -> None:
@@ -296,6 +363,9 @@ class ProxyState:
         *,
         status: CommandStatus,
         outcome: CommandOutcome,
+        event_name: str,
+        event_status: str,
+        level: int = logging.INFO,
     ) -> bool:
         async with self._condition:
             state = self._channels.get(command.channel)
@@ -303,7 +373,37 @@ class ProxyState:
             if state is None or active is not command:
                 return False
             self._finish(state, command, status=status, outcome=outcome)
+            _log_command(
+                event_name,
+                command,
+                status=event_status,
+                level=level,
+            )
             return True
+
+    @staticmethod
+    def _set_heartbeat(
+        channel: str,
+        state: ChannelState,
+        *,
+        connected: bool,
+        now: float,
+    ) -> None:
+        if state.one_c_connected is connected:
+            return
+        state.one_c_connected = connected
+        level = logging.INFO if connected else logging.WARNING
+        status = "connected" if connected else "disconnected"
+        if state.last_one_c_poll is None:
+            log_event(HEARTBEAT_EVENT, level=level, channel=channel, status=status)
+            return
+        log_event(
+            HEARTBEAT_EVENT,
+            level=level,
+            channel=channel,
+            status=status,
+            elapsed_ms=_elapsed_ms(state.last_one_c_poll, now=now),
+        )
 
     def _finish(
         self,
@@ -327,3 +427,27 @@ class ProxyState:
         while len(state.tombstone_order) > self._tombstone_limit:
             expired = state.tombstone_order.popleft()
             state.tombstones.discard(expired)
+
+
+def _log_command(
+    event_name: str,
+    command: BridgeCommand,
+    *,
+    status: str,
+    level: int = logging.INFO,
+    now: float | None = None,
+) -> None:
+    log_event(
+        event_name,
+        level=level,
+        command_id=command.command_id,
+        channel=command.channel,
+        tool=command.tool,
+        status=status,
+        elapsed_ms=_elapsed_ms(command.created_at, now=now),
+    )
+
+
+def _elapsed_ms(started_at: float, *, now: float | None = None) -> int:
+    finished_at = time.monotonic() if now is None else now
+    return max(0, int((finished_at - started_at) * 1000))
