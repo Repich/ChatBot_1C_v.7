@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "chatbot1c"
-version = "0.1.0a4"
+version = "0.1.0a5"
 description = "Contract-first assistant for 1C Trade Management"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"

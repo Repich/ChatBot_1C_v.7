@@ -6,4 +6,4 @@ from chatbot1c.domain.plan import PlannerOutput
 from chatbot1c.domain.skill import Skill
 
 __all__ = ["EvidenceBundle", "PlannerOutput", "Skill", "SkillPackage", "__version__"]
-__version__ = "0.1.0-alpha.4"
+__version__ = "0.1.0-alpha.5"
