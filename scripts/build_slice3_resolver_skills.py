@@ -751,9 +751,9 @@ def _build_item_details() -> dict[str, Any]:
         _fact("item.code", "catalog.item.code", "string", "attribute", "Код"),
         _fact("item.article", "catalog.item.article", "string", "attribute", "Артикул", required=False, nullable=True),
         _fact("item.storage_unit", "catalog.item.unit", "string", "dimension", "Единица хранения"),
-        _fact("item.barcode", "catalog.item.barcode", "string", "attribute", "Штрихкод", required=False, nullable=True),
-        _fact("item.barcode_characteristic", "catalog.item.characteristic", "entity_ref", "dimension", "Характеристика штрихкода", required=False, nullable=True),
-        _fact("item.barcode_series", "catalog.item.series", "entity_ref", "dimension", "Серия штрихкода", required=False, nullable=True),
+        _fact("item.barcode", "catalog.item.barcode", "string", "dimension", "Штрихкод"),
+        _fact("item.barcode_characteristic", "catalog.item.characteristic", "entity_ref", "dimension", "Характеристика штрихкода"),
+        _fact("item.barcode_series", "catalog.item.series", "entity_ref", "dimension", "Серия штрихкода"),
     ]
     columns = [
         _column("Номенклатура", "item.ref", "СправочникСсылка.Номенклатура", "object_ref"),
@@ -781,16 +781,16 @@ def _build_item_details() -> dict[str, Any]:
         "  Номенклатура.Наименование КАК Наименование,\n"
         "  Номенклатура.Код КАК Код,\n  Номенклатура.Артикул КАК Артикул,\n"
         "  ПРЕДСТАВЛЕНИЕ(Номенклатура.ЕдиницаИзмерения) КАК ЕдиницаХранения,\n"
-        "  Штрихкоды.Штрихкод КАК Штрихкод,\n"
-        "  Штрихкоды.Характеристика КАК Характеристика,\n"
-        "  Штрихкоды.Серия КАК Серия\n"
+        '  ЕСТЬNULL(Штрихкоды.Штрихкод, "") КАК Штрихкод,\n'
+        "  ЕСТЬNULL(Штрихкоды.Характеристика, ЗНАЧЕНИЕ(Справочник.ХарактеристикиНоменклатуры.ПустаяСсылка)) КАК Характеристика,\n"
+        "  ЕСТЬNULL(Штрихкоды.Серия, ЗНАЧЕНИЕ(Справочник.СерииНоменклатуры.ПустаяСсылка)) КАК Серия\n"
         "ИЗ Справочник.Номенклатура КАК Номенклатура\n"
         "  ЛЕВОЕ СОЕДИНЕНИЕ РегистрСведений.ШтрихкодыНоменклатуры КАК Штрихкоды\n"
         "  ПО Штрихкоды.Номенклатура = Номенклатура.Ссылка\n"
         "ГДЕ Номенклатура.Ссылка = &Номенклатура\n"
         "УПОРЯДОЧИТЬ ПО Штрихкоды.Штрихкод, Штрихкоды.Характеристика, Штрихкоды.Серия"
     )
-    required = ["item.ref", "item.name", "item.code", "item.storage_unit"]
+    required = ["item.ref", "item.name", "item.code", "item.storage_unit", "item.barcode", "item.barcode_characteristic", "item.barcode_series"]
     return _base_skill(
         skill_id="ut115.ref.item.details",
         version="1.0.0",
@@ -819,6 +819,7 @@ def _build_item_details() -> dict[str, Any]:
             for skill_id in sorted(R01_IDS)
         ],
         result_constraints=[{"kind": "fact_equals_parameter", "fact_id": "item.ref", "parameter": "item"}],
+        invariants=[{"kind": "empty_literal", "statement": 1, "value": "", "role": "null_substitution", "occurrences": 1}, {"kind": "metadata_constant", "statement": 1, "constant_kind": "empty_reference", "symbol": "Справочник.ХарактеристикиНоменклатуры.ПустаяСсылка", "role": "computed_value", "occurrences": 1}, {"kind": "metadata_constant", "statement": 1, "constant_kind": "empty_reference", "symbol": "Справочник.СерииНоменклатуры.ПустаяСсылка", "role": "computed_value", "occurrences": 1}],
     )
 
 
@@ -903,7 +904,7 @@ def _build_group_members() -> dict[str, Any]:
         skill_id="ut115.ref.item.group-members", version="1.0.0", name="Состав выбранной группы", purpose="Возвращает товары exact выбранной группы с явно заданным правилом потомков.", aliases=["покажи товары выбранной группы"],
         parameters=[
             _parameter("group", "Группа", "entity_ref", ["previous_step", "session_context"], "object_ref", semantic_type="catalog.item.group", slots=["selection.item_group"]),
-            _parameter("include_descendants", "Включать подгруппы", "boolean", ["system"], "none", required=True, default=True),
+            _parameter("include_descendants", "Включать подгруппы", "boolean", ["user_slot"], "none", required=False, default=True),
         ],
         facts=facts, required_facts=required, query=query,
         parameter_bindings=[{"parameter": "group", "query_parameter": "Группа", "encoding": "object_ref"}, {"parameter": "include_descendants", "query_parameter": "ВключаяПодгруппы", "encoding": "boolean"}],
@@ -1003,12 +1004,12 @@ def _build_party_details(role: str) -> dict[str, Any]:
         _fact(identity, semantic, "entity_ref", "entity", role_title),
         _fact("partner.name", "party.partner.name", "string", "attribute", "Наименование"),
         _fact("partner.code", "party.partner.code", "string", "attribute", "Код"),
-        _fact("contractor.ref", "party.contractor", "entity_ref", "dimension", "Контрагент", required=False, nullable=True),
+        _fact("contractor.ref", "party.contractor", "entity_ref", "dimension", "Контрагент"),
         _fact("contractor.name", "party.contractor.name", "string", "attribute", "Контрагент", required=False, nullable=True),
         _fact("contractor.inn", "party.contractor.inn", "string", "attribute", "ИНН", required=False, nullable=True),
         _fact("contractor.kpp", "party.contractor.kpp", "string", "attribute", "КПП", required=False, nullable=True),
-        _fact("contact.kind", "party.contact.kind", "string", "dimension", "Вид контакта", required=False, nullable=True),
-        _fact("contact.presentation", "party.contact.presentation", "string", "attribute", "Контакт", required=False, nullable=True),
+        _fact("contact.kind", "party.contact.kind", "string", "dimension", "Вид контакта"),
+        _fact("contact.presentation", "party.contact.presentation", "string", "dimension", "Контакт"),
     ]
     columns = [
         _column(role_title, identity, "СправочникСсылка.Партнеры", "object_ref"),
@@ -1025,11 +1026,11 @@ def _build_party_details(role: str) -> dict[str, Any]:
     schema = [{"name": col["column"], "types": col["accepted_mcp_types"]} for col in columns]
     query = (
         f"ВЫБРАТЬ\n  Партнеры.Ссылка КАК {role_title},\n  Партнеры.Наименование КАК Наименование,\n"
-        "  Партнеры.Код КАК Код,\n  Контрагенты.Ссылка КАК Контрагент,\n"
+        "  Партнеры.Код КАК Код,\n  ЕСТЬNULL(Контрагенты.Ссылка, ЗНАЧЕНИЕ(Справочник.Контрагенты.ПустаяСсылка)) КАК Контрагент,\n"
         "  Контрагенты.Наименование КАК КонтрагентНаименование,\n"
         "  Контрагенты.ИНН КАК ИНН,\n  Контрагенты.КПП КАК КПП,\n"
-        "  ПРЕДСТАВЛЕНИЕ(Контакты.Вид) КАК ВидКонтакта,\n"
-        "  Контакты.Представление КАК Контакт\n"
+        '  ЕСТЬNULL(ПРЕДСТАВЛЕНИЕ(Контакты.Вид), "") КАК ВидКонтакта,\n'
+        '  ЕСТЬNULL(Контакты.Представление, "") КАК Контакт\n'
         "ИЗ Справочник.Партнеры КАК Партнеры\n"
         "  ЛЕВОЕ СОЕДИНЕНИЕ Справочник.Контрагенты КАК Контрагенты\n"
         "  ПО Контрагенты.Партнер = Партнеры.Ссылка\n"
@@ -1043,8 +1044,9 @@ def _build_party_details(role: str) -> dict[str, Any]:
         parameters=[_parameter(role, role_title, "entity_ref", ["previous_step", "session_context"], "object_ref", semantic_type=semantic, slots=[slot])], facts=facts, required_facts=required, query=query,
         parameter_bindings=[{"parameter": role, "query_parameter": role_title, "encoding": "object_ref"}], columns=columns, pagination={"strategy": "none"}, metadata_hash=_combined_hash("partner", "contractor"),
         metadata_requirements=[_metadata("Справочник.Партнеры", ["Ссылка", "Код", "Наименование", "КонтактнаяИнформация.Вид", "КонтактнаяИнформация.Представление"]), _metadata("Справочник.Контрагенты", ["Ссылка", "Наименование", "Партнер", "ИНН", "КПП"])],
-        sources=[_source("Catalogs/Партнеры.xml", HASHES["partner"]), _source("Catalogs/Контрагенты.xml", HASHES["contractor"])], tests=_mcp_test(f"ut.{role}.details", [{"parameter": role, "value": entity}], row, schema, required), row_identity=[identity, "contractor.ref", "contact.presentation"], resolution=None, context_policy=[],
+        sources=[_source("Catalogs/Партнеры.xml", HASHES["partner"]), _source("Catalogs/Контрагенты.xml", HASHES["contractor"])], tests=_mcp_test(f"ut.{role}.details", [{"parameter": role, "value": entity}], row, schema, required), row_identity=[identity, "contractor.ref", "contact.kind", "contact.presentation"], resolution=None, context_policy=[],
         dependencies=[_dependency(f"ut115.ref.{role}.resolve-name-contains", "1.0.0", semantic)], result_constraints=[{"kind": "fact_equals_parameter", "fact_id": identity, "parameter": role}],
+        invariants=[{"kind": "metadata_constant", "statement": 1, "constant_kind": "empty_reference", "symbol": "Справочник.Контрагенты.ПустаяСсылка", "role": "computed_value", "occurrences": 1}, {"kind": "empty_literal", "statement": 1, "value": "", "role": "null_substitution", "occurrences": 2}],
     )
 
 

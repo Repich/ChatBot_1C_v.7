@@ -102,13 +102,37 @@
     "query_template": {
       "template_id": "ut115.ref.item.details.v1",
       "language": "1c-query",
-      "text": "ВЫБРАТЬ\n  Номенклатура.Ссылка КАК Номенклатура,\n  Номенклатура.Наименование КАК Наименование,\n  Номенклатура.Код КАК Код,\n  Номенклатура.Артикул КАК Артикул,\n  ПРЕДСТАВЛЕНИЕ(Номенклатура.ЕдиницаИзмерения) КАК ЕдиницаХранения,\n  Штрихкоды.Штрихкод КАК Штрихкод,\n  Штрихкоды.Характеристика КАК Характеристика,\n  Штрихкоды.Серия КАК Серия\nИЗ Справочник.Номенклатура КАК Номенклатура\n  ЛЕВОЕ СОЕДИНЕНИЕ РегистрСведений.ШтрихкодыНоменклатуры КАК Штрихкоды\n  ПО Штрихкоды.Номенклатура = Номенклатура.Ссылка\nГДЕ Номенклатура.Ссылка = &Номенклатура\nУПОРЯДОЧИТЬ ПО Штрихкоды.Штрихкод, Штрихкоды.Характеристика, Штрихкоды.Серия",
+      "text": "ВЫБРАТЬ\n  Номенклатура.Ссылка КАК Номенклатура,\n  Номенклатура.Наименование КАК Наименование,\n  Номенклатура.Код КАК Код,\n  Номенклатура.Артикул КАК Артикул,\n  ПРЕДСТАВЛЕНИЕ(Номенклатура.ЕдиницаИзмерения) КАК ЕдиницаХранения,\n  ЕСТЬNULL(Штрихкоды.Штрихкод, \"\") КАК Штрихкод,\n  ЕСТЬNULL(Штрихкоды.Характеристика, ЗНАЧЕНИЕ(Справочник.ХарактеристикиНоменклатуры.ПустаяСсылка)) КАК Характеристика,\n  ЕСТЬNULL(Штрихкоды.Серия, ЗНАЧЕНИЕ(Справочник.СерииНоменклатуры.ПустаяСсылка)) КАК Серия\nИЗ Справочник.Номенклатура КАК Номенклатура\n  ЛЕВОЕ СОЕДИНЕНИЕ РегистрСведений.ШтрихкодыНоменклатуры КАК Штрихкоды\n  ПО Штрихкоды.Номенклатура = Номенклатура.Ссылка\nГДЕ Номенклатура.Ссылка = &Номенклатура\nУПОРЯДОЧИТЬ ПО Штрихкоды.Штрихкод, Штрихкоды.Характеристика, Штрихкоды.Серия",
       "execution": {
         "kind": "single_select",
         "statement_count": 1,
         "final_statement": 1
       },
-      "invariant_constants": [],
+      "invariant_constants": [
+        {
+          "kind": "empty_literal",
+          "statement": 1,
+          "value": "",
+          "role": "null_substitution",
+          "occurrences": 1
+        },
+        {
+          "kind": "metadata_constant",
+          "statement": 1,
+          "constant_kind": "empty_reference",
+          "symbol": "Справочник.ХарактеристикиНоменклатуры.ПустаяСсылка",
+          "role": "computed_value",
+          "occurrences": 1
+        },
+        {
+          "kind": "metadata_constant",
+          "statement": 1,
+          "constant_kind": "empty_reference",
+          "symbol": "Справочник.СерииНоменклатуры.ПустаяСсылка",
+          "role": "computed_value",
+          "occurrences": 1
+        }
+      ],
       "include_schema": true,
       "mcp_limit": {
         "default": 20,
@@ -261,9 +285,9 @@
         "fact_id": "item.barcode",
         "semantic_type": "catalog.item.barcode",
         "value_type": "string",
-        "role": "attribute",
-        "required": false,
-        "nullable": true,
+        "role": "dimension",
+        "required": true,
+        "nullable": false,
         "title_ru": "Штрихкод",
         "unit_contract": {
           "mode": "not_applicable"
@@ -274,8 +298,8 @@
         "semantic_type": "catalog.item.characteristic",
         "value_type": "entity_ref",
         "role": "dimension",
-        "required": false,
-        "nullable": true,
+        "required": true,
+        "nullable": false,
         "title_ru": "Характеристика штрихкода",
         "unit_contract": {
           "mode": "not_applicable"
@@ -286,8 +310,8 @@
         "semantic_type": "catalog.item.series",
         "value_type": "entity_ref",
         "role": "dimension",
-        "required": false,
-        "nullable": true,
+        "required": true,
+        "nullable": false,
         "title_ru": "Серия штрихкода",
         "unit_contract": {
           "mode": "not_applicable"
@@ -300,7 +324,10 @@
           "item.ref",
           "item.name",
           "item.code",
-          "item.storage_unit"
+          "item.storage_unit",
+          "item.barcode",
+          "item.barcode_characteristic",
+          "item.barcode_series"
         ]
       ],
       "empty_semantics": "confirmed_not_found",
@@ -310,7 +337,7 @@
     "renderer": {
       "kind": "table",
       "primary_fact_ids": [
-        "item.storage_unit"
+        "item.barcode_series"
       ],
       "column_fact_ids": [
         "item.ref",
@@ -500,7 +527,10 @@
           "item.ref",
           "item.name",
           "item.code",
-          "item.storage_unit"
+          "item.storage_unit",
+          "item.barcode",
+          "item.barcode_characteristic",
+          "item.barcode_series"
         ]
       }
     },
@@ -640,6 +670,6 @@
     "algorithm": "sha256",
     "canonicalization": "RFC8785",
     "scope": "document_without_integrity",
-    "digest": "fbcb97614e7dff571f270d3ca454eabdc8ab930fb421972972241519b076b22d"
+    "digest": "d9c90d7e4bd155d9678dba276a2771c0a22be92b303f30a24bf06fe0cf07fdb2"
   }
 }

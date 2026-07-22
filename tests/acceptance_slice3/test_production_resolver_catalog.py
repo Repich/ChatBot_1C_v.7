@@ -98,6 +98,27 @@ def test_resolvers_and_consumers_have_exact_context_contracts() -> None:
         assert output["resolution"] is None
         assert output["context_export_policy"] == []
         assert skills[skill_id]["result_constraints"]
+        definitions = {item["fact_id"]: item for item in output["facts"]}
+        assert output["row_identity_fact_ids"], skill_id
+        for fact_id in output["row_identity_fact_ids"]:
+            definition = definitions[fact_id]
+            assert definition["required"] is True, (skill_id, fact_id)
+            assert definition["nullable"] is False, (skill_id, fact_id)
+            assert definition["role"] in {
+                "entity",
+                "dimension",
+                "provenance",
+            }, (skill_id, fact_id)
+
+
+def test_group_members_descendant_policy_has_an_executable_default() -> None:
+    skill = _generated_skills()["ut115.ref.item.group-members"]
+    parameter = next(
+        item for item in skill["parameters"] if item["name"] == "include_descendants"
+    )
+    assert parameter["required"] is False
+    assert parameter["default"] is True
+    assert parameter["allowed_sources"] == ["user_slot"]
 
 
 def test_role_qualified_resolvers_are_separate_and_metadata_proven() -> None:

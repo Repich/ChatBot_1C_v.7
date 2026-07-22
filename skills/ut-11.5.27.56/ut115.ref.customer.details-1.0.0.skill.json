@@ -104,13 +104,29 @@
     "query_template": {
       "template_id": "ut115.ref.customer.details.v1",
       "language": "1c-query",
-      "text": "ВЫБРАТЬ\n  Партнеры.Ссылка КАК Клиент,\n  Партнеры.Наименование КАК Наименование,\n  Партнеры.Код КАК Код,\n  Контрагенты.Ссылка КАК Контрагент,\n  Контрагенты.Наименование КАК КонтрагентНаименование,\n  Контрагенты.ИНН КАК ИНН,\n  Контрагенты.КПП КАК КПП,\n  ПРЕДСТАВЛЕНИЕ(Контакты.Вид) КАК ВидКонтакта,\n  Контакты.Представление КАК Контакт\nИЗ Справочник.Партнеры КАК Партнеры\n  ЛЕВОЕ СОЕДИНЕНИЕ Справочник.Контрагенты КАК Контрагенты\n  ПО Контрагенты.Партнер = Партнеры.Ссылка\n  ЛЕВОЕ СОЕДИНЕНИЕ Справочник.Партнеры.КонтактнаяИнформация КАК Контакты\n  ПО Контакты.Ссылка = Партнеры.Ссылка\nГДЕ Партнеры.Ссылка = &Клиент",
+      "text": "ВЫБРАТЬ\n  Партнеры.Ссылка КАК Клиент,\n  Партнеры.Наименование КАК Наименование,\n  Партнеры.Код КАК Код,\n  ЕСТЬNULL(Контрагенты.Ссылка, ЗНАЧЕНИЕ(Справочник.Контрагенты.ПустаяСсылка)) КАК Контрагент,\n  Контрагенты.Наименование КАК КонтрагентНаименование,\n  Контрагенты.ИНН КАК ИНН,\n  Контрагенты.КПП КАК КПП,\n  ЕСТЬNULL(ПРЕДСТАВЛЕНИЕ(Контакты.Вид), \"\") КАК ВидКонтакта,\n  ЕСТЬNULL(Контакты.Представление, \"\") КАК Контакт\nИЗ Справочник.Партнеры КАК Партнеры\n  ЛЕВОЕ СОЕДИНЕНИЕ Справочник.Контрагенты КАК Контрагенты\n  ПО Контрагенты.Партнер = Партнеры.Ссылка\n  ЛЕВОЕ СОЕДИНЕНИЕ Справочник.Партнеры.КонтактнаяИнформация КАК Контакты\n  ПО Контакты.Ссылка = Партнеры.Ссылка\nГДЕ Партнеры.Ссылка = &Клиент",
       "execution": {
         "kind": "single_select",
         "statement_count": 1,
         "final_statement": 1
       },
-      "invariant_constants": [],
+      "invariant_constants": [
+        {
+          "kind": "metadata_constant",
+          "statement": 1,
+          "constant_kind": "empty_reference",
+          "symbol": "Справочник.Контрагенты.ПустаяСсылка",
+          "role": "computed_value",
+          "occurrences": 1
+        },
+        {
+          "kind": "empty_literal",
+          "statement": 1,
+          "value": "",
+          "role": "null_substitution",
+          "occurrences": 2
+        }
+      ],
       "include_schema": true,
       "mcp_limit": {
         "default": 20,
@@ -248,8 +264,8 @@
         "semantic_type": "party.contractor",
         "value_type": "entity_ref",
         "role": "dimension",
-        "required": false,
-        "nullable": true,
+        "required": true,
+        "nullable": false,
         "title_ru": "Контрагент",
         "unit_contract": {
           "mode": "not_applicable"
@@ -296,8 +312,8 @@
         "semantic_type": "party.contact.kind",
         "value_type": "string",
         "role": "dimension",
-        "required": false,
-        "nullable": true,
+        "required": true,
+        "nullable": false,
         "title_ru": "Вид контакта",
         "unit_contract": {
           "mode": "not_applicable"
@@ -307,9 +323,9 @@
         "fact_id": "contact.presentation",
         "semantic_type": "party.contact.presentation",
         "value_type": "string",
-        "role": "attribute",
-        "required": false,
-        "nullable": true,
+        "role": "dimension",
+        "required": true,
+        "nullable": false,
         "title_ru": "Контакт",
         "unit_contract": {
           "mode": "not_applicable"
@@ -348,6 +364,7 @@
     "row_identity_fact_ids": [
       "customer.ref",
       "contractor.ref",
+      "contact.kind",
       "contact.presentation"
     ],
     "resolution": null,
@@ -647,6 +664,6 @@
     "algorithm": "sha256",
     "canonicalization": "RFC8785",
     "scope": "document_without_integrity",
-    "digest": "9c13203548196b61e626e82055317b5a0f1bf9b110d84bf45e316d65c1723f98"
+    "digest": "66170479f4ce5541aabbc5e829c48184a436860b9fd6c9f914c6e2befe6826e6"
   }
 }

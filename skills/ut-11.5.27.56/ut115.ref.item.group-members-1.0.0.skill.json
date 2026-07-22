@@ -86,9 +86,9 @@
       "title_ru": "Включать подгруппы",
       "description_ru": "Проверенный параметр: включать подгруппы.",
       "value_type": "boolean",
-      "required": true,
+      "required": false,
       "allowed_sources": [
-        "system"
+        "user_slot"
       ],
       "normalization": "none",
       "context_slot_keys": [],
@@ -551,6 +551,6 @@
     "algorithm": "sha256",
     "canonicalization": "RFC8785",
     "scope": "document_without_integrity",
-    "digest": "351ef2074a096eb97205d6b1bff5a9c36f993d31f8cba205d8f0668686dd32e3"
+    "digest": "91dc7b1b30ce1154fa2cc427b9138acbe5e74d7570adea995c5e53ce3948bd78"
   }
 }

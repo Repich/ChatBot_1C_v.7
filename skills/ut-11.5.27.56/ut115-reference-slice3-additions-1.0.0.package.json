@@ -1601,13 +1601,29 @@
         "query_template": {
           "template_id": "ut115.ref.customer.details.v1",
           "language": "1c-query",
-          "text": "ВЫБРАТЬ\n  Партнеры.Ссылка КАК Клиент,\n  Партнеры.Наименование КАК Наименование,\n  Партнеры.Код КАК Код,\n  Контрагенты.Ссылка КАК Контрагент,\n  Контрагенты.Наименование КАК КонтрагентНаименование,\n  Контрагенты.ИНН КАК ИНН,\n  Контрагенты.КПП КАК КПП,\n  ПРЕДСТАВЛЕНИЕ(Контакты.Вид) КАК ВидКонтакта,\n  Контакты.Представление КАК Контакт\nИЗ Справочник.Партнеры КАК Партнеры\n  ЛЕВОЕ СОЕДИНЕНИЕ Справочник.Контрагенты КАК Контрагенты\n  ПО Контрагенты.Партнер = Партнеры.Ссылка\n  ЛЕВОЕ СОЕДИНЕНИЕ Справочник.Партнеры.КонтактнаяИнформация КАК Контакты\n  ПО Контакты.Ссылка = Партнеры.Ссылка\nГДЕ Партнеры.Ссылка = &Клиент",
+          "text": "ВЫБРАТЬ\n  Партнеры.Ссылка КАК Клиент,\n  Партнеры.Наименование КАК Наименование,\n  Партнеры.Код КАК Код,\n  ЕСТЬNULL(Контрагенты.Ссылка, ЗНАЧЕНИЕ(Справочник.Контрагенты.ПустаяСсылка)) КАК Контрагент,\n  Контрагенты.Наименование КАК КонтрагентНаименование,\n  Контрагенты.ИНН КАК ИНН,\n  Контрагенты.КПП КАК КПП,\n  ЕСТЬNULL(ПРЕДСТАВЛЕНИЕ(Контакты.Вид), \"\") КАК ВидКонтакта,\n  ЕСТЬNULL(Контакты.Представление, \"\") КАК Контакт\nИЗ Справочник.Партнеры КАК Партнеры\n  ЛЕВОЕ СОЕДИНЕНИЕ Справочник.Контрагенты КАК Контрагенты\n  ПО Контрагенты.Партнер = Партнеры.Ссылка\n  ЛЕВОЕ СОЕДИНЕНИЕ Справочник.Партнеры.КонтактнаяИнформация КАК Контакты\n  ПО Контакты.Ссылка = Партнеры.Ссылка\nГДЕ Партнеры.Ссылка = &Клиент",
           "execution": {
             "kind": "single_select",
             "statement_count": 1,
             "final_statement": 1
           },
-          "invariant_constants": [],
+          "invariant_constants": [
+            {
+              "kind": "metadata_constant",
+              "statement": 1,
+              "constant_kind": "empty_reference",
+              "symbol": "Справочник.Контрагенты.ПустаяСсылка",
+              "role": "computed_value",
+              "occurrences": 1
+            },
+            {
+              "kind": "empty_literal",
+              "statement": 1,
+              "value": "",
+              "role": "null_substitution",
+              "occurrences": 2
+            }
+          ],
           "include_schema": true,
           "mcp_limit": {
             "default": 20,
@@ -1745,8 +1761,8 @@
             "semantic_type": "party.contractor",
             "value_type": "entity_ref",
             "role": "dimension",
-            "required": false,
-            "nullable": true,
+            "required": true,
+            "nullable": false,
             "title_ru": "Контрагент",
             "unit_contract": {
               "mode": "not_applicable"
@@ -1793,8 +1809,8 @@
             "semantic_type": "party.contact.kind",
             "value_type": "string",
             "role": "dimension",
-            "required": false,
-            "nullable": true,
+            "required": true,
+            "nullable": false,
             "title_ru": "Вид контакта",
             "unit_contract": {
               "mode": "not_applicable"
@@ -1804,9 +1820,9 @@
             "fact_id": "contact.presentation",
             "semantic_type": "party.contact.presentation",
             "value_type": "string",
-            "role": "attribute",
-            "required": false,
-            "nullable": true,
+            "role": "dimension",
+            "required": true,
+            "nullable": false,
             "title_ru": "Контакт",
             "unit_contract": {
               "mode": "not_applicable"
@@ -1845,6 +1861,7 @@
         "row_identity_fact_ids": [
           "customer.ref",
           "contractor.ref",
+          "contact.kind",
           "contact.presentation"
         ],
         "resolution": null,
@@ -2144,7 +2161,7 @@
         "algorithm": "sha256",
         "canonicalization": "RFC8785",
         "scope": "document_without_integrity",
-        "digest": "9c13203548196b61e626e82055317b5a0f1bf9b110d84bf45e316d65c1723f98"
+        "digest": "66170479f4ce5541aabbc5e829c48184a436860b9fd6c9f914c6e2befe6826e6"
       }
     },
     {
@@ -8077,13 +8094,37 @@
         "query_template": {
           "template_id": "ut115.ref.item.details.v1",
           "language": "1c-query",
-          "text": "ВЫБРАТЬ\n  Номенклатура.Ссылка КАК Номенклатура,\n  Номенклатура.Наименование КАК Наименование,\n  Номенклатура.Код КАК Код,\n  Номенклатура.Артикул КАК Артикул,\n  ПРЕДСТАВЛЕНИЕ(Номенклатура.ЕдиницаИзмерения) КАК ЕдиницаХранения,\n  Штрихкоды.Штрихкод КАК Штрихкод,\n  Штрихкоды.Характеристика КАК Характеристика,\n  Штрихкоды.Серия КАК Серия\nИЗ Справочник.Номенклатура КАК Номенклатура\n  ЛЕВОЕ СОЕДИНЕНИЕ РегистрСведений.ШтрихкодыНоменклатуры КАК Штрихкоды\n  ПО Штрихкоды.Номенклатура = Номенклатура.Ссылка\nГДЕ Номенклатура.Ссылка = &Номенклатура\nУПОРЯДОЧИТЬ ПО Штрихкоды.Штрихкод, Штрихкоды.Характеристика, Штрихкоды.Серия",
+          "text": "ВЫБРАТЬ\n  Номенклатура.Ссылка КАК Номенклатура,\n  Номенклатура.Наименование КАК Наименование,\n  Номенклатура.Код КАК Код,\n  Номенклатура.Артикул КАК Артикул,\n  ПРЕДСТАВЛЕНИЕ(Номенклатура.ЕдиницаИзмерения) КАК ЕдиницаХранения,\n  ЕСТЬNULL(Штрихкоды.Штрихкод, \"\") КАК Штрихкод,\n  ЕСТЬNULL(Штрихкоды.Характеристика, ЗНАЧЕНИЕ(Справочник.ХарактеристикиНоменклатуры.ПустаяСсылка)) КАК Характеристика,\n  ЕСТЬNULL(Штрихкоды.Серия, ЗНАЧЕНИЕ(Справочник.СерииНоменклатуры.ПустаяСсылка)) КАК Серия\nИЗ Справочник.Номенклатура КАК Номенклатура\n  ЛЕВОЕ СОЕДИНЕНИЕ РегистрСведений.ШтрихкодыНоменклатуры КАК Штрихкоды\n  ПО Штрихкоды.Номенклатура = Номенклатура.Ссылка\nГДЕ Номенклатура.Ссылка = &Номенклатура\nУПОРЯДОЧИТЬ ПО Штрихкоды.Штрихкод, Штрихкоды.Характеристика, Штрихкоды.Серия",
           "execution": {
             "kind": "single_select",
             "statement_count": 1,
             "final_statement": 1
           },
-          "invariant_constants": [],
+          "invariant_constants": [
+            {
+              "kind": "empty_literal",
+              "statement": 1,
+              "value": "",
+              "role": "null_substitution",
+              "occurrences": 1
+            },
+            {
+              "kind": "metadata_constant",
+              "statement": 1,
+              "constant_kind": "empty_reference",
+              "symbol": "Справочник.ХарактеристикиНоменклатуры.ПустаяСсылка",
+              "role": "computed_value",
+              "occurrences": 1
+            },
+            {
+              "kind": "metadata_constant",
+              "statement": 1,
+              "constant_kind": "empty_reference",
+              "symbol": "Справочник.СерииНоменклатуры.ПустаяСсылка",
+              "role": "computed_value",
+              "occurrences": 1
+            }
+          ],
           "include_schema": true,
           "mcp_limit": {
             "default": 20,
@@ -8236,9 +8277,9 @@
             "fact_id": "item.barcode",
             "semantic_type": "catalog.item.barcode",
             "value_type": "string",
-            "role": "attribute",
-            "required": false,
-            "nullable": true,
+            "role": "dimension",
+            "required": true,
+            "nullable": false,
             "title_ru": "Штрихкод",
             "unit_contract": {
               "mode": "not_applicable"
@@ -8249,8 +8290,8 @@
             "semantic_type": "catalog.item.characteristic",
             "value_type": "entity_ref",
             "role": "dimension",
-            "required": false,
-            "nullable": true,
+            "required": true,
+            "nullable": false,
             "title_ru": "Характеристика штрихкода",
             "unit_contract": {
               "mode": "not_applicable"
@@ -8261,8 +8302,8 @@
             "semantic_type": "catalog.item.series",
             "value_type": "entity_ref",
             "role": "dimension",
-            "required": false,
-            "nullable": true,
+            "required": true,
+            "nullable": false,
             "title_ru": "Серия штрихкода",
             "unit_contract": {
               "mode": "not_applicable"
@@ -8275,7 +8316,10 @@
               "item.ref",
               "item.name",
               "item.code",
-              "item.storage_unit"
+              "item.storage_unit",
+              "item.barcode",
+              "item.barcode_characteristic",
+              "item.barcode_series"
             ]
           ],
           "empty_semantics": "confirmed_not_found",
@@ -8285,7 +8329,7 @@
         "renderer": {
           "kind": "table",
           "primary_fact_ids": [
-            "item.storage_unit"
+            "item.barcode_series"
           ],
           "column_fact_ids": [
             "item.ref",
@@ -8475,7 +8519,10 @@
               "item.ref",
               "item.name",
               "item.code",
-              "item.storage_unit"
+              "item.storage_unit",
+              "item.barcode",
+              "item.barcode_characteristic",
+              "item.barcode_series"
             ]
           }
         },
@@ -8615,7 +8662,7 @@
         "algorithm": "sha256",
         "canonicalization": "RFC8785",
         "scope": "document_without_integrity",
-        "digest": "fbcb97614e7dff571f270d3ca454eabdc8ab930fb421972972241519b076b22d"
+        "digest": "d9c90d7e4bd155d9678dba276a2771c0a22be92b303f30a24bf06fe0cf07fdb2"
       }
     },
     {
@@ -8706,9 +8753,9 @@
           "title_ru": "Включать подгруппы",
           "description_ru": "Проверенный параметр: включать подгруппы.",
           "value_type": "boolean",
-          "required": true,
+          "required": false,
           "allowed_sources": [
-            "system"
+            "user_slot"
           ],
           "normalization": "none",
           "context_slot_keys": [],
@@ -9171,7 +9218,7 @@
         "algorithm": "sha256",
         "canonicalization": "RFC8785",
         "scope": "document_without_integrity",
-        "digest": "351ef2074a096eb97205d6b1bff5a9c36f993d31f8cba205d8f0668686dd32e3"
+        "digest": "91dc7b1b30ce1154fa2cc427b9138acbe5e74d7570adea995c5e53ce3948bd78"
       }
     },
     {
@@ -10900,13 +10947,29 @@
         "query_template": {
           "template_id": "ut115.ref.partner.details.v1",
           "language": "1c-query",
-          "text": "ВЫБРАТЬ\n  Партнеры.Ссылка КАК Партнер,\n  Партнеры.Наименование КАК Наименование,\n  Партнеры.Код КАК Код,\n  Контрагенты.Ссылка КАК Контрагент,\n  Контрагенты.Наименование КАК КонтрагентНаименование,\n  Контрагенты.ИНН КАК ИНН,\n  Контрагенты.КПП КАК КПП,\n  ПРЕДСТАВЛЕНИЕ(Контакты.Вид) КАК ВидКонтакта,\n  Контакты.Представление КАК Контакт\nИЗ Справочник.Партнеры КАК Партнеры\n  ЛЕВОЕ СОЕДИНЕНИЕ Справочник.Контрагенты КАК Контрагенты\n  ПО Контрагенты.Партнер = Партнеры.Ссылка\n  ЛЕВОЕ СОЕДИНЕНИЕ Справочник.Партнеры.КонтактнаяИнформация КАК Контакты\n  ПО Контакты.Ссылка = Партнеры.Ссылка\nГДЕ Партнеры.Ссылка = &Партнер",
+          "text": "ВЫБРАТЬ\n  Партнеры.Ссылка КАК Партнер,\n  Партнеры.Наименование КАК Наименование,\n  Партнеры.Код КАК Код,\n  ЕСТЬNULL(Контрагенты.Ссылка, ЗНАЧЕНИЕ(Справочник.Контрагенты.ПустаяСсылка)) КАК Контрагент,\n  Контрагенты.Наименование КАК КонтрагентНаименование,\n  Контрагенты.ИНН КАК ИНН,\n  Контрагенты.КПП КАК КПП,\n  ЕСТЬNULL(ПРЕДСТАВЛЕНИЕ(Контакты.Вид), \"\") КАК ВидКонтакта,\n  ЕСТЬNULL(Контакты.Представление, \"\") КАК Контакт\nИЗ Справочник.Партнеры КАК Партнеры\n  ЛЕВОЕ СОЕДИНЕНИЕ Справочник.Контрагенты КАК Контрагенты\n  ПО Контрагенты.Партнер = Партнеры.Ссылка\n  ЛЕВОЕ СОЕДИНЕНИЕ Справочник.Партнеры.КонтактнаяИнформация КАК Контакты\n  ПО Контакты.Ссылка = Партнеры.Ссылка\nГДЕ Партнеры.Ссылка = &Партнер",
           "execution": {
             "kind": "single_select",
             "statement_count": 1,
             "final_statement": 1
           },
-          "invariant_constants": [],
+          "invariant_constants": [
+            {
+              "kind": "metadata_constant",
+              "statement": 1,
+              "constant_kind": "empty_reference",
+              "symbol": "Справочник.Контрагенты.ПустаяСсылка",
+              "role": "computed_value",
+              "occurrences": 1
+            },
+            {
+              "kind": "empty_literal",
+              "statement": 1,
+              "value": "",
+              "role": "null_substitution",
+              "occurrences": 2
+            }
+          ],
           "include_schema": true,
           "mcp_limit": {
             "default": 20,
@@ -11044,8 +11107,8 @@
             "semantic_type": "party.contractor",
             "value_type": "entity_ref",
             "role": "dimension",
-            "required": false,
-            "nullable": true,
+            "required": true,
+            "nullable": false,
             "title_ru": "Контрагент",
             "unit_contract": {
               "mode": "not_applicable"
@@ -11092,8 +11155,8 @@
             "semantic_type": "party.contact.kind",
             "value_type": "string",
             "role": "dimension",
-            "required": false,
-            "nullable": true,
+            "required": true,
+            "nullable": false,
             "title_ru": "Вид контакта",
             "unit_contract": {
               "mode": "not_applicable"
@@ -11103,9 +11166,9 @@
             "fact_id": "contact.presentation",
             "semantic_type": "party.contact.presentation",
             "value_type": "string",
-            "role": "attribute",
-            "required": false,
-            "nullable": true,
+            "role": "dimension",
+            "required": true,
+            "nullable": false,
             "title_ru": "Контакт",
             "unit_contract": {
               "mode": "not_applicable"
@@ -11144,6 +11207,7 @@
         "row_identity_fact_ids": [
           "partner.ref",
           "contractor.ref",
+          "contact.kind",
           "contact.presentation"
         ],
         "resolution": null,
@@ -11443,7 +11507,7 @@
         "algorithm": "sha256",
         "canonicalization": "RFC8785",
         "scope": "document_without_integrity",
-        "digest": "0f136530ec8ff11fef6fe9dfbccf3017a23b0c259ad6f1dea93fa690bb8f922a"
+        "digest": "7cbc16176e37055bd1d77598785aafca1351f55486954f8890ea7a2a73c887fc"
       }
     },
     {
@@ -13888,13 +13952,29 @@
         "query_template": {
           "template_id": "ut115.ref.supplier.details.v1",
           "language": "1c-query",
-          "text": "ВЫБРАТЬ\n  Партнеры.Ссылка КАК Поставщик,\n  Партнеры.Наименование КАК Наименование,\n  Партнеры.Код КАК Код,\n  Контрагенты.Ссылка КАК Контрагент,\n  Контрагенты.Наименование КАК КонтрагентНаименование,\n  Контрагенты.ИНН КАК ИНН,\n  Контрагенты.КПП КАК КПП,\n  ПРЕДСТАВЛЕНИЕ(Контакты.Вид) КАК ВидКонтакта,\n  Контакты.Представление КАК Контакт\nИЗ Справочник.Партнеры КАК Партнеры\n  ЛЕВОЕ СОЕДИНЕНИЕ Справочник.Контрагенты КАК Контрагенты\n  ПО Контрагенты.Партнер = Партнеры.Ссылка\n  ЛЕВОЕ СОЕДИНЕНИЕ Справочник.Партнеры.КонтактнаяИнформация КАК Контакты\n  ПО Контакты.Ссылка = Партнеры.Ссылка\nГДЕ Партнеры.Ссылка = &Поставщик",
+          "text": "ВЫБРАТЬ\n  Партнеры.Ссылка КАК Поставщик,\n  Партнеры.Наименование КАК Наименование,\n  Партнеры.Код КАК Код,\n  ЕСТЬNULL(Контрагенты.Ссылка, ЗНАЧЕНИЕ(Справочник.Контрагенты.ПустаяСсылка)) КАК Контрагент,\n  Контрагенты.Наименование КАК КонтрагентНаименование,\n  Контрагенты.ИНН КАК ИНН,\n  Контрагенты.КПП КАК КПП,\n  ЕСТЬNULL(ПРЕДСТАВЛЕНИЕ(Контакты.Вид), \"\") КАК ВидКонтакта,\n  ЕСТЬNULL(Контакты.Представление, \"\") КАК Контакт\nИЗ Справочник.Партнеры КАК Партнеры\n  ЛЕВОЕ СОЕДИНЕНИЕ Справочник.Контрагенты КАК Контрагенты\n  ПО Контрагенты.Партнер = Партнеры.Ссылка\n  ЛЕВОЕ СОЕДИНЕНИЕ Справочник.Партнеры.КонтактнаяИнформация КАК Контакты\n  ПО Контакты.Ссылка = Партнеры.Ссылка\nГДЕ Партнеры.Ссылка = &Поставщик",
           "execution": {
             "kind": "single_select",
             "statement_count": 1,
             "final_statement": 1
           },
-          "invariant_constants": [],
+          "invariant_constants": [
+            {
+              "kind": "metadata_constant",
+              "statement": 1,
+              "constant_kind": "empty_reference",
+              "symbol": "Справочник.Контрагенты.ПустаяСсылка",
+              "role": "computed_value",
+              "occurrences": 1
+            },
+            {
+              "kind": "empty_literal",
+              "statement": 1,
+              "value": "",
+              "role": "null_substitution",
+              "occurrences": 2
+            }
+          ],
           "include_schema": true,
           "mcp_limit": {
             "default": 20,
@@ -14032,8 +14112,8 @@
             "semantic_type": "party.contractor",
             "value_type": "entity_ref",
             "role": "dimension",
-            "required": false,
-            "nullable": true,
+            "required": true,
+            "nullable": false,
             "title_ru": "Контрагент",
             "unit_contract": {
               "mode": "not_applicable"
@@ -14080,8 +14160,8 @@
             "semantic_type": "party.contact.kind",
             "value_type": "string",
             "role": "dimension",
-            "required": false,
-            "nullable": true,
+            "required": true,
+            "nullable": false,
             "title_ru": "Вид контакта",
             "unit_contract": {
               "mode": "not_applicable"
@@ -14091,9 +14171,9 @@
             "fact_id": "contact.presentation",
             "semantic_type": "party.contact.presentation",
             "value_type": "string",
-            "role": "attribute",
-            "required": false,
-            "nullable": true,
+            "role": "dimension",
+            "required": true,
+            "nullable": false,
             "title_ru": "Контакт",
             "unit_contract": {
               "mode": "not_applicable"
@@ -14132,6 +14212,7 @@
         "row_identity_fact_ids": [
           "supplier.ref",
           "contractor.ref",
+          "contact.kind",
           "contact.presentation"
         ],
         "resolution": null,
@@ -14431,7 +14512,7 @@
         "algorithm": "sha256",
         "canonicalization": "RFC8785",
         "scope": "document_without_integrity",
-        "digest": "e7db81e9adf1198636809c45e6b18689c7341c47b06c3e193c1c7a116ed0e401"
+        "digest": "7a38338439f59db02f98cac3cee0c24bc7c6f18f6dacc1cf603128256035f2a3"
       }
     },
     {
@@ -16088,7 +16169,7 @@
     {
       "skill_id": "ut115.ref.customer.details",
       "version": "1.0.0",
-      "digest": "9c13203548196b61e626e82055317b5a0f1bf9b110d84bf45e316d65c1723f98"
+      "digest": "66170479f4ce5541aabbc5e829c48184a436860b9fd6c9f914c6e2befe6826e6"
     },
     {
       "skill_id": "ut115.ref.customer.resolve-code-exact",
@@ -16138,12 +16219,12 @@
     {
       "skill_id": "ut115.ref.item.details",
       "version": "1.0.0",
-      "digest": "fbcb97614e7dff571f270d3ca454eabdc8ab930fb421972972241519b076b22d"
+      "digest": "d9c90d7e4bd155d9678dba276a2771c0a22be92b303f30a24bf06fe0cf07fdb2"
     },
     {
       "skill_id": "ut115.ref.item.group-members",
       "version": "1.0.0",
-      "digest": "351ef2074a096eb97205d6b1bff5a9c36f993d31f8cba205d8f0668686dd32e3"
+      "digest": "91dc7b1b30ce1154fa2cc427b9138acbe5e74d7570adea995c5e53ce3948bd78"
     },
     {
       "skill_id": "ut115.ref.item.resolve-article-exact",
@@ -16183,7 +16264,7 @@
     {
       "skill_id": "ut115.ref.partner.details",
       "version": "1.0.0",
-      "digest": "0f136530ec8ff11fef6fe9dfbccf3017a23b0c259ad6f1dea93fa690bb8f922a"
+      "digest": "7cbc16176e37055bd1d77598785aafca1351f55486954f8890ea7a2a73c887fc"
     },
     {
       "skill_id": "ut115.ref.partner.resolve-code-exact",
@@ -16208,7 +16289,7 @@
     {
       "skill_id": "ut115.ref.supplier.details",
       "version": "1.0.0",
-      "digest": "e7db81e9adf1198636809c45e6b18689c7341c47b06c3e193c1c7a116ed0e401"
+      "digest": "7a38338439f59db02f98cac3cee0c24bc7c6f18f6dacc1cf603128256035f2a3"
     },
     {
       "skill_id": "ut115.ref.supplier.resolve-code-exact",
@@ -16252,6 +16333,6 @@
     "algorithm": "sha256",
     "canonicalization": "RFC8785",
     "scope": "document_without_integrity",
-    "digest": "10c867285c0384f1af2ffc4a08c79c091f80352026702036aabbcb949b00e8e7"
+    "digest": "3ad3f0fac3fa39560e3716748a961782d2e2ed3176d533fd945e5bcaf3f18778"
   }
 }
