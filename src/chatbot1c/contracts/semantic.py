@@ -90,6 +90,20 @@ _FORBIDDEN_QUERY_WORDS = frozenset(
         "UPDATE",
     }
 )
+_RESOLVER_SAFE_LABEL_FACT_TYPES = frozenset(
+    {
+        FactValueType.STRING,
+        FactValueType.INTEGER,
+        FactValueType.DECIMAL,
+        FactValueType.BOOLEAN,
+        FactValueType.DATE,
+        FactValueType.DATETIME,
+        FactValueType.ENUM,
+        FactValueType.MONEY,
+        FactValueType.QUANTITY,
+        FactValueType.PERCENTAGE,
+    }
+)
 
 T = TypeVar("T")
 
@@ -415,12 +429,20 @@ class SemanticValidator:
             )
         for index, fact_id in enumerate(resolution.candidate_label_fact_ids):
             fact = facts.get(fact_id)
-            if fact is None or fact.nullable or not fact.required:
+            if (
+                fact is None
+                or fact.nullable
+                or not fact.required
+                or fact.value_type not in _RESOLVER_SAFE_LABEL_FACT_TYPES
+            ):
                 issues.append(
                     _issue(
                         "RESOLVER_PROOF_FACT_INVALID",
                         f"{pointer}/candidate_label_fact_ids/{index}",
-                        "Resolver label требует known required non-null fact.",
+                        (
+                            "Resolver label требует known required non-null "
+                            "safe scalar fact."
+                        ),
                     )
                 )
         for index, fact_id in enumerate(resolution.role_proof_fact_ids):
@@ -1256,7 +1278,22 @@ class SemanticValidator:
             issues.extend(self.skill_issues(skill, prefix=f"/skills/{index}"))
 
         embedded: dict[tuple[str, str], tuple[int, Skill]] = {}
+        embedded_ids: dict[str, int] = {}
         for index, skill in enumerate(package.skills):
+            previous_id_index = embedded_ids.get(skill.skill_id)
+            if previous_id_index is not None:
+                issues.append(
+                    _issue(
+                        "PACKAGE_SKILL_ID_DUPLICATE",
+                        f"/skills/{index}/skill_id",
+                        (
+                            "skill_id повторяется в package; один package может "
+                            "содержать только одну version каждого skill_id."
+                        ),
+                    )
+                )
+            else:
+                embedded_ids[skill.skill_id] = index
             pair = (skill.skill_id, skill.version)
             if pair in embedded:
                 issues.append(
