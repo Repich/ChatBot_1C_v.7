@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from collections.abc import Iterable
 
@@ -183,6 +184,10 @@ def test_command_logs_success_and_query_error_without_query_params_or_rows(
 
     completed = _event_records(records, "mcp_proxy.command.completed")
     assert [record.status for record in completed] == ["success", "query_error"]
+    assert [json.loads(record.getMessage())["status"] for record in completed] == [
+        "success",
+        "query_error",
+    ]
     captured = _captured_record_text(records)
     for canary in (query_canary, param_canary, row_canary, error_canary):
         assert canary not in captured

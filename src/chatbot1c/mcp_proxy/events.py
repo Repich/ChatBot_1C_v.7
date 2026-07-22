@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Final, TypeAlias
 
-LOGGER_NAME: Final = "chatbot1c.mcp_proxy.lifecycle"
+# The proxy is always hosted by Uvicorn in the supported launcher. A child of
+# its error logger inherits the configured runtime handler and level, while
+# retaining a distinct name for structured filtering and tests.
+LOGGER_NAME: Final = "uvicorn.error.chatbot1c.mcp_proxy.lifecycle"
 
 STARTUP_EVENT: Final = "mcp_proxy.startup"
 HEARTBEAT_EVENT: Final = "mcp_proxy.channel.heartbeat"
@@ -68,4 +72,6 @@ def log_event(
         raise ValueError(f"unsafe lifecycle fields: {names}")
     if any(type(value) not in {str, int, float, bool} for value in fields.values()):
         raise TypeError("lifecycle fields must be scalar values")
-    _logger.log(level, event_name, extra={"event_name": event_name, **fields})
+    wire = {"event": event_name, **fields}
+    message = json.dumps(wire, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    _logger.log(level, message, extra={"event_name": event_name, **fields})

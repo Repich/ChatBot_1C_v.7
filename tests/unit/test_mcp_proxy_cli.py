@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 
 from chatbot1c.mcp_proxy import cli
+from chatbot1c.mcp_proxy.config import ProxySettings
 
 
 def test_launcher_uses_local_single_worker_defaults(
@@ -52,3 +53,10 @@ def test_launcher_rejects_invalid_port(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cli.uvicorn, "run", lambda *_args, **_kwargs: None)
     with pytest.raises(SystemExit, match="2"):
         cli.main(["--port", "0"])
+
+
+def test_default_bridge_timeout_finishes_before_chat_mcp_stage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("MCP_PROXY_COMMAND_TIMEOUT_SECONDS", raising=False)
+    assert ProxySettings.from_env().command_timeout_seconds == 11.0

@@ -22,7 +22,7 @@ class ProxySettings:
     def from_env(cls) -> "ProxySettings":
         return cls(
             command_timeout_seconds=_positive_float(
-                "MCP_PROXY_COMMAND_TIMEOUT_SECONDS", 170.0
+                "MCP_PROXY_COMMAND_TIMEOUT_SECONDS", 11.0
             ),
             heartbeat_seconds=_positive_float("MCP_PROXY_HEARTBEAT_SECONDS", 15.0),
             poll_wait_seconds=_positive_float("MCP_PROXY_POLL_WAIT_SECONDS", 1.0),
