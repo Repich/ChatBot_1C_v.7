@@ -73,12 +73,18 @@ examples/fixtures.
 Planner может ссылаться только на allowlisted M04, M06-M09. M01-M03, M05 и
 M10 являются domain/application mechanisms, а не модельными operators.
 
-## 4. Переносимый каталог: 57 atomic skills
+## 4. Переносимый каталог: 57 логических дизайнов
 
 Ниже `R`, `PR`, `SP`, `SL`, `SE`, `CF`, `D` - стабильные shorthand этого
 blueprint. Реальный `skill_id` указан полностью. Все data skills имеют target
 `УправлениеТорговлейБазовая/11.5.27.56/8.3.27`, fixed query package, exact
 bindings и immutable digest.
+
+Строка inventory задает логическую операцию и владельца бизнес-семантики, но не
+обязательно один физический JSON-документ. Разные критерии поиска, semantic
+roles и несовместимые physical reference types публикуются отдельными immutable
+skills. Поэтому число 57 используется только для проверки полноты blueprint;
+release manifest считает фактические документы и не обязан сохранять это число.
 
 ### 4.1. Built-in help package, 4 skills
 
@@ -94,7 +100,7 @@ bindings и immutable digest.
 `doc.source` skill не создается: он повторил бы тот же retrieval и не имеет
 отдельного chunk role в schema v1.
 
-### 4.2. Reference package, 15 skills
+### 4.2. Reference package, 15 логических ролей
 
 | Ref | `skill_id` | Required/optional typed inputs | Stable output |
 | --- | --- | --- | --- |
@@ -362,10 +368,11 @@ Build sequence inside each package:
 9. import/export in clean data dirs through web and CLI;
 10. atomically activate only after the whole package passes.
 
-## 9. Bounded shortlist with 87 capabilities/skills
+## 9. Bounded shortlist при 87 capabilities и переменном числе skills
 
 The core must remain bounded even if an installation has 87 or more active
-skills, although this baseline uses 57 atomic skills.
+skills. Этот blueprint содержит 57 логических дизайнов, но role- и
+criterion-specific декомпозиция дает больше физических skill documents.
 
 1. Hard-filter pinned skills by operation kind, target compatibility, required
    entity/ref types, time mode and forbidden write intent.
@@ -833,9 +840,10 @@ test "$(printf '%s\n' "$inventory" | sed -E 's/^[^`]*`([^`]*)`.*/\1/' \
 ```
 
 Expected result is exactly 87 required capability IDs, no extra IDs, 57
-inventory rows and 57 unique atomic `skill_id` values. Runtime mechanisms and
-operators are intentionally excluded from the atomic skill count. Data/doc
-split is exactly 53/4.
+logical inventory rows and 57 unique blueprint identifiers. Runtime mechanisms
+and operators are intentionally excluded. Data/doc split of logical designs is
+exactly 53/4. Это не проверка количества физических JSON-навыков и не release
+gate каталога.
 
 Observed blueprint validation on 2026-07-21:
 
@@ -845,12 +853,12 @@ Observed blueprint validation on 2026-07-21:
 | unique IDs anywhere in this blueprint | 87; missing 0; extra 0 |
 | capability rows in section 11 | 87; unique 87; duplicates 0 |
 | capability IDs used by Q001-Q116 | 87; missing from corpus 0 |
-| atomic inventory rows | 57 |
-| unique atomic `skill_id` values | 57; duplicates 0 |
+| logical inventory rows | 57 |
+| unique blueprint identifiers | 57; duplicates 0 |
 
 This is a blueprint-level completeness/semantic review. It does not waive the
-later exact `provides`/output-contract and evidence gates on the actual 57 JSON
-skills.
+later exact `provides`/output-contract and evidence gates on every physical JSON
+skill in the generated release manifest.
 
 ### 13.2. Semantic overclaim audit
 
@@ -893,7 +901,7 @@ skills.
 | --- | --- |
 | Slice 1 listed four skills but Q036/Q037 needed an order producer | SP01 is the fifth skill and has no application hardcode |
 | Slice 6 wording suggested a standalone source skill | Citation/source is mandatory M10 output of D01-D04; no duplicate retrieval skill |
-| Slice 3/4 scenarios require business skills before slice 5 | Skills are staged earlier; slice 5 completes packaging/live proof |
+| Slice 3/4 scenarios require business skills before slice 5 | Blueprint defines the dependencies, but the current implementation is partial; slice 5 must add the missing producers before these scenarios can pass |
 | Presentation versus identity | Identity is semantic type/object type/UUID; full ref is preserved only for transport/provenance unless presentation is explicitly semantic |
 | Physical type of input EntityRef | Restored producer fact and exact column binding prove semantic and physical type; context retains origin fact pointer; no application object map |
 | Single-skill portability | Import dispatch accepts bare skill or package; bare dependencies resolve against pinned active closure, while clean transfer of a dependency-bearing selected skill uses the same self-contained package file |
