@@ -70,7 +70,7 @@ uv run --locked python scripts/run_slice1_e2e.py
 
 Документы проекта:
 
-- [план проекта](docs/project_plan.md);
+- [план проекта и текущий прогресс](docs/project_plan.md);
 - [продуктовые требования](docs/requirements/product_requirements.md);
 - [каталог возможностей](docs/requirements/skill_catalog.md);
 - [критерии приемки](docs/requirements/acceptance_criteria.md);
