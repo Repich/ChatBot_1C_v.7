@@ -228,9 +228,7 @@ class ResolverUseProof(ClosedModel):
     skill_id: Annotated[str, Field(pattern=r"^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)+$")]
     mode: Literal["select_one", "select_set", "display_only"]
     identity_fact_id: FactId
-    slot_key: Annotated[
-        str, Field(pattern=r"^[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+$")
-    ]
+    slot_key: Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+$")]
     consumer_parameters: Annotated[tuple[str, ...], Field(max_length=50)]
 
 
@@ -242,16 +240,28 @@ class SelectionProof(ClosedModel):
         tuple[EntityIdentity, ...], Field(min_length=1, max_length=100)
     ]
     complete: Literal[True]
+    selector_step_id: Annotated[str, Field(pattern=r"^s[1-9][0-9]{0,2}$")] | None = None
+    selector_digest: Sha256 | None = None
     proof_digest: Sha256
+
+    @model_validator(mode="after")
+    def selector_fields_are_atomic(self) -> "SelectionProof":
+        has_step = self.selector_step_id is not None
+        has_digest = self.selector_digest is not None
+        if has_step != has_digest:
+            raise ValueError(
+                "selector_step_id and selector_digest must be set together"
+            )
+        if has_step and self.state != "selected_one":
+            raise ValueError("rank selector is valid only for selected_one")
+        return self
 
 
 class FilterRetentionProof(ClosedModel):
     step_id: Annotated[str, Field(pattern=r"^s[1-9][0-9]{0,2}$")]
     fact_instance_id: UUID
     fact_id: FactId
-    slot_key: Annotated[
-        str, Field(pattern=r"^[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+$")
-    ]
+    slot_key: Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+$")]
     semantic_type: SemanticType
     value_type: Literal["datetime", "period", "enum"]
     canonical_value_digest: Sha256

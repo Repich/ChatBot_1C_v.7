@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import secrets
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
-from typing import Literal, cast
+from datetime import UTC, date, datetime
+from functools import cmp_to_key
+from typing import Literal, TypeAlias, cast
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from pydantic import JsonValue
@@ -41,6 +42,7 @@ from chatbot1c.contracts.semantic import (
     PlanCoverageProof,
     build_plan_coverage_proof,
     collection_obligation_satisfied,
+    rank_selector_digest,
     validate_context_proofs_against_evidence,
     validate_evidence_against_plan,
 )
@@ -78,6 +80,7 @@ from chatbot1c.domain.plan import (
     NormalizePeriodOperator,
     PlannerOutput,
     PlanStep,
+    RankOperator,
     SkillCall,
     SlotBinding,
     StepBinding,
@@ -136,6 +139,8 @@ class StepResult:
     collection_scope: Literal["visible_page", "complete_set"] = "complete_set"
     empty_reason: Literal["not_found", "no_rows"] | None = None
     resolver_use: ResolverUseProof | None = None
+    operator_ref: str | None = None
+    rank_input_complete: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -182,6 +187,25 @@ class _PageRequest:
     query_params: dict[str, JsonValue]
 
 
+@dataclass(frozen=True, slots=True)
+class _RankSelectionSpec:
+    selector_step_id: str
+    source_step_id: str
+    resolver_use: ResolverUseProof
+
+
+@dataclass(frozen=True, slots=True)
+class _RankCandidate:
+    identity_fact: Fact
+    sort_fact: Fact
+    facts: tuple[Fact, ...]
+
+    @property
+    def identity_key(self) -> tuple[str, str, UUID]:
+        value = cast(EntityRef, self.identity_fact.value)
+        return (self.identity_fact.semantic_type, value.object_type, value.unique_id)
+
+
 class PlanExecutor:
     def __init__(
         self,
@@ -214,7 +238,11 @@ class PlanExecutor:
         coverage_proof = build_plan_coverage_proof(
             plan, tuple(context.catalog.skills.values())
         )
-        resolver_uses = _derive_resolver_use_proofs(plan, context.catalog)
+        rank_selections = _derive_rank_selection_specs(plan, context.catalog)
+        resolver_uses = _derive_resolver_use_proofs(
+            plan, context.catalog, rank_selections=rank_selections
+        )
+        rank_sources = {spec.source_step_id: spec for spec in rank_selections.values()}
         context_index: dict[str, tuple[ContextFact, ...]] = {}
         for item in context.context_facts:
             context_index[item.handle] = (*context_index.get(item.handle, ()), item)
@@ -251,6 +279,7 @@ class PlanExecutor:
                 attempts=0,
                 collection_scope="complete_set",
                 resolver_use=use,
+                rank_input_complete=True,
             )
             if len(_resolver_identity_facts(resumed)) != 1:
                 raise ApplicationError(
@@ -286,10 +315,14 @@ class PlanExecutor:
                     context,
                     context_index,
                     step_results,
+                    rank_selections,
                 )
                 resolver_use = resolver_uses.get(step.step_id)
                 if resolver_use is not None:
-                    result = _apply_resolver_state(result, resolver_use)
+                    if step.step_id in rank_sources:
+                        result = _apply_rank_source_state(result, resolver_use)
+                    else:
+                        result = _apply_resolver_state(result, resolver_use)
                 result = replace(result, criticality=criticality)
                 step_results[step.step_id] = result
                 ordered.append(result)
@@ -310,6 +343,12 @@ class PlanExecutor:
                     stop_all = True
                     break
                 if (
+                    isinstance(step, RankOperator)
+                    and result.outcome is Outcome.SUCCESS_EMPTY
+                ):
+                    failed_or_blocked.add(step.step_id)
+                    continue
+                if (
                     resolver_use is not None
                     and resolver_use.mode == "select_set"
                     and result.outcome is Outcome.PARTIAL
@@ -321,6 +360,7 @@ class PlanExecutor:
                     and result.outcome
                     in {Outcome.SUCCESS_EMPTY, Outcome.DOCUMENTATION_EMPTY}
                     and isinstance(step, SkillCall)
+                    and step.step_id not in rank_sources
                     and step.on_empty == "stop_not_found"
                 ):
                     stop_all = True
@@ -334,7 +374,11 @@ class PlanExecutor:
         ordered.sort(key=lambda result: step_order[result.step_id])
         outcome = _overall_outcome(ordered, plan, coverage_proof)
         selection_proofs = _selection_proofs(
-            tuple(ordered), allowed_step_ids=frozenset(coverage_proof.required_steps)
+            tuple(ordered),
+            plan=plan,
+            context=context,
+            rank_selections=rank_selections,
+            allowed_step_ids=frozenset(coverage_proof.required_steps),
         )
         filter_retention_proofs = _filter_retention_proofs(
             plan, coverage_proof, tuple(ordered)
@@ -363,6 +407,7 @@ class PlanExecutor:
         validate_context_proofs_against_evidence(
             coverage_proof,
             evidence,
+            plan=plan,
             selection_proofs=selection_proofs,
             filter_retention_proofs=filter_retention_proofs,
             available_skills=tuple(context.catalog.skills.values()),
@@ -378,7 +423,12 @@ class PlanExecutor:
                 filter_retention_proofs,
             )
         )
-        pending_clarification = _pending_from_resolver(plan, context, tuple(ordered))
+        pending_clarification = _pending_from_resolver(
+            plan,
+            context,
+            tuple(ordered),
+            rank_selections=rank_selections,
+        )
         continuations = [
             result.continuation for result in ordered if result.continuation is not None
         ]
@@ -476,6 +526,7 @@ class PlanExecutor:
         validate_context_proofs_against_evidence(
             coverage_proof,
             evidence,
+            plan=plan,
             selection_proofs=(),
             filter_retention_proofs=(),
             available_skills=tuple(context.catalog.skills.values()),
@@ -500,6 +551,7 @@ class PlanExecutor:
         context: ExecutionContext,
         context_index: dict[str, tuple[ContextFact, ...]],
         previous: dict[str, StepResult],
+        rank_selections: Mapping[str, _RankSelectionSpec],
     ) -> StepResult:
         if isinstance(step, SkillCall):
             skill = context.catalog.skills.get(step.skill_id)
@@ -510,7 +562,16 @@ class PlanExecutor:
                     409,
                 )
             return await self._execute_skill(
-                plan, step, skill, context, context_index, previous
+                plan,
+                step,
+                skill,
+                context,
+                context_index,
+                previous,
+                rank_input=any(
+                    spec.source_step_id == step.step_id
+                    for spec in rank_selections.values()
+                ),
             )
         if isinstance(step, NormalizePeriodOperator):
             return self._execute_normalize_period(
@@ -518,6 +579,12 @@ class PlanExecutor:
             )
         if isinstance(step, CountOperator):
             return self._execute_count(step, context, previous)
+        if isinstance(step, RankOperator):
+            return self._execute_rank(
+                step,
+                previous,
+                rank_selections.get(step.step_id),
+            )
         raise ApplicationError(
             "OPERATOR_NOT_IMPLEMENTED",
             f"Оператор {step.operator} еще не входит в slice 2.",
@@ -532,6 +599,8 @@ class PlanExecutor:
         context: ExecutionContext,
         context_index: dict[str, tuple[ContextFact, ...]],
         previous: dict[str, StepResult],
+        *,
+        rank_input: bool = False,
     ) -> StepResult:
         started = datetime.now(UTC)
         try:
@@ -552,7 +621,12 @@ class PlanExecutor:
             }
             if isinstance(skill.operation, DataQueryOperation):
                 result = await self._execute_data(
-                    call, skill, arguments, context, started
+                    call,
+                    skill,
+                    arguments,
+                    context,
+                    started,
+                    rank_input=rank_input,
                 )
             else:
                 result = await self._execute_documentation(
@@ -572,6 +646,7 @@ class PlanExecutor:
         started: datetime,
         *,
         continuation: PageContinuation | None = None,
+        rank_input: bool = False,
     ) -> StepResult:
         operation = cast(DataQueryOperation, skill.operation)
         params: dict[str, JsonValue] = {}
@@ -594,6 +669,7 @@ class PlanExecutor:
             operation,
             default_page_size=context.default_list_limit,
             continuation=continuation,
+            rank_input=rank_input,
         )
         params.update(page.query_params)
         request = ExecuteQueryRequest(
@@ -664,17 +740,26 @@ class PlanExecutor:
             )
         has_probe_row = len(page_rows) > page.page_size
         has_more = has_probe_row or envelope.has_more or envelope.truncated
+        rank_input_complete = (
+            rank_input
+            and continuation is None
+            and page.request_limit == page.page_size + 1
+            and not has_more
+        )
         visible_rows = page_rows[: page.page_size]
         structural_rows = page_rows[: page.page_size + 1]
         effective_empty = _validate_projected_rows(skill, structural_rows)
         if effective_empty:
-            return _empty_step(
-                call.step_id,
-                skill,
-                arguments,
-                started,
-                finished,
-                envelope.attempts,
+            return replace(
+                _empty_step(
+                    call.step_id,
+                    skill,
+                    arguments,
+                    started,
+                    finished,
+                    envelope.attempts,
+                ),
+                rank_input_complete=rank_input_complete,
             )
         _validate_result_cardinality(skill, len(page_rows))
         if (
@@ -704,8 +789,16 @@ class PlanExecutor:
             )
         if has_more and operation.pagination.strategy == "none":
             raise ApplicationError(
-                "RESULT_PAGINATION_UNDECLARED",
-                "MCP вернул неполный результат для skill без pagination contract.",
+                (
+                    "RANK_INPUT_INCOMPLETE"
+                    if rank_input
+                    else "RESULT_PAGINATION_UNDECLARED"
+                ),
+                (
+                    "Rank input не помещается в один declared probe request."
+                    if rank_input
+                    else "MCP вернул неполный результат для skill без pagination contract."
+                ),
                 502,
             )
         truncation_policy = skill.output_contract.sufficiency.truncation_policy
@@ -773,6 +866,7 @@ class PlanExecutor:
             has_more=has_more,
             continuation=continuation_draft,
             collection_scope=collection_scope_for_skill(skill),
+            rank_input_complete=rank_input_complete,
         )
 
     async def _execute_documentation(
@@ -872,6 +966,7 @@ class PlanExecutor:
             finished,
             0,
             collection_scope="complete_set",
+            operator_ref="normalize_period",
         )
 
     def _execute_count(
@@ -960,7 +1055,96 @@ class PlanExecutor:
             finished,
             0,
             collection_scope=source.collection_scope,
+            operator_ref="count",
         )
+
+    def _execute_rank(
+        self,
+        step: RankOperator,
+        previous: dict[str, StepResult],
+        selection: _RankSelectionSpec | None,
+    ) -> StepResult:
+        started = datetime.now(UTC)
+        try:
+            source = previous.get(step.input_step_id)
+            if source is None:
+                raise ApplicationError(
+                    "RANK_INPUT_STEP_MISSING",
+                    "Rank operator не получил direct input step.",
+                    422,
+                )
+            if (
+                source.collection_scope != "complete_set"
+                or source.has_more
+                or source.truncated
+                or source.continuation is not None
+                or not source.rank_input_complete
+                or source.outcome is Outcome.PARTIAL
+            ):
+                raise ApplicationError(
+                    "RANK_INPUT_INCOMPLETE",
+                    "Rank operator запрещен над неполным или page-scoped universe.",
+                    422,
+                )
+            limit = _rank_literal_limit(step)
+            if selection is not None and limit != 1:
+                raise ApplicationError(
+                    "RANK_SELECTION_LIMIT_INVALID",
+                    "Exact rank-mediated selection требует literal limit=1.",
+                    422,
+                )
+            if source.outcome is Outcome.SUCCESS_EMPTY and not source.facts:
+                finished = datetime.now(UTC)
+                return StepResult(
+                    step.step_id,
+                    None,
+                    Outcome.SUCCESS_EMPTY,
+                    (),
+                    (),
+                    0,
+                    started,
+                    finished,
+                    0,
+                    collection_scope="complete_set",
+                    empty_reason=source.empty_reason or "not_found",
+                    operator_ref="rank",
+                )
+            candidates = _rank_candidates(source, step.sort_fact_id)
+            selected, boundary_tied = _select_rank_candidates(
+                candidates,
+                step,
+                source,
+                limit,
+            )
+            selected_facts = _unique_facts(
+                (candidate.identity_fact for candidate in selected)
+                if selection is not None
+                else (fact for candidate in selected for fact in candidate.facts)
+            )
+            outcome = (
+                Outcome.CLARIFICATION_REQUIRED
+                if selection is not None
+                and boundary_tied
+                and step.ties == "include_all"
+                and len(selected) > 1
+                else Outcome.SUCCESS_WITH_ROWS
+            )
+            finished = datetime.now(UTC)
+            return StepResult(
+                step.step_id,
+                None,
+                outcome,
+                selected_facts,
+                (),
+                len(selected),
+                started,
+                finished,
+                0,
+                collection_scope="complete_set",
+                operator_ref="rank",
+            )
+        except ApplicationError as error:
+            return _failed_operator_step(step.step_id, "rank", error, started)
 
     def _resolve_binding(
         self,
@@ -1061,24 +1245,27 @@ class PlanExecutor:
                         422,
                     )
                 result_fact = facts[0]
+                producer = previous.get(result_fact.step_id)
+                producer_skill = None if producer is None else producer.skill
                 fact_origins: tuple[EntityFactOrigin, ...] = (
-                    (_entity_fact_origin(result_fact, result.skill),)
+                    (_entity_fact_origin(result_fact, producer_skill),)
                     if isinstance(result_fact.value, EntityRef)
-                    and result.skill is not None
+                    and producer_skill is not None
                     else ()
                 )
                 return ResolvedBinding(
                     _json_value(result_fact.value), "previous_step", fact_origins
                 )
-            fact_origins = tuple(
-                _entity_fact_origin(fact, result.skill)
-                for fact in facts
-                if isinstance(fact.value, EntityRef) and result.skill is not None
-            )
+            many_origins: list[EntityFactOrigin] = []
+            for fact in facts:
+                producer = previous.get(fact.step_id)
+                producer_skill = None if producer is None else producer.skill
+                if isinstance(fact.value, EntityRef) and producer_skill is not None:
+                    many_origins.append(_entity_fact_origin(fact, producer_skill))
             return ResolvedBinding(
                 cast(JsonValue, [_json_value(fact.value) for fact in facts]),
                 "previous_step",
-                fact_origins,
+                tuple(many_origins),
             )
         if isinstance(binding, SystemBinding):
             if binding.name == "turn_time":
@@ -1120,16 +1307,12 @@ class PlanExecutor:
         selection_proofs: tuple[SelectionProof, ...],
         filter_retention_proofs: tuple[FilterRetentionProof, ...],
     ) -> EvidenceBundle:
-        facts = tuple(fact for result in results for fact in result.facts)
+        facts = _unique_facts(fact for result in results for fact in result.facts)
         citations = tuple(
             citation for result in results for citation in result.citations
         )
         errors = tuple(result.error for result in results if result.error is not None)
-        final_refs = (
-            {(ref.step_id, ref.fact_id) for ref in plan.result.final_outputs}
-            if isinstance(plan.result, ExecuteResult)
-            else set()
-        )
+        result_by_step = {result.step_id: result for result in results}
         requirements: list[CoverageRequirement] = []
         proof_by_requirement = {
             requirement.requirement_id: requirement
@@ -1137,18 +1320,22 @@ class PlanExecutor:
         }
         for requirement in plan.interpretation.required_facts:
             proof = proof_by_requirement.get(requirement.requirement_id)
+            final_result = (
+                None
+                if proof is None or proof.final_step_id is None
+                else result_by_step.get(proof.final_step_id)
+            )
             candidates = (
                 ()
                 if proof is None
                 or proof.final_step_id is None
                 or proof.final_fact_id is None
+                or final_result is None
                 else tuple(
                     fact
-                    for fact in facts
+                    for fact in final_result.facts
                     if fact.semantic_type == requirement.semantic_type
-                    and fact.step_id == proof.final_step_id
                     and fact.fact_id == proof.final_fact_id
-                    and (fact.step_id, fact.fact_id) in final_refs
                 )
             )
             covered = _runtime_requirement_covered(requirement, candidates)
@@ -1190,20 +1377,7 @@ class PlanExecutor:
             source_boundary=source_boundary,
             outcome=outcome,
             empty_reason=_empty_reason_for_outcome(results, outcome),
-            catalog_snapshot=CatalogSnapshot(
-                snapshot_id=context.catalog.snapshot_id,
-                revision=context.catalog.revision,
-                skills=tuple(
-                    CatalogSkill(
-                        skill_id=skill.skill_id,
-                        version=skill.version,
-                        digest=skill.integrity.digest,
-                    )
-                    for skill in sorted(
-                        context.catalog.skills.values(), key=lambda item: item.skill_id
-                    )
-                ),
-            ),
+            catalog_snapshot=_catalog_snapshot(context),
             database_state_marker=self._marker(context),
             steps=tuple(_step_evidence(result) for result in results),
             facts=facts,
@@ -1242,6 +1416,7 @@ def _page_request(
     *,
     default_page_size: int,
     continuation: PageContinuation | None,
+    rank_input: bool = False,
 ) -> _PageRequest:
     pagination = operation.pagination
     maximum = operation.query_template.mcp_limit.maximum
@@ -1252,18 +1427,22 @@ def _page_request(
                 "Skill больше не объявляет pagination.",
                 409,
             )
-        return _PageRequest(
-            "none",
-            operation.query_template.mcp_limit.default,
-            operation.query_template.mcp_limit.default,
-            0,
-            0,
-            {},
-        )
+        if rank_input:
+            if maximum < 2:
+                raise ApplicationError(
+                    "RANK_PROBE_CAPACITY_INVALID",
+                    "Rank input требует место для одной probe row.",
+                    422,
+                )
+            return _PageRequest("none", maximum - 1, maximum, 0, 0, {})
+        default = operation.query_template.mcp_limit.default
+        return _PageRequest("none", default, default, 0, 0, {})
 
     page_size = (
         continuation.page_size
         if continuation is not None
+        else maximum - 1
+        if rank_input
         else min(default_page_size, maximum - 1)
     )
     if page_size < 1 or page_size + 1 > maximum:
@@ -1313,6 +1492,383 @@ def _page_request(
         query_params.update(dict(continuation.cursor_values))
         shown = continuation.shown
     return _PageRequest("keyset", page_size, page_size + 1, 0, shown, query_params)
+
+
+_RANK_SCALAR_FACT_TYPES = frozenset(
+    {
+        FactValueType.STRING,
+        FactValueType.INTEGER,
+        FactValueType.DECIMAL,
+        FactValueType.DATE,
+        FactValueType.DATETIME,
+        FactValueType.ENUM,
+        FactValueType.MONEY,
+        FactValueType.QUANTITY,
+        FactValueType.PERCENTAGE,
+    }
+)
+_RankComparable: TypeAlias = str | int | float | date | datetime | tuple[str, str]
+
+
+def _rank_literal_limit(step: RankOperator) -> int:
+    binding = step.limit
+    if (
+        not isinstance(binding, LiteralBinding)
+        or binding.value_type != "integer"
+        or type(binding.value) is not int
+        or binding.value < 1
+    ):
+        raise ApplicationError(
+            "RANK_LIMIT_INVALID",
+            "Rank limit должен быть положительным literal integer.",
+            422,
+        )
+    return binding.value
+
+
+def _rank_candidates(
+    source: StepResult, sort_fact_id: str
+) -> tuple[_RankCandidate, ...]:
+    skill = source.skill
+    if skill is None or skill.output_contract.resolution is None:
+        raise ApplicationError(
+            "RANK_SOURCE_NOT_RESOLVER",
+            "Rank input должен быть direct typed entity resolver step.",
+            422,
+        )
+    definitions = {
+        definition.fact_id: definition for definition in skill.output_contract.facts
+    }
+    sort_definition = definitions.get(sort_fact_id)
+    if (
+        sort_definition is None
+        or not sort_definition.required
+        or sort_definition.nullable
+        or sort_definition.value_type not in _RANK_SCALAR_FACT_TYPES
+    ):
+        raise ApplicationError(
+            "RANK_SORT_FACT_INVALID",
+            "Rank sort fact должен быть declared required non-null comparable scalar.",
+            422,
+        )
+    by_row: dict[str, dict[str, Fact]] = {}
+    row_facts: dict[str, list[Fact]] = {}
+    for fact in source.facts:
+        row = by_row.setdefault(fact.row_id, {})
+        if fact.fact_id in row:
+            raise ApplicationError(
+                "RANK_ROW_FACT_DUPLICATE",
+                "Rank input содержит duplicate fact_id в одной строке.",
+                502,
+            )
+        row[fact.fact_id] = fact
+        row_facts.setdefault(fact.row_id, []).append(fact)
+
+    resolution = skill.output_contract.resolution
+    candidates: dict[tuple[str, str, UUID], _RankCandidate] = {}
+    rank_values: dict[tuple[str, str, UUID], _RankComparable] = {}
+    rank_units: set[tuple[str, str | None]] = set()
+    for row_id, facts_by_id in by_row.items():
+        identity = facts_by_id.get(resolution.identity_fact_id)
+        sort_fact = facts_by_id.get(sort_fact_id)
+        if (
+            identity is None
+            or not isinstance(identity.value, EntityRef)
+            or not _resolver_role_proofs_satisfied(source, row_id)
+        ):
+            raise ApplicationError(
+                "RANK_RESOLVER_PROOF_INVALID",
+                "Rank candidate не имеет exact resolver identity/role proof.",
+                502,
+            )
+        if sort_fact is None or sort_fact.value_type is not sort_definition.value_type:
+            raise ApplicationError(
+                "RANK_SORT_FACT_MISSING",
+                "Rank candidate не имеет exact declared sort fact.",
+                502,
+            )
+        rank_value = _rank_value(sort_fact)
+        rank_units.add(_rank_unit_key(sort_fact))
+        value = identity.value
+        key = (identity.semantic_type, value.object_type, value.unique_id)
+        existing_value = rank_values.get(key)
+        if existing_value is not None and existing_value != rank_value:
+            raise ApplicationError(
+                "RANK_IDENTITY_VALUE_CONFLICT",
+                "Одна resolver identity имеет конфликтующие rank values.",
+                502,
+            )
+        candidate = _RankCandidate(
+            identity,
+            sort_fact,
+            tuple(sorted(row_facts[row_id], key=lambda item: item.fact_id)),
+        )
+        existing = candidates.get(key)
+        if (
+            existing is None
+            or candidate.identity_fact.row_id < existing.identity_fact.row_id
+        ):
+            candidates[key] = candidate
+            rank_values[key] = rank_value
+    if len(rank_units) > 1:
+        raise ApplicationError(
+            "RANK_UNIT_MISMATCH",
+            "Rank values имеют разные валюты или единицы измерения.",
+            422,
+        )
+    if source.facts and not candidates:
+        raise ApplicationError(
+            "RANK_CANDIDATE_SET_EMPTY",
+            "Rank input содержит facts, но не содержит valid resolver candidates.",
+            502,
+        )
+    return tuple(candidates.values())
+
+
+def _rank_unit_key(fact: Fact) -> tuple[str, str | None]:
+    if isinstance(fact.unit, UnitResolved):
+        return ("resolved", fact.unit.code)
+    if isinstance(fact.unit, UnitNotApplicable):
+        if fact.value_type in {FactValueType.MONEY, FactValueType.QUANTITY}:
+            raise ApplicationError(
+                "RANK_UNIT_UNRESOLVED",
+                "Money/quantity rank требует подтвержденную валюту или единицу.",
+                422,
+            )
+        return ("not_applicable", None)
+    raise ApplicationError(
+        "RANK_UNIT_UNRESOLVED",
+        "Rank запрещен для значения с неразрешенной единицей измерения.",
+        422,
+    )
+
+
+def _rank_value(fact: Fact) -> _RankComparable:
+    value = fact.value
+    try:
+        if fact.value_type in {FactValueType.STRING, FactValueType.ENUM}:
+            if not isinstance(value, str):
+                raise ValueError
+            return value
+        if fact.value_type is FactValueType.INTEGER:
+            if type(value) is not int:
+                raise ValueError
+            return value
+        if fact.value_type in {
+            FactValueType.DECIMAL,
+            FactValueType.MONEY,
+            FactValueType.QUANTITY,
+            FactValueType.PERCENTAGE,
+        }:
+            if type(value) not in {int, float}:
+                raise ValueError
+            return cast(int | float, value)
+        if fact.value_type is FactValueType.DATE:
+            if not isinstance(value, str):
+                raise ValueError
+            return date.fromisoformat(value)
+        if fact.value_type is FactValueType.DATETIME:
+            return _parse_datetime(value)
+    except (TypeError, ValueError) as error:
+        raise ApplicationError(
+            "RANK_VALUE_INVALID",
+            "Rank value не соответствует declared comparable value_type.",
+            502,
+        ) from error
+    raise ApplicationError(
+        "RANK_VALUE_TYPE_UNSUPPORTED",
+        "Rank value_type не входит в generic comparable scalar allowlist.",
+        422,
+    )
+
+
+def _select_rank_candidates(
+    candidates: tuple[_RankCandidate, ...],
+    step: RankOperator,
+    source: StepResult,
+    limit: int,
+) -> tuple[tuple[_RankCandidate, ...], bool]:
+    if not candidates:
+        return (), False
+
+    def compare(left: _RankCandidate, right: _RankCandidate) -> int:
+        return _compare_rank_candidates(left, right, direction=step.direction)
+
+    ranked = sorted(
+        candidates,
+        key=cmp_to_key(compare),
+    )
+    cutoff = min(limit, len(ranked))
+    boundary = _rank_value(ranked[cutoff - 1].sort_fact)
+    boundary_members = tuple(
+        item for item in ranked if _rank_value(item.sort_fact) == boundary
+    )
+    before_boundary = sum(
+        _compare_rank_values(
+            _rank_value(item.sort_fact), boundary, direction=step.direction
+        )
+        < 0
+        for item in ranked
+    )
+    boundary_tied = len(boundary_members) > 1 and before_boundary < cutoff
+    if step.ties == "include_all":
+        selected = tuple(
+            item
+            for item in ranked
+            if _compare_rank_values(
+                _rank_value(item.sort_fact), boundary, direction=step.direction
+            )
+            <= 0
+        )
+        return selected, boundary_tied
+    if boundary_tied:
+        ranked = list(_declared_total_order(source, step, candidates))
+    return tuple(ranked[:cutoff]), boundary_tied
+
+
+def _compare_rank_candidates(
+    left: _RankCandidate,
+    right: _RankCandidate,
+    *,
+    direction: Literal["ascending", "descending"],
+) -> int:
+    compared = _compare_rank_values(
+        _rank_value(left.sort_fact),
+        _rank_value(right.sort_fact),
+        direction=direction,
+    )
+    if compared:
+        return compared
+    return (left.identity_key > right.identity_key) - (
+        left.identity_key < right.identity_key
+    )
+
+
+def _compare_rank_values(
+    left: _RankComparable,
+    right: _RankComparable,
+    *,
+    direction: Literal["ascending", "descending"],
+) -> int:
+    compared = _compare_comparable(left, right)
+    return compared if direction == "ascending" else -compared
+
+
+def _compare_comparable(left: _RankComparable, right: _RankComparable) -> int:
+    if isinstance(left, tuple) and isinstance(right, tuple):
+        return (left > right) - (left < right)
+    if isinstance(left, str) and isinstance(right, str):
+        return (left > right) - (left < right)
+    if type(left) in {int, float} and type(right) in {int, float}:
+        left_number = cast(int | float, left)
+        right_number = cast(int | float, right)
+        return (left_number > right_number) - (left_number < right_number)
+    if isinstance(left, datetime) and isinstance(right, datetime):
+        return (left > right) - (left < right)
+    if isinstance(left, date) and isinstance(right, date):
+        return (left > right) - (left < right)
+    raise ApplicationError(
+        "RANK_VALUE_TYPE_MISMATCH",
+        "Rank values имеют несовместимые declared types.",
+        502,
+    )
+
+
+def _declared_total_order(
+    source: StepResult,
+    step: RankOperator,
+    candidates: tuple[_RankCandidate, ...],
+) -> tuple[_RankCandidate, ...]:
+    skill = source.skill
+    if skill is None or not isinstance(skill.operation, DataQueryOperation):
+        raise ApplicationError(
+            "RANK_TIE_ORDER_UNPROVEN",
+            "stable_first tie требует data-query producer order proof.",
+            422,
+        )
+    pagination = skill.operation.pagination
+    if not isinstance(pagination, KeysetPagination):
+        raise ApplicationError(
+            "RANK_TIE_ORDER_UNPROVEN",
+            "stable_first tie требует declarative keyset sort.",
+            422,
+        )
+    expected_direction = "asc" if step.direction == "ascending" else "desc"
+    identity_ids = skill.output_contract.row_identity_fact_ids or ()
+    sort_ids = tuple(item.fact_id for item in pagination.sort)
+    if (
+        not pagination.sort
+        or pagination.sort[0].fact_id != step.sort_fact_id
+        or pagination.sort[0].direction != expected_direction
+        or not identity_ids
+        or tuple(sort_ids[-len(identity_ids) :]) != tuple(identity_ids)
+        or skill.output_contract.resolution is None
+        or skill.output_contract.resolution.identity_fact_id not in identity_ids
+    ):
+        raise ApplicationError(
+            "RANK_TIE_ORDER_UNPROVEN",
+            "Declared source order не доказывает rank direction и unique identity suffix.",
+            422,
+        )
+    definitions = {
+        definition.fact_id: definition for definition in skill.output_contract.facts
+    }
+    for item in pagination.sort:
+        definition = definitions.get(item.fact_id)
+        if (
+            definition is None
+            or not definition.required
+            or definition.nullable
+            or definition.value_type
+            not in _RANK_SCALAR_FACT_TYPES | {FactValueType.ENTITY_REF}
+        ):
+            raise ApplicationError(
+                "RANK_TIE_ORDER_UNPROVEN",
+                "Declared source order содержит недоказанный sort fact.",
+                422,
+            )
+
+    def compare(left: _RankCandidate, right: _RankCandidate) -> int:
+        return _compare_declared_candidates(left, right, pagination)
+
+    return tuple(sorted(candidates, key=cmp_to_key(compare)))
+
+
+def _compare_declared_candidates(
+    left: _RankCandidate,
+    right: _RankCandidate,
+    pagination: KeysetPagination,
+) -> int:
+    left_facts = {fact.fact_id: fact for fact in left.facts}
+    right_facts = {fact.fact_id: fact for fact in right.facts}
+    for item in pagination.sort:
+        left_fact = left_facts.get(item.fact_id)
+        right_fact = right_facts.get(item.fact_id)
+        if left_fact is None or right_fact is None:
+            raise ApplicationError(
+                "RANK_TIE_ORDER_UNPROVEN",
+                "Candidate не содержит fact из declarative source order.",
+                502,
+            )
+        left_value = _declared_order_value(left_fact)
+        right_value = _declared_order_value(right_fact)
+        compared = _compare_comparable(left_value, right_value)
+        if compared:
+            return compared if item.direction == "asc" else -compared
+    return 0
+
+
+def _declared_order_value(fact: Fact) -> _RankComparable:
+    if isinstance(fact.value, EntityRef):
+        return (fact.value.object_type, str(fact.value.unique_id))
+    return _rank_value(fact)
+
+
+def _unique_facts(facts: Iterable[Fact]) -> tuple[Fact, ...]:
+    unique: dict[UUID, Fact] = {}
+    for fact in facts:
+        unique.setdefault(fact.fact_instance_id, fact)
+    return tuple(unique.values())
 
 
 def _validate_response_columns(skill: Skill, envelope: object) -> None:
@@ -1924,8 +2480,84 @@ def _runtime_requirement_covered(
     return True
 
 
-def _derive_resolver_use_proofs(
+def _derive_rank_selection_specs(
     plan: PlannerOutput, catalog: PinnedCatalog
+) -> dict[str, _RankSelectionSpec]:
+    if not isinstance(plan.result, ExecuteResult):
+        return {}
+    steps = {step.step_id: step for step in plan.result.steps}
+    specs: dict[str, _RankSelectionSpec] = {}
+    for step in plan.result.steps:
+        if not isinstance(step, RankOperator):
+            continue
+        source = steps.get(step.input_step_id)
+        if not isinstance(source, SkillCall):
+            continue
+        skill = catalog.skills.get(source.skill_id)
+        if skill is None or skill.output_contract.resolution is None:
+            continue
+        resolution = skill.output_contract.resolution
+        consumers: list[str] = []
+        for consumer in plan.result.steps:
+            if not isinstance(consumer, SkillCall):
+                continue
+            consumer_skill = catalog.skills.get(consumer.skill_id)
+            if consumer_skill is None:
+                continue
+            parameters = {item.name: item for item in consumer_skill.parameters}
+            for argument in consumer.arguments:
+                binding = argument.binding
+                parameter = parameters.get(argument.parameter)
+                if (
+                    isinstance(binding, StepBinding)
+                    and binding.step_id == step.step_id
+                    and binding.fact_id == resolution.identity_fact_id
+                    and binding.cardinality == "one"
+                    and parameter is not None
+                    and parameter.value_type is ParameterValueType.ENTITY_REF
+                ):
+                    consumers.append(f"{consumer.step_id}.{argument.parameter}")
+        identity_is_final = any(
+            output.step_id == step.step_id
+            and output.fact_id == resolution.identity_fact_id
+            for output in plan.result.final_outputs
+        )
+        if identity_is_final:
+            identity_definition = next(
+                item
+                for item in skill.output_contract.facts
+                if item.fact_id == resolution.identity_fact_id
+            )
+            consumers.extend(
+                f"final:{requirement.requirement_id}"
+                for requirement in plan.interpretation.required_facts
+                if requirement.required
+                and requirement.semantic_type == identity_definition.semantic_type
+                and requirement.cardinality in {"one", "zero_or_one"}
+            )
+        if not consumers:
+            continue
+        use = ResolverUseProof(
+            step_id=source.step_id,
+            skill_id=skill.skill_id,
+            mode="select_one",
+            identity_fact_id=resolution.identity_fact_id,
+            slot_key=resolution.default_slot_key,
+            consumer_parameters=tuple(consumers),
+        )
+        specs[step.step_id] = _RankSelectionSpec(
+            selector_step_id=step.step_id,
+            source_step_id=source.step_id,
+            resolver_use=use,
+        )
+    return specs
+
+
+def _derive_resolver_use_proofs(
+    plan: PlannerOutput,
+    catalog: PinnedCatalog,
+    *,
+    rank_selections: Mapping[str, _RankSelectionSpec] | None = None,
 ) -> dict[str, ResolverUseProof]:
     if not isinstance(plan.result, ExecuteResult):
         return {}
@@ -1982,6 +2614,27 @@ def _derive_resolver_use_proofs(
                     and requirement.cardinality in {"one", "zero_or_one"}
                 ):
                     uses.append(("select_one", f"final:{requirement.requirement_id}"))
+        mediated = [
+            spec.resolver_use
+            for spec in (rank_selections or {}).values()
+            if spec.source_step_id == step.step_id
+        ]
+        if len(mediated) > 1:
+            raise ApplicationError(
+                "PLAN_RESOLVER_SELECTOR_AMBIGUOUS",
+                "Один resolver не может иметь несколько rank selectors в одном plan.",
+                422,
+            )
+        if mediated:
+            if uses:
+                raise ApplicationError(
+                    "PLAN_RESOLVER_SELECTOR_CONFLICT",
+                    "Rank-mediated resolver не может одновременно использоваться напрямую.",
+                    422,
+                )
+            uses.extend(
+                ("select_one", consumer) for consumer in mediated[0].consumer_parameters
+            )
         modes = {mode for mode, _ in uses}
         if len(modes) > 1:
             raise ApplicationError(
@@ -2001,6 +2654,18 @@ def _derive_resolver_use_proofs(
             consumer_parameters=tuple(name for _, name in uses),
         )
     return proofs
+
+
+def _apply_rank_source_state(result: StepResult, proof: ResolverUseProof) -> StepResult:
+    typed = replace(result, resolver_use=proof, continuation=None)
+    if (
+        typed.rank_input_complete
+        and not typed.has_more
+        and not typed.truncated
+        and typed.outcome in {Outcome.SUCCESS_WITH_ROWS, Outcome.SUCCESS_EMPTY}
+    ):
+        return replace(typed, collection_scope="complete_set")
+    return typed
 
 
 def _resolver_identity_facts(result: StepResult) -> tuple[Fact, ...]:
@@ -2027,9 +2692,7 @@ def _resolver_role_proofs_satisfied(result: StepResult, row_id: str) -> bool:
     resolution = skill.output_contract.resolution
     if resolution is None:
         return False
-    definitions = {
-        item.fact_id: item for item in skill.output_contract.facts
-    }
+    definitions = {item.fact_id: item for item in skill.output_contract.facts}
     for fact_id in resolution.role_proof_fact_ids:
         definition = definitions.get(fact_id)
         matches = [
@@ -2107,11 +2770,17 @@ def _selected_policy(
 def _selection_proofs(
     results: tuple[StepResult, ...],
     *,
+    plan: PlannerOutput | None = None,
+    context: ExecutionContext | None = None,
+    rank_selections: Mapping[str, _RankSelectionSpec] | None = None,
     allowed_step_ids: frozenset[str] | None = None,
 ) -> tuple[SelectionProof, ...]:
     proofs: list[SelectionProof] = []
+    rank_source_ids = {spec.source_step_id for spec in (rank_selections or {}).values()}
     for result in results:
         if allowed_step_ids is not None and result.step_id not in allowed_step_ids:
+            continue
+        if result.step_id in rank_source_ids:
             continue
         use = result.resolver_use
         if use is None or use.mode == "display_only":
@@ -2163,7 +2832,130 @@ def _selection_proofs(
                 proof_digest=hashlib.sha256(canonicalize(payload)).hexdigest(),
             )
         )
+    if plan is not None and context is not None:
+        for spec in (rank_selections or {}).values():
+            if allowed_step_ids is not None and (
+                spec.source_step_id not in allowed_step_ids
+                or spec.selector_step_id not in allowed_step_ids
+            ):
+                continue
+            proof = _rank_selection_proof(plan, context, results, spec)
+            if proof is not None:
+                proofs.append(proof)
     return tuple(proofs)
+
+
+def _rank_selection_proof(
+    plan: PlannerOutput,
+    context: ExecutionContext,
+    results: tuple[StepResult, ...],
+    spec: _RankSelectionSpec,
+) -> SelectionProof | None:
+    if not isinstance(plan.result, ExecuteResult):
+        return None
+    result_by_step = {result.step_id: result for result in results}
+    source = result_by_step.get(spec.source_step_id)
+    selector = result_by_step.get(spec.selector_step_id)
+    rank_step = next(
+        (
+            step
+            for step in plan.result.steps
+            if isinstance(step, RankOperator) and step.step_id == spec.selector_step_id
+        ),
+        None,
+    )
+    if (
+        source is None
+        or source.skill is None
+        or selector is None
+        or rank_step is None
+        or selector.outcome is not Outcome.SUCCESS_WITH_ROWS
+        or selector.collection_scope != "complete_set"
+        or selector.has_more
+        or selector.truncated
+        or selector.operator_ref != "rank"
+    ):
+        return None
+    identities = _resolver_identity_facts(
+        replace(
+            selector,
+            skill=source.skill,
+            resolver_use=spec.resolver_use,
+        )
+    )
+    if len(identities) != 1 or _rank_literal_limit(rank_step) != 1:
+        return None
+    identity = identities[0]
+    value = cast(EntityRef, identity.value)
+    proven_order: tuple[tuple[str, str, str], ...] = ()
+    candidates = _rank_candidates(source, rank_step.sort_fact_id)
+    if rank_step.ties == "stable_first" and _top_rank_is_tied(
+        candidates, rank_step.direction
+    ):
+        proven = _declared_total_order(source, rank_step, candidates)
+        proven_order = tuple(
+            (
+                candidate.identity_key[0],
+                candidate.identity_key[1],
+                str(candidate.identity_key[2]),
+            )
+            for candidate in proven
+        )
+    selector_digest = rank_selector_digest(
+        rank_step=rank_step,
+        source_skill=source.skill,
+        resolver_use=spec.resolver_use,
+        source_facts=source.facts,
+        source_collection_scope=source.collection_scope,
+        source_has_more=source.has_more,
+        source_truncated=source.truncated,
+        catalog_snapshot=_catalog_snapshot(context),
+        database_state_marker=context.database_state_marker,
+        winner_fact_instance_ids=(identity.fact_instance_id,),
+        proven_source_order=proven_order,
+    )
+    entity_identity = EntityIdentity(
+        semantic_type=identity.semantic_type,
+        physical_type=value.object_type,
+        unique_id=value.unique_id,
+    )
+    payload = {
+        "resolver": spec.resolver_use.model_dump(mode="json"),
+        "state": "selected_one",
+        "fact_instance_ids": [str(identity.fact_instance_id)],
+        "identities": [entity_identity.model_dump(mode="json")],
+        "complete": True,
+        "selector_step_id": spec.selector_step_id,
+        "selector_digest": selector_digest,
+    }
+    return SelectionProof(
+        resolver=spec.resolver_use,
+        state="selected_one",
+        fact_instance_ids=(identity.fact_instance_id,),
+        identities=(entity_identity,),
+        complete=True,
+        selector_step_id=spec.selector_step_id,
+        selector_digest=selector_digest,
+        proof_digest=hashlib.sha256(canonicalize(payload)).hexdigest(),
+    )
+
+
+def _top_rank_is_tied(
+    candidates: tuple[_RankCandidate, ...],
+    direction: Literal["ascending", "descending"],
+) -> bool:
+    if len(candidates) < 2:
+        return False
+
+    def compare(left: _RankCandidate, right: _RankCandidate) -> int:
+        return _compare_rank_candidates(left, right, direction=direction)
+
+    ranked = sorted(
+        candidates,
+        key=cmp_to_key(compare),
+    )
+    top = _rank_value(ranked[0].sort_fact)
+    return sum(_rank_value(item.sort_fact) == top for item in ranked) > 1
 
 
 def _filter_retention_proofs(
@@ -2246,6 +3038,23 @@ def _context_exports(
             )
         )
     return tuple(exports)
+
+
+def _catalog_snapshot(context: ExecutionContext) -> CatalogSnapshot:
+    return CatalogSnapshot(
+        snapshot_id=context.catalog.snapshot_id,
+        revision=context.catalog.revision,
+        skills=tuple(
+            CatalogSkill(
+                skill_id=skill.skill_id,
+                version=skill.version,
+                digest=skill.integrity.digest,
+            )
+            for skill in sorted(
+                context.catalog.skills.values(), key=lambda item: item.skill_id
+            )
+        ),
+    )
 
 
 def _evidence_pagination(
@@ -2468,6 +3277,8 @@ def _pending_from_resolver(
     plan: PlannerOutput,
     context: ExecutionContext,
     results: tuple[StepResult, ...],
+    *,
+    rank_selections: Mapping[str, _RankSelectionSpec] | None = None,
 ) -> PendingClarificationDraft | None:
     ambiguous = next(
         (
@@ -2479,6 +3290,27 @@ def _pending_from_resolver(
         ),
         None,
     )
+    if ambiguous is None:
+        by_step = {result.step_id: result for result in results}
+        for spec in (rank_selections or {}).values():
+            selector = by_step.get(spec.selector_step_id)
+            source = by_step.get(spec.source_step_id)
+            if (
+                selector is not None
+                and selector.outcome is Outcome.CLARIFICATION_REQUIRED
+                and source is not None
+                and source.skill is not None
+            ):
+                selected_rows = {fact.row_id for fact in selector.facts}
+                ambiguous = replace(
+                    selector,
+                    skill=source.skill,
+                    resolver_use=spec.resolver_use,
+                    facts=tuple(
+                        fact for fact in source.facts if fact.row_id in selected_rows
+                    ),
+                )
+                break
     if ambiguous is None or ambiguous.skill is None:
         return None
     use = cast(ResolverUseProof, ambiguous.resolver_use)
@@ -2597,7 +3429,9 @@ def _step_evidence(result: StepResult) -> StepEvidence:
         ),
         operation_ref=(
             (
-                "operator:" + result.facts[0].source_locator.reference
+                "operator:" + result.operator_ref
+                if result.operator_ref is not None
+                else "operator:" + result.facts[0].source_locator.reference
                 if result.facts
                 and result.facts[0].source_locator.kind == "operator_result"
                 else "operator:unknown"
@@ -2650,6 +3484,36 @@ def _failed_step(
     )
 
 
+def _failed_operator_step(
+    step_id: str,
+    operator_ref: str,
+    error: ApplicationError,
+    started: datetime,
+) -> StepResult:
+    evidence_error = _evidence_error(
+        error.code,
+        "execution",
+        "none",
+        False,
+        error.message_ru,
+        step_id,
+    )
+    return StepResult(
+        step_id,
+        None,
+        Outcome.CONTRACT_ERROR,
+        (),
+        (),
+        0,
+        started,
+        datetime.now(UTC),
+        0,
+        error=evidence_error,
+        collection_scope="complete_set",
+        operator_ref=operator_ref,
+    )
+
+
 def _evidence_error(
     code: str,
     stage: Literal[
@@ -2691,6 +3555,8 @@ def _runtime_step_dependencies(step: PlanStep) -> set[str]:
             dependencies.add(step.expression.step_id)
     elif isinstance(step, CountOperator):
         dependencies.add(step.input_step_id)
+    elif isinstance(step, RankOperator):
+        dependencies.add(step.input_step_id)
     return dependencies
 
 
@@ -2714,10 +3580,10 @@ def _overall_outcome(
             else Outcome.DOCUMENTATION_EMPTY
         )
     produced_required_refs = {
-        (fact.step_id, fact.fact_id)
+        (result.step_id, fact.fact_id)
         for result in required_results
         for fact in result.facts
-        if (fact.step_id, fact.fact_id) in coverage_proof.required_final_refs
+        if (result.step_id, fact.fact_id) in coverage_proof.required_final_refs
     }
     has_final_facts = bool(produced_required_refs)
     if coverage_proof.required_final_refs <= produced_required_refs:
@@ -2739,9 +3605,7 @@ def _overall_outcome(
     return combine_step_outcomes(outcomes, has_facts=False)
 
 
-def _context_commit_allowed(
-    results: tuple[StepResult, ...], outcome: Outcome
-) -> bool:
+def _context_commit_allowed(results: tuple[StepResult, ...], outcome: Outcome) -> bool:
     if outcome is Outcome.CONTRACT_ERROR:
         return False
     technical_failures = {

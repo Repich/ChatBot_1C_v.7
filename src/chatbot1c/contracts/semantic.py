@@ -7,7 +7,9 @@ import re
 from collections import Counter, defaultdict, deque
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
-from typing import Literal, TypeVar
+from datetime import date, datetime
+from functools import cmp_to_key
+from typing import Literal, TypeAlias, TypeVar, cast
 
 from semantic_version import NpmSpec, SimpleSpec, Version
 
@@ -20,13 +22,18 @@ from chatbot1c.contracts.query import (
     inspect_query_contract,
 )
 from chatbot1c.domain.evidence import (
+    CatalogSnapshot,
     CitationValue,
     ContextExport,
+    DatabaseStateMarker,
     DocumentFragment,
     EvidenceBundle,
     Fact,
     FilterRetentionProof,
+    ResolverUseProof,
     SelectionProof,
+    UnitNotApplicable,
+    UnitResolved,
 )
 from chatbot1c.domain.outcomes import CoverageStatus, Outcome
 from chatbot1c.domain.package import SkillPackage
@@ -39,6 +46,7 @@ from chatbot1c.domain.plan import (
     FactRequirement,
     FilterOperator,
     JoinOperator,
+    LiteralBinding,
     NormalizePeriodOperator,
     PlannerOutput,
     RankOperator,
@@ -2341,6 +2349,38 @@ def cross_artifact_evidence_issues(
         for requirement in coverage_proof.requirements
     }
     issues: list[ContractIssue] = []
+    evidence_steps = {step.step_id: step for step in evidence.steps}
+    evidence_facts = {fact.fact_instance_id: fact for fact in evidence.facts}
+    planned_steps = (
+        {step.step_id: step for step in plan.result.steps}
+        if isinstance(plan.result, ExecuteResult)
+        else {}
+    )
+    for step_id, step_evidence in evidence_steps.items():
+        planned_step = planned_steps.get(step_id)
+        for fact_instance_id in step_evidence.produced_fact_instance_ids:
+            fact = evidence_facts.get(fact_instance_id)
+            if fact is None or fact.step_id == step_id:
+                continue
+            source_evidence = evidence_steps.get(fact.step_id)
+            shared_rank_reference = (
+                isinstance(planned_step, RankOperator)
+                and planned_step.input_step_id == fact.step_id
+                and step_evidence.operation_ref == "operator:rank"
+                and source_evidence is not None
+                and fact_instance_id in source_evidence.produced_fact_instance_ids
+            )
+            if not shared_rank_reference:
+                issues.append(
+                    _issue(
+                        "EVIDENCE_OPERATOR_FACT_LINEAGE_INVALID",
+                        f"/steps/{step_id}/produced_fact_instance_ids",
+                        (
+                            "Чужой fact разрешен только direct row-preserving "
+                            "RankOperator input reference."
+                        ),
+                    )
+                )
     for requirement_id, planned in expected.items():
         covered = actual[requirement_id]
         proof = proof_by_requirement.get(requirement_id)
@@ -2366,10 +2406,12 @@ def cross_artifact_evidence_issues(
                 )
             )
         if proof.final_step_id is not None and proof.final_fact_id is not None:
+            final_step = evidence_steps.get(proof.final_step_id)
             mapped_fact_ids = {
                 fact.fact_instance_id
                 for fact in evidence.facts
-                if fact.step_id == proof.final_step_id
+                if final_step is not None
+                and fact.fact_instance_id in final_step.produced_fact_instance_ids
                 and fact.fact_id == proof.final_fact_id
             }
             if not set(covered.fact_instance_ids) <= mapped_fact_ids:
@@ -2421,10 +2463,116 @@ def validate_evidence_against_plan(
     raise_for_issues(cross_artifact_evidence_issues(plan, coverage_proof, evidence))
 
 
+def rank_selector_digest(
+    *,
+    rank_step: RankOperator,
+    source_skill: Skill,
+    resolver_use: ResolverUseProof,
+    source_facts: Sequence[Fact],
+    source_collection_scope: Literal["visible_page", "complete_set"],
+    source_has_more: bool,
+    source_truncated: bool,
+    catalog_snapshot: CatalogSnapshot,
+    database_state_marker: DatabaseStateMarker,
+    winner_fact_instance_ids: Sequence[object],
+    proven_source_order: Sequence[tuple[str, str, str]] = (),
+) -> str:
+    """Hash the complete rank-one selector material without trusting transport order."""
+
+    resolution = source_skill.output_contract.resolution
+    if resolution is None:
+        raise ValueError("rank selector source must be a typed resolver")
+    policy = next(
+        (
+            item
+            for item in (source_skill.output_contract.context_export_policy or ())
+            if isinstance(item, SelectedOnlyContextPolicy)
+            and item.fact_id == resolution.identity_fact_id
+            and item.slot_key == resolution.default_slot_key
+        ),
+        None,
+    )
+    if policy is None:
+        raise ValueError("rank selector source must have exact selected_only policy")
+    rows: dict[str, dict[str, Fact]] = defaultdict(dict)
+    for fact in source_facts:
+        if fact.fact_id in rows[fact.row_id]:
+            raise ValueError("duplicate fact_id in rank source row")
+        rows[fact.row_id][fact.fact_id] = fact
+    records: list[dict[str, object]] = []
+    for row_id, row in rows.items():
+        identity = row.get(resolution.identity_fact_id)
+        rank_fact = row.get(rank_step.sort_fact_id)
+        if (
+            identity is None
+            or not isinstance(identity.value, EntityRef)
+            or rank_fact is None
+            or not _semantic_role_proofs_satisfied(source_skill, source_facts, row_id)
+        ):
+            raise ValueError("rank source row lacks identity, role proof or sort fact")
+        role_proofs = []
+        for fact_id in resolution.role_proof_fact_ids:
+            role_fact = row.get(fact_id)
+            if role_fact is None:
+                raise ValueError("rank source row lacks role proof fact")
+            role_proofs.append(
+                {
+                    "fact_id": fact_id,
+                    "value": role_fact.model_dump(mode="json")["value"],
+                }
+            )
+        records.append(
+            {
+                "identity": {
+                    "semantic_type": identity.semantic_type,
+                    "physical_type": identity.value.object_type,
+                    "unique_id": str(identity.value.unique_id),
+                },
+                "identity_fact_instance_id": str(identity.fact_instance_id),
+                "rank_fact_id": rank_fact.fact_id,
+                "rank_value_type": rank_fact.value_type.value,
+                "rank_value": rank_fact.model_dump(mode="json")["value"],
+                "rank_unit": rank_fact.unit.model_dump(mode="json"),
+                "role_proofs": role_proofs,
+            }
+        )
+    records.sort(key=canonicalize)
+    payload = {
+        "rank_operator": rank_step.model_dump(mode="json"),
+        "source": {
+            "step_id": resolver_use.step_id,
+            "skill_id": source_skill.skill_id,
+            "version": source_skill.version,
+            "digest": source_skill.integrity.digest,
+            "resolution": resolution.model_dump(mode="json"),
+            "selected_only_policy": policy.model_dump(mode="json"),
+        },
+        "candidate_records": records,
+        "proven_source_order": [
+            {
+                "semantic_type": semantic_type,
+                "physical_type": physical_type,
+                "unique_id": unique_id,
+            }
+            for semantic_type, physical_type, unique_id in proven_source_order
+        ],
+        "input_completeness": {
+            "collection_scope": source_collection_scope,
+            "has_more": source_has_more,
+            "truncated": source_truncated,
+        },
+        "catalog_snapshot": catalog_snapshot.model_dump(mode="json"),
+        "database_state_marker": database_state_marker.model_dump(mode="json"),
+        "winner_fact_instance_ids": [str(item) for item in winner_fact_instance_ids],
+    }
+    return hashlib.sha256(canonicalize(payload)).hexdigest()
+
+
 def context_proof_evidence_issues(
     coverage_proof: PlanCoverageProof,
     evidence: EvidenceBundle,
     *,
+    plan: PlannerOutput | None = None,
     selection_proofs: Sequence[SelectionProof],
     filter_retention_proofs: Sequence[FilterRetentionProof],
     available_skills: Sequence[Skill],
@@ -2445,6 +2593,7 @@ def context_proof_evidence_issues(
     return _deduplicate(
         _context_proof_issues(
             evidence,
+            plan=plan,
             selection_proofs=selection_proofs,
             filter_retention_proofs=filter_retention_proofs,
             required_step_ids=frozenset(coverage_proof.required_steps),
@@ -2458,6 +2607,7 @@ def validate_context_proofs_against_evidence(
     coverage_proof: PlanCoverageProof,
     evidence: EvidenceBundle,
     *,
+    plan: PlannerOutput | None = None,
     selection_proofs: Sequence[SelectionProof],
     filter_retention_proofs: Sequence[FilterRetentionProof],
     available_skills: Sequence[Skill],
@@ -2466,6 +2616,7 @@ def validate_context_proofs_against_evidence(
         context_proof_evidence_issues(
             coverage_proof,
             evidence,
+            plan=plan,
             selection_proofs=selection_proofs,
             filter_retention_proofs=filter_retention_proofs,
             available_skills=available_skills,
@@ -3162,6 +3313,7 @@ def _fact_value_issues(fact: Fact, index: int) -> list[ContractIssue]:
 def _context_proof_issues(
     evidence: EvidenceBundle,
     *,
+    plan: PlannerOutput | None,
     selection_proofs: Sequence[SelectionProof],
     filter_retention_proofs: Sequence[FilterRetentionProof],
     required_step_ids: frozenset[str],
@@ -3183,9 +3335,7 @@ def _context_proof_issues(
         for step in evidence.steps
     )
     if required_technical_failure and (
-        selection_proofs
-        or filter_retention_proofs
-        or evidence.context_exports
+        selection_proofs or filter_retention_proofs or evidence.context_exports
     ):
         issues.append(
             _issue(
@@ -3254,12 +3404,81 @@ def _context_proof_issues(
                 fact.step_id != step.step_id
                 or fact.fact_id != resolution.identity_fact_id
                 or not isinstance(fact.value, EntityRef)
-                or not _semantic_role_proofs_satisfied(skill, evidence.facts, fact.row_id)
+                or not _semantic_role_proofs_satisfied(
+                    skill, evidence.facts, fact.row_id
+                )
             ):
                 continue
             key = (fact.semantic_type, fact.value.object_type, fact.value.unique_id)
             identity_facts.setdefault(key, fact)
         expected_facts = tuple(identity_facts.values())
+        selector_valid = True
+        if proof.selector_step_id is not None:
+            selector_evidence = steps.get(proof.selector_step_id)
+            rank_step = (
+                next(
+                    (
+                        item
+                        for item in plan.result.steps
+                        if isinstance(item, RankOperator)
+                        and item.step_id == proof.selector_step_id
+                    ),
+                    None,
+                )
+                if plan is not None and isinstance(plan.result, ExecuteResult)
+                else None
+            )
+            source_fact_ids = set(step.produced_fact_instance_ids)
+            source_facts = tuple(
+                fact
+                for fact in evidence.facts
+                if fact.fact_instance_id in source_fact_ids
+                and fact.step_id == step.step_id
+            )
+            try:
+                rank_expected, proven_order, winner_row_fact_ids = (
+                    _rank_evidence_winners(rank_step, skill, source_facts)
+                    if rank_step is not None
+                    else ((), (), frozenset())
+                )
+                expected_selector_digest = (
+                    rank_selector_digest(
+                        rank_step=rank_step,
+                        source_skill=skill,
+                        resolver_use=proof.resolver,
+                        source_facts=source_facts,
+                        source_collection_scope=step.collection_scope,
+                        source_has_more=step.has_more,
+                        source_truncated=step.truncated,
+                        catalog_snapshot=evidence.catalog_snapshot,
+                        database_state_marker=evidence.database_state_marker,
+                        winner_fact_instance_ids=tuple(
+                            fact.fact_instance_id for fact in rank_expected
+                        ),
+                        proven_source_order=proven_order,
+                    )
+                    if rank_step is not None
+                    else None
+                )
+            except (TypeError, ValueError):
+                rank_expected = ()
+                winner_row_fact_ids = frozenset()
+                expected_selector_digest = None
+            selector_valid = (
+                rank_step is not None
+                and rank_step.input_step_id == proof.resolver.step_id
+                and selector_evidence is not None
+                and selector_evidence.step_id in required_step_ids
+                and selector_evidence.operation_ref == "operator:rank"
+                and selector_evidence.status is Outcome.SUCCESS_WITH_ROWS
+                and selector_evidence.collection_scope == "complete_set"
+                and not selector_evidence.has_more
+                and not selector_evidence.truncated
+                and set(selector_evidence.produced_fact_instance_ids)
+                == set(winner_row_fact_ids)
+                and proof.selector_digest == expected_selector_digest
+            )
+            expected_facts = tuple(rank_expected)
         expected_ids = tuple(fact.fact_instance_id for fact in expected_facts)
         expected_identities = tuple(
             (fact.semantic_type, fact.value.object_type, fact.value.unique_id)
@@ -3281,13 +3500,20 @@ def _context_proof_issues(
             and policy is not None
             and len(expected_facts) <= policy.max_members
         )
-        payload = {
+        payload: dict[str, object] = {
             "resolver": proof.resolver.model_dump(mode="json"),
             "state": proof.state,
             "fact_instance_ids": [str(item) for item in proof.fact_instance_ids],
             "identities": [item.model_dump(mode="json") for item in proof.identities],
             "complete": True,
         }
+        if proof.selector_step_id is not None:
+            payload.update(
+                {
+                    "selector_step_id": proof.selector_step_id,
+                    "selector_digest": proof.selector_digest,
+                }
+            )
         digest_valid = (
             hashlib.sha256(canonicalize(payload)).hexdigest() == proof.proof_digest
         )
@@ -3297,7 +3523,12 @@ def _context_proof_issues(
             and len(proof.identities) == len(expected_identities)
             and set(actual_identities) == set(expected_identities)
         )
-        if not cardinality_valid or not digest_valid or not exact_members:
+        if (
+            not selector_valid
+            or not cardinality_valid
+            or not digest_valid
+            or not exact_members
+        ):
             issues.append(
                 _issue(
                     "CONTEXT_SELECTION_PROOF_INVALID",
@@ -3326,8 +3557,12 @@ def _context_proof_issues(
         }
         if (
             len(handles) != 1
-            or any(len(exports_by_fact.get(fact_id, ())) != 1 for fact_id in proof.fact_instance_ids)
-            or exports_by_handle[next(iter(handles), "")] != set(proof.fact_instance_ids)
+            or any(
+                len(exports_by_fact.get(fact_id, ())) != 1
+                for fact_id in proof.fact_instance_ids
+            )
+            or exports_by_handle[next(iter(handles), "")]
+            != set(proof.fact_instance_ids)
         ):
             issues.append(
                 _issue(
@@ -3388,7 +3623,11 @@ def _context_proof_issues(
             step is not None
             and step.step_id in required_step_ids
             and step.status
-            in {Outcome.SUCCESS_WITH_ROWS, Outcome.ZERO_AGGREGATE, Outcome.SUCCESS_EMPTY}
+            in {
+                Outcome.SUCCESS_WITH_ROWS,
+                Outcome.ZERO_AGGREGATE,
+                Outcome.SUCCESS_EMPTY,
+            }
             and skill is not None
             and filter_policy is not None
             and definition is not None
@@ -3476,6 +3715,274 @@ def _semantic_role_proofs_satisfied(
         else:
             return False
     return True
+
+
+_RANK_COMPARABLE_FACT_TYPES = frozenset(
+    {
+        FactValueType.STRING,
+        FactValueType.INTEGER,
+        FactValueType.DECIMAL,
+        FactValueType.DATE,
+        FactValueType.DATETIME,
+        FactValueType.ENUM,
+        FactValueType.MONEY,
+        FactValueType.QUANTITY,
+        FactValueType.PERCENTAGE,
+    }
+)
+_SemanticRankComparable: TypeAlias = (
+    str | int | float | date | datetime | tuple[str, str]
+)
+
+
+@dataclass(frozen=True, slots=True)
+class _EvidenceRankCandidate:
+    identity: Fact
+    rank_fact: Fact
+    facts: tuple[Fact, ...]
+
+    @property
+    def key(self) -> tuple[str, str, str]:
+        value = self.identity.value
+        if not isinstance(value, EntityRef):
+            raise ValueError("rank identity is not entity_ref")
+        return (self.identity.semantic_type, value.object_type, str(value.unique_id))
+
+
+def _rank_evidence_winners(
+    rank_step: RankOperator,
+    skill: Skill,
+    source_facts: Sequence[Fact],
+) -> tuple[
+    tuple[Fact, ...],
+    tuple[tuple[str, str, str], ...],
+    frozenset[object],
+]:
+    resolution = skill.output_contract.resolution
+    limit = rank_step.limit
+    if (
+        resolution is None
+        or not isinstance(limit, LiteralBinding)
+        or limit.value_type != "integer"
+        or type(limit.value) is not int
+        or limit.value != 1
+    ):
+        raise ValueError("rank-one proof requires typed resolver and literal limit=1")
+    definitions = {
+        definition.fact_id: definition for definition in skill.output_contract.facts
+    }
+    rank_definition = definitions.get(rank_step.sort_fact_id)
+    if (
+        rank_definition is None
+        or not rank_definition.required
+        or rank_definition.nullable
+        or rank_definition.value_type not in _RANK_COMPARABLE_FACT_TYPES
+    ):
+        raise ValueError("rank sort fact is not required comparable scalar")
+    rows: dict[str, dict[str, Fact]] = defaultdict(dict)
+    for fact in source_facts:
+        if fact.fact_id in rows[fact.row_id]:
+            raise ValueError("duplicate rank row fact")
+        rows[fact.row_id][fact.fact_id] = fact
+    candidates: dict[tuple[str, str, str], _EvidenceRankCandidate] = {}
+    values: dict[tuple[str, str, str], _SemanticRankComparable] = {}
+    units: set[tuple[str, str | None]] = set()
+    for row_id, row in rows.items():
+        identity = row.get(resolution.identity_fact_id)
+        rank_fact = row.get(rank_step.sort_fact_id)
+        if (
+            identity is None
+            or not isinstance(identity.value, EntityRef)
+            or rank_fact is None
+            or rank_fact.value_type is not rank_definition.value_type
+            or not _semantic_role_proofs_satisfied(skill, source_facts, row_id)
+        ):
+            raise ValueError("rank row lacks exact identity, role or rank fact")
+        candidate = _EvidenceRankCandidate(
+            identity,
+            rank_fact,
+            tuple(sorted(row.values(), key=lambda item: item.fact_id)),
+        )
+        value = _semantic_rank_value(rank_fact)
+        units.add(_semantic_rank_unit_key(rank_fact))
+        key = candidate.key
+        if key in values and values[key] != value:
+            raise ValueError("one identity has conflicting rank values")
+        existing = candidates.get(key)
+        if existing is None or identity.row_id < existing.identity.row_id:
+            candidates[key] = candidate
+            values[key] = value
+    if len(units) > 1:
+        raise ValueError("rank values have incompatible units")
+    if not candidates:
+        raise ValueError("rank proof has no candidates")
+
+    def compare(left: _EvidenceRankCandidate, right: _EvidenceRankCandidate) -> int:
+        return _compare_evidence_rank(left, right, rank_step.direction)
+
+    ranked = sorted(candidates.values(), key=cmp_to_key(compare))
+    top_value = _semantic_rank_value(ranked[0].rank_fact)
+    top = tuple(
+        candidate
+        for candidate in ranked
+        if _semantic_rank_value(candidate.rank_fact) == top_value
+    )
+    proven_order: tuple[tuple[str, str, str], ...] = ()
+    if len(top) > 1 and rank_step.ties == "stable_first":
+        ordered = _semantic_declared_total_order(
+            skill, rank_step, tuple(candidates.values())
+        )
+        proven_order = tuple(candidate.key for candidate in ordered)
+        winners: tuple[_EvidenceRankCandidate, ...] = (ordered[0],)
+    elif len(top) > 1:
+        winners = top
+    else:
+        winners = (ranked[0],)
+    return (
+        tuple(candidate.identity for candidate in winners),
+        proven_order,
+        frozenset(candidate.identity.fact_instance_id for candidate in winners),
+    )
+
+
+def _semantic_rank_unit_key(fact: Fact) -> tuple[str, str | None]:
+    if isinstance(fact.unit, UnitResolved):
+        return ("resolved", fact.unit.code)
+    if isinstance(fact.unit, UnitNotApplicable):
+        if fact.value_type in {FactValueType.MONEY, FactValueType.QUANTITY}:
+            raise ValueError("money/quantity rank requires a resolved unit")
+        return ("not_applicable", None)
+    raise ValueError("rank unit is unresolved")
+
+
+def _semantic_rank_value(fact: Fact) -> _SemanticRankComparable:
+    value = fact.value
+    if fact.value_type in {FactValueType.STRING, FactValueType.ENUM}:
+        if not isinstance(value, str):
+            raise ValueError("rank string value mismatch")
+        return value
+    if fact.value_type is FactValueType.INTEGER:
+        if type(value) is not int:
+            raise ValueError("rank integer value mismatch")
+        return value
+    if fact.value_type in {
+        FactValueType.DECIMAL,
+        FactValueType.MONEY,
+        FactValueType.QUANTITY,
+        FactValueType.PERCENTAGE,
+    }:
+        if type(value) not in {int, float}:
+            raise ValueError("rank numeric value mismatch")
+        return cast(int | float, value)
+    if fact.value_type is FactValueType.DATE:
+        if not isinstance(value, str):
+            raise ValueError("rank date value mismatch")
+        return date.fromisoformat(value)
+    if fact.value_type is FactValueType.DATETIME:
+        if not isinstance(value, str):
+            raise ValueError("rank datetime value mismatch")
+        parsed = datetime.fromisoformat(value)
+        if parsed.tzinfo is None:
+            raise ValueError("rank datetime must be timezone-aware")
+        return parsed
+    raise ValueError("rank value type is not comparable")
+
+
+def _compare_evidence_rank(
+    left: _EvidenceRankCandidate,
+    right: _EvidenceRankCandidate,
+    direction: Literal["ascending", "descending"],
+) -> int:
+    left_value = _semantic_rank_value(left.rank_fact)
+    right_value = _semantic_rank_value(right.rank_fact)
+    compared = _semantic_compare_values(left_value, right_value)
+    if direction == "descending":
+        compared = -compared
+    if compared:
+        return compared
+    return (left.key > right.key) - (left.key < right.key)
+
+
+def _semantic_compare_values(
+    left: _SemanticRankComparable, right: _SemanticRankComparable
+) -> int:
+    if isinstance(left, tuple) and isinstance(right, tuple):
+        return (left > right) - (left < right)
+    if isinstance(left, str) and isinstance(right, str):
+        return (left > right) - (left < right)
+    if type(left) in {int, float} and type(right) in {int, float}:
+        left_number = cast(int | float, left)
+        right_number = cast(int | float, right)
+        return (left_number > right_number) - (left_number < right_number)
+    if isinstance(left, datetime) and isinstance(right, datetime):
+        return (left > right) - (left < right)
+    if isinstance(left, date) and isinstance(right, date):
+        return (left > right) - (left < right)
+    raise ValueError("rank values are not mutually comparable")
+
+
+def _semantic_declared_total_order(
+    skill: Skill,
+    rank_step: RankOperator,
+    candidates: tuple[_EvidenceRankCandidate, ...],
+) -> tuple[_EvidenceRankCandidate, ...]:
+    if not isinstance(skill.operation, DataQueryOperation) or not isinstance(
+        skill.operation.pagination, KeysetPagination
+    ):
+        raise ValueError("stable_first requires declarative keyset order")
+    pagination = skill.operation.pagination
+    identity_ids = skill.output_contract.row_identity_fact_ids or ()
+    expected_direction = "asc" if rank_step.direction == "ascending" else "desc"
+    sort_ids = tuple(item.fact_id for item in pagination.sort)
+    if (
+        not pagination.sort
+        or pagination.sort[0].fact_id != rank_step.sort_fact_id
+        or pagination.sort[0].direction != expected_direction
+        or not identity_ids
+        or tuple(sort_ids[-len(identity_ids) :]) != tuple(identity_ids)
+        or skill.output_contract.resolution is None
+        or skill.output_contract.resolution.identity_fact_id not in identity_ids
+    ):
+        raise ValueError("source order does not prove rank and identity suffix")
+
+    def compare(left: _EvidenceRankCandidate, right: _EvidenceRankCandidate) -> int:
+        return _compare_evidence_declared_rows(left, right, pagination)
+
+    return tuple(sorted(candidates, key=cmp_to_key(compare)))
+
+
+def _compare_evidence_declared_rows(
+    left: _EvidenceRankCandidate,
+    right: _EvidenceRankCandidate,
+    pagination: KeysetPagination,
+) -> int:
+    left_row = {fact.fact_id: fact for fact in left.facts}
+    right_row = {fact.fact_id: fact for fact in right.facts}
+    for item in pagination.sort:
+        left_fact = left_row.get(item.fact_id)
+        right_fact = right_row.get(item.fact_id)
+        if left_fact is None or right_fact is None:
+            raise ValueError("candidate lacks declared order fact")
+        if isinstance(left_fact.value, EntityRef) and isinstance(
+            right_fact.value, EntityRef
+        ):
+            left_value: _SemanticRankComparable = (
+                left_fact.value.object_type,
+                str(left_fact.value.unique_id),
+            )
+            right_value: _SemanticRankComparable = (
+                right_fact.value.object_type,
+                str(right_fact.value.unique_id),
+            )
+            compared = _semantic_compare_values(left_value, right_value)
+        else:
+            compared = _semantic_compare_values(
+                _semantic_rank_value(left_fact),
+                _semantic_rank_value(right_fact),
+            )
+        if compared:
+            return compared if item.direction == "asc" else -compared
+    return 0
 
 
 def _skill_operation_pair(operation_ref: str) -> tuple[str, str] | None:

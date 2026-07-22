@@ -581,9 +581,11 @@ Rank-one `SelectionProof` валиден только если core незави
 3. Source skill имеет exact resolution identity, role proofs и matching
    `selected_only` policy; rank `sort_fact_id` является required non-null scalar
    fact каждой candidate row.
-4. Все rank values имеют один declared comparable `value_type`. Сравнение
-   выполняется generic type comparator-ом без object-specific conversion,
-   presentation parsing или semantic map.
+4. Все rank values имеют один declared comparable `value_type` и одну
+   подтвержденную единицу измерения. Для `money` и `quantity` unit обязан быть
+   resolved; разные валюты/единицы и unresolved unit отклоняются до выбора.
+   Сравнение выполняется generic type comparator-ом без object-specific
+   conversion, presentation parsing или semantic map.
    `stable_first` при tie дополнительно требует declared source order: первый
    key совпадает с `sort_fact_id` и direction, а unique suffix заканчивается
    resolver identity. Наблюдаемый transport order доказательством не является.
