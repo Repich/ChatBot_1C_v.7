@@ -29,6 +29,21 @@ uv run --locked chatbot1c start
 указать `DEEPSEEK_API_KEY`, URL read-only MCP и путь к файловой выгрузке УТ.
 Сервис не имеет аутентификации и предназначен для локального запуска.
 
+Обработка `MCP_Toolkit.epf` работает через отдельный локальный proxy. Его нужно
+запустить до подключения обработки 1С:
+
+```bash
+uv run --locked chatbot1c-mcp-proxy
+```
+
+Оба клиента используют channel `default`: ChatBot обращается к
+`http://127.0.0.1:6003/mcp?channel=default`, а обработка 1С опрашивает тот же
+proxy. `GET http://127.0.0.1:6003/health/live` проверяет процесс;
+`GET http://127.0.0.1:6003/health/ready?channel=default` станет успешным только
+после первого poll от обработки 1С. Если 1С запущена на другом компьютере,
+proxy запускают с `--host 0.0.0.0`, а в обработке указывают сетевое имя
+компьютера с ChatBot вместо `127.0.0.1`.
+
 SQLite создается в `APP_DATA_DIR`, включается в WAL mode и обновляется только
 versioned Alembic migrations. Встроенный starter catalog можно загрузить при
 старте через `AUTO_IMPORT_BUILTIN_SKILLS=true`.

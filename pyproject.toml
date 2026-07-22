@@ -30,6 +30,7 @@ dependencies = [
 
 [project.scripts]
 chatbot1c = "chatbot1c.cli:main"
+chatbot1c-mcp-proxy = "chatbot1c.mcp_proxy.cli:main"
 
 [dependency-groups]
 dev = [
